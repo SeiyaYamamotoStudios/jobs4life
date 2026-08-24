@@ -1,0 +1,47 @@
+[project]
+name = "job-for-life"
+version = "0.1.0"
+description = "Grounding gate for AI-generated job application text"
+requires-python = ">=3.12,<3.13"
+dependencies = ["jfl-core", "jfl-gate", "jfl-evals"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+jfl-core = { workspace = true }
+jfl-gate = { workspace = true }
+jfl-evals = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "testcontainers[postgres]>=4.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Alembic writes these; do not fight the generator.
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages"]
+markers = [
+  "integration: requires a live Postgres (docker compose up -d)",
+  "e2e: full pipeline, hits a real model API",
+]
+addopts = "-m 'not integration and not e2e'"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
