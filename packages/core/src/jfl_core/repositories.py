@@ -13,6 +13,42 @@ from typing import Protocol
 from jfl_core.models import RunRecord, Span, SpanCandidate
 
 
+class IngestRepository(Protocol):
+    """What corpus ingestion needs. Separate from GroundingRepository because
+    ingestion writes and the gate only reads -- splitting them keeps the
+    write surface small enough to audit.
+    """
+
+    def upsert_document(
+        self,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        source_uri: str,
+        title: str | None,
+        content_hash: str,
+    ) -> bool:
+        """Insert or refresh a document row (source_uri, storage_kind='local_file').
+
+        Returns True if this created a new row.
+        """
+        ...
+
+    def upsert_span(self, span: Span) -> bool:
+        """Insert or refresh a span and its sentences. Returns True if newly created."""
+        ...
+
+    def retire_missing_documents(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
+        """Retire documents not in `seen`. Returns the count retired."""
+        ...
+
+    def retire_missing_spans(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
+        """Retire provenance='document' spans not in `seen`. Never touches adjudicated
+        spans -- they have no source file and nothing ingestion sees could confirm
+        or refute their presence.
+        """
+        ...
+
+
 class GroundingRepository(Protocol):
     """Everything the gate is allowed to ground a claim against."""
 

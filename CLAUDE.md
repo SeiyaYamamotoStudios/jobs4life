@@ -67,18 +67,70 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
-**2026-08-24 — No golden set, no Inspect harness for now.** Owner's call, made twice
-after the case for an eval was put. v1 judges claims with a single model call over the
-stuffed corpus and ships on that. Consequences, recorded so they are not rediscovered:
+**2026-08-24 — Golden set reinstated, sourced from public data.** Supersedes an earlier
+decision to ship without one. The blocker was never the concept but the assumption that
+items had to come from the owner's corpus; tier 1 comes from public sources instead, so
+the eval costs the owner only the taxonomy. See the drift taxonomy and golden set
+sections.
 
-- There is no over-claim number, so prompt changes cannot be verified. A change that
-  fixes one failure and causes two others looks identical to a change that works.
-- The "shows you the number" thesis is unmeasured in v1.
-- Retrieval is unused: `span_embeddings`, the HNSW index and the embedding interface
-  stay in place but nothing writes to them.
+**2026-08-24 — Retrieval unused in v1.** The gate stuffs the whole corpus into context
+(30–50k tokens, viable with prompt caching). `span_embeddings`, the HNSW index and the
+embedding interface stay in place but nothing writes to them. Revisit if the corpus
+outgrows the context window.
 
-If this reverses, the cheapest path back is labelling real verdicts already captured in
-`runs` rather than authoring a golden set from scratch.
+## Drift taxonomy
+
+Confirmed 2026-08-24, drawn from failures the owner has actually seen. These become the
+`drift_label` values. **Do not add categories without evidence they occur** — speculative
+types make the eval look better than it is, since examples get built for failures that
+never happen.
+
+The key property: **verdict is a function of the corpus, not of the type.** "Owned the FX
+pricing platform" passes or goes to review depending entirely on whether the corpus says
+what ownership entailed. Same sentence, different answer, different day.
+
+**Hard fails** — contradicted, or no corpus addition could rescue them:
+
+| Label | Why it cannot be rescued |
+|---|---|
+| `invented_quantity` | The number appears nowhere in the source |
+| `adjacency_substitution` | Corpus says *reviewed*, claim says *built*. Contradicted, not unsupported |
+
+**Evidence-dependent** — the claim shape is legitimate; grounding depends on what the
+corpus holds:
+
+| Label | Evidence it requires |
+|---|---|
+| `scope_inflation` | The boundary stated: squad, team, department |
+| `ownership_inflation` | What ownership entailed: decisions, budget, on-call, headcount |
+| `outcome_attribution` | A metric or justification linking the work to the outcome directly |
+| `strategy_scope` | The scope named: for the team, the org, the function |
+| `causality` | Hard evidence of the author's role in the causal chain |
+
+**Not drift**: `framing` (ungroundable by nature — sequence, motivation, what was being
+weighed; **never flag it**, over-flagging is what gets the tool switched off) and
+`supported` (traces cleanly).
+
+Temporal compression was proposed and **rejected** — not a failure the owner has seen.
+
+This is the standard supported / refuted / not-enough-evidence split arrived at
+independently, which means public FEVER-style data maps onto it directly.
+
+## Golden set
+
+Two tiers, since over-claiming is only detectable against ground truth and ground truth
+for a CV is private to its author:
+
+- **Tier 1** — built from public sources (FEVER-style data, open-source contribution
+  histories, documented public career records). Tests claim-vs-framing and the core
+  mechanic. Needs nothing from the owner. Cannot test defensible compression.
+- **Tier 2** — 10–15 items from the owner's own corpus, covering only the
+  defensible-compression cases tier 1 structurally cannot reach. Optional; without it the
+  number is still real, with a stated limitation.
+
+**Do not source items from CVs paired with application outcomes.** Outcome is dominated
+by market conditions and competition; it is near-uncorrelated with whether a claim was
+grounded, and training on it would build the tool this project exists to oppose.
 
 ## Build order
 

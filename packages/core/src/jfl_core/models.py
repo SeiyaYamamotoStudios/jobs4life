@@ -29,6 +29,8 @@ class Span(BaseModel):
     ordinal: int | None = None
     text: str
     content_hash: str
+    char_start: int | None = None  # offsets into the source document; None for adjudicated spans
+    char_end: int | None = None
     sentences: list[Sentence] = Field(default_factory=list)
 
 
