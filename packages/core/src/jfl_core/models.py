@@ -21,7 +21,7 @@ class Sentence(BaseModel):
 
 class Span(BaseModel):
     id: uuid.UUID
-    user_id: str
+    user_id: uuid.UUID
     document_id: uuid.UUID | None = None
     provenance: Provenance
     kind: SpanKind
@@ -39,7 +39,7 @@ class SpanCandidate(BaseModel):
 
 class RunRecord(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    user_id: str
+    user_id: uuid.UUID
     trace_id: uuid.UUID
     parent_run_id: uuid.UUID | None = None
     component: Literal["gate", "evals", "ingest"]

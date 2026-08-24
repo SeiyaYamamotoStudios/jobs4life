@@ -8,7 +8,7 @@ So position is expressed as the *section heading path*, which is stable under
 reordering within a section, and the ordinal is used only to disambiguate spans
 whose normalised text is genuinely identical within the same section.
 
-    span_id = uuid5(NS_SPAN, user_id | doc_path | section_path | text_hash | occurrence)
+    span_id = uuid5(NS_SPAN, user_id | source_uri | section_path | text_hash | occurrence)
 
 Consequences, stated plainly:
   * reordering bullets within a section  -> id unchanged
@@ -51,18 +51,20 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(normalise(text).encode("utf-8")).hexdigest()
 
 
-def document_id(user_id: str, path: str) -> uuid.UUID:
-    return uuid.uuid5(NS_DOCUMENT, f"{user_id}|{path}")
+def document_id(user_id: uuid.UUID, source_uri: str) -> uuid.UUID:
+    return uuid.uuid5(NS_DOCUMENT, f"{user_id}|{source_uri}")
 
 
 def span_id(
-    user_id: str, doc_path: str, section_path: str, text: str, occurrence: int = 0
+    user_id: uuid.UUID, source_uri: str, section_path: str, text: str, occurrence: int = 0
 ) -> uuid.UUID:
-    key = f"{user_id}|{doc_path}|{section_path}|{content_hash(text)}|{occurrence}"
+    key = f"{user_id}|{source_uri}|{section_path}|{content_hash(text)}|{occurrence}"
     return uuid.uuid5(NS_SPAN, key)
 
 
-def adjudicated_span_id(user_id: str, claim_text: str, review_item_id: uuid.UUID) -> uuid.UUID:
+def adjudicated_span_id(
+    user_id: uuid.UUID, claim_text: str, review_item_id: uuid.UUID
+) -> uuid.UUID:
     """Adjudicated spans have no file, so identity comes from the adjudication."""
     return uuid.uuid5(NS_SPAN, f"{user_id}|adjudicated|{review_item_id}|{content_hash(claim_text)}")
 

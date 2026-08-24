@@ -11,8 +11,8 @@ import uuid
 import pytest
 from jfl_core.ids import adjudicated_span_id, content_hash, normalise, sentence_id, span_id
 
-USER = "local"
-DOC = "cv.md"
+USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
+DOC = "file:corpus/cv.md"
 SECTION = "Kaluza > Platform"
 
 
@@ -71,8 +71,10 @@ class TestSpanId:
         assert span_id(USER, DOC, "A", "- Led it") != span_id(USER, DOC, "B", "- Led it")
 
     def test_scoped_by_user_and_document(self) -> None:
-        assert span_id(USER, DOC, SECTION, "x") != span_id("other", DOC, SECTION, "x")
-        assert span_id(USER, DOC, SECTION, "x") != span_id(USER, "other.md", SECTION, "x")
+        assert span_id(USER, DOC, SECTION, "x") != span_id(uuid.uuid4(), DOC, SECTION, "x")
+        assert span_id(USER, DOC, SECTION, "x") != span_id(
+            USER, "file:corpus/other.md", SECTION, "x"
+        )
 
 
 class TestAdjudicatedSpanId:

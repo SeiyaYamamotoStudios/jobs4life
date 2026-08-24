@@ -9,14 +9,18 @@ Conventions used throughout:
 
 from __future__ import annotations
 
+import uuid
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     Date,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     Numeric,
     String,
@@ -24,6 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 
@@ -48,6 +53,83 @@ def _ts(name: str, **kw: object) -> Column:
 
 
 # --------------------------------------------------------------------------
+# Accounts. v1 runs single-user against a seeded local row; the seams exist so
+# that stops being true without a rewrite. No auth, sessions or tenancy
+# enforcement yet -- deliberately.
+# --------------------------------------------------------------------------
+
+# Deterministic, so the local user is the same row on every machine and in
+# every test database. uuid5(NS_ROOT, "user:local").
+LOCAL_USER_ID = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
+
+users = Table(
+    "users",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("email", Text, nullable=False, unique=True),
+    Column("display_name", Text),
+    Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    _ts("created_at", nullable=False, server_default=func.now()),
+)
+
+# Envelope encryption: a per-record data key (`wrapped_dek`) encrypted under a
+# master key held outside the database, and the secret encrypted under the DEK.
+# Rotating the master key rewraps DEKs without touching ciphertext.
+#
+# NOTHING WRITES TO THIS TABLE YET. The crypto is not implemented; the columns
+# exist so that when it is, the shape does not change. Plaintext must never
+# reach this table, the runs table, or a log line.
+user_credentials = Table(
+    "user_credentials",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("kind", Text, nullable=False),
+    Column("label", Text, nullable=False, server_default=""),
+    Column("ciphertext", LargeBinary, nullable=False),
+    Column("wrapped_dek", LargeBinary, nullable=False),
+    Column("nonce", LargeBinary, nullable=False),
+    Column("master_key_id", Text, nullable=False),  # which KEK wrapped the DEK
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("rotated_at"),
+    _ts("last_used_at"),
+    CheckConstraint(
+        "kind in ('anthropic_api_key','openai_api_key','ats_token','smtp_password')",
+        name="kind",
+    ),
+    UniqueConstraint("user_id", "kind", "label"),
+)
+
+# Pluggable intake. The table lands now because ATS JSON, RSS, a forwarded-email
+# inbox and manual paste differ enough in shape that retrofitting hurts; the
+# postings themselves belong to the intake domain and are not designed yet.
+job_sources = Table(
+    "job_sources",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("config", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("enabled", Boolean, nullable=False, server_default=text("true")),
+    Column("cursor", Text),  # opaque per-kind resume token: etag, last id, date
+    _ts("last_polled_at"),
+    _ts("last_success_at"),
+    Column("consecutive_failures", Integer, nullable=False, server_default=text("0")),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "kind in ('greenhouse','lever','ashby','workable','rss','forwarded_email','manual')",
+        name="kind",
+    ),
+    UniqueConstraint("user_id", "kind", "name"),
+)
+
+
+# --------------------------------------------------------------------------
 # Corpus: the grounding store. Rebuildable from corpus/*.md at any time.
 # --------------------------------------------------------------------------
 
@@ -55,21 +137,29 @@ documents = Table(
     "documents",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
-    Column("path", Text, nullable=False),  # relative to corpus/
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    # Generalised from a bare path so local files, uploads and pastes share one
+    # identity scheme: "file:corpus/cv.md", "upload:<uuid>", "paste:<uuid>".
+    Column("source_uri", Text, nullable=False),
+    Column("storage_kind", Text, nullable=False),
     Column("title", Text),
     Column("content_hash", String(64), nullable=False),
     _ts("first_seen_at", nullable=False, server_default=func.now()),
     _ts("last_seen_at", nullable=False, server_default=func.now()),
-    _ts("retired_at"),  # set when the file disappears; rows are never deleted
-    UniqueConstraint("user_id", "path"),
+    _ts("retired_at"),  # set when the source disappears; rows are never deleted
+    CheckConstraint("storage_kind in ('local_file','upload','paste')", name="storage_kind"),
+    UniqueConstraint("user_id", "source_uri"),
 )
 
 spans = Table(
     "spans",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),  # deterministic, see ids.py
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     # NULL for adjudicated spans: they have no source file.
     Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True),
     Column("provenance", Text, nullable=False),
@@ -99,7 +189,9 @@ span_sentences = Table(
     "span_sentences",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),  # deterministic from span id + idx
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column(
         "span_id", UUID(as_uuid=True), ForeignKey("spans.id", ondelete="CASCADE"), nullable=False
     ),
@@ -116,7 +208,9 @@ span_embeddings = Table(
         "span_id", UUID(as_uuid=True), ForeignKey("spans.id", ondelete="CASCADE"), primary_key=True
     ),
     Column("model", Text, primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("embedding", Vector(EMBEDDING_DIM), nullable=False),
     Column("source_content_hash", String(64), nullable=False),  # detects staleness
     _ts("created_at", nullable=False, server_default=func.now()),
@@ -141,7 +235,9 @@ sent_documents = Table(
     "sent_documents",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("kind", Text, nullable=False),
     Column("employer", Text),
     Column("role", Text),
@@ -158,7 +254,9 @@ sent_spans = Table(
     "sent_spans",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column(
         "sent_document_id",
         UUID(as_uuid=True),
@@ -178,7 +276,9 @@ review_items = Table(
     "review_items",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("trace_id", UUID(as_uuid=True), nullable=False),
     Column("claim_text", Text, nullable=False),
     Column("source_text", Text, nullable=False),  # the full input the claim came from
@@ -196,7 +296,9 @@ adjudications = Table(
     "adjudications",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column(
         "review_item_id",
         UUID(as_uuid=True),
@@ -223,7 +325,9 @@ runs = Table(
     "runs",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
-    Column("user_id", Text, nullable=False),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("trace_id", UUID(as_uuid=True), nullable=False),  # one gate invocation
     Column("parent_run_id", UUID(as_uuid=True), ForeignKey("runs.id")),
     Column("component", Text, nullable=False),  # gate | evals | ingest
