@@ -51,9 +51,6 @@ def check_text(
     on success, on an API error, and on a refusal alike -- before returning or
     raising.
     """
-    if not ctx.anthropic_api_key:
-        raise GateError("no Anthropic API key in this RequestContext -- set ANTHROPIC_API_KEY")
-
     sentences = _sentences_from_text(text)
     if not sentences:
         raise GateError("no sentences found in the input text")
@@ -64,7 +61,17 @@ def check_text(
     system_prompt = build_system_prompt(spans)
     user_message = build_user_message(sentences)
 
-    client = anthropic.Anthropic(api_key=ctx.anthropic_api_key)
+    # An explicit key from the context wins. With no key, hand the SDK a bare
+    # client so it resolves an `ant auth login` OAuth profile from disk -- the
+    # same profile resolution Claude Code uses. This is not a module-level
+    # environment read: the context still decides, it just has the option of
+    # deciding "use whatever ambient credential this machine is logged in with",
+    # which is what makes local development work without minting a static key.
+    client = (
+        anthropic.Anthropic(api_key=ctx.anthropic_api_key)
+        if ctx.anthropic_api_key
+        else anthropic.Anthropic()
+    )
 
     started_at = datetime.now(UTC)
     clock_start = time.monotonic()

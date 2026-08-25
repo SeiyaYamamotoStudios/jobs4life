@@ -29,7 +29,9 @@ class RequestContext:
             user_id=uuid.UUID(os.environ["JFL_USER_ID"])
             if "JFL_USER_ID" in os.environ
             else LOCAL_USER_ID,
-            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+            # None is meaningful: it tells the client to fall back to an
+            # `ant auth login` profile rather than failing.
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
             database_url=os.environ["JFL_DATABASE_URL"],
             embedding_device=os.environ.get("JFL_EMBEDDING_DEVICE", "cuda"),
         )

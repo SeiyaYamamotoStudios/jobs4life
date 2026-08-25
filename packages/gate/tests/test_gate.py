@@ -142,15 +142,49 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, client: _FakeAnthropicClient)
 # --- tests -------------------------------------------------------------------
 
 
-def test_missing_api_key_raises_without_calling_the_api_or_recording_a_run() -> None:
-    grounding = _FakeGroundingRepo([_span()])
-    runs = _FakeRunRepo()
+class TestCredentialResolution:
+    """No key in the context means "use this machine's ambient credential".
 
-    with pytest.raises(GateError, match="API key"):
-        check_text(_ctx(api_key=None), grounding, runs, "Led the platform team.")
+    `ant auth login` writes an OAuth profile the SDK resolves on its own -- the
+    same profile resolution Claude Code uses -- so an absent key must reach a
+    bare client rather than being rejected up front. An explicit key still wins.
+    """
 
-    assert runs.recorded == []
-    assert grounding.all_spans_calls == []
+    @staticmethod
+    def _record_construction(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        client = _FakeAnthropicClient(_response([_SUPPORTED_ITEM]))
+
+        def _construct(**kwargs: Any) -> _FakeAnthropicClient:
+            calls.append(kwargs)
+            return client
+
+        monkeypatch.setattr(anthropic, "Anthropic", _construct)
+        return calls
+
+    def test_explicit_key_is_passed_to_the_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls = self._record_construction(monkeypatch)
+        check_text(
+            _ctx(api_key="sk-ant-explicit"),
+            _FakeGroundingRepo([_span()]),
+            _FakeRunRepo(),
+            "Led the platform team.",
+        )
+        assert calls == [{"api_key": "sk-ant-explicit"}]
+
+    def test_absent_key_constructs_a_bare_client_for_profile_resolution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = self._record_construction(monkeypatch)
+        check_text(
+            _ctx(api_key=None),
+            _FakeGroundingRepo([_span()]),
+            _FakeRunRepo(),
+            "Led the platform team.",
+        )
+        # No api_key kwarg at all: passing api_key=None would suppress profile
+        # resolution rather than defer to it.
+        assert calls == [{}]
 
 
 def test_empty_input_raises_without_calling_the_api_or_recording_a_run() -> None:
