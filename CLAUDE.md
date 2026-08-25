@@ -78,6 +78,35 @@ sections.
 embedding interface stay in place but nothing writes to them. Revisit if the corpus
 outgrows the context window.
 
+## Vocabulary — two different gates, never say "gate" alone
+
+This collision has cost real time. Always use the qualified name.
+
+- **Claim gate** — generated text + corpus in, per-sentence grounding verdict out. Stops
+  over-claiming. Domains 1 and 2.
+- **Job filter** — a stream of jobs + the user's stated preferences in, roles worth
+  attention out. Starts as one natural-language prompt ("fully remote engineering
+  manager jobs in the UK") and sharpens as the user rejects roles and says why.
+  Domains 3 and 4.
+
+The package is `jfl_gate` and the CLI is `jfl check`; both mean the **claim gate**.
+
+## How the claim gate behaves
+
+**It informs, it never blocks.** A user may choose to over-claim, and that is their
+call — the product's job is to show the distance between what the corpus supports and
+what is being claimed, not to enforce honesty. This follows directly from the thesis:
+*measures the distance and shows the number*. Nothing in the pipeline may refuse to
+emit a draft because the claim gate flagged it.
+
+## How to develop the model-facing parts
+
+Start from near-default model judgement, watch what it actually does on real text, and
+tailor from observed behaviour. **Do not design elaborate prompt scaffolding up front** —
+the owner has run a simple version of this in a Claude Code chat with no predefined
+structure at all and got useful results by iterating on what he saw. Same rule as the
+drift taxonomy: no category without evidence it occurs.
+
 ## Drift taxonomy
 
 Confirmed 2026-08-24, drawn from failures the owner has actually seen. These become the

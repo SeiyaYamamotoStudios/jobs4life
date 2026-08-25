@@ -7,3 +7,9 @@ __pycache__/
 .ruff_cache/
 logs/
 dist/
+
+# The corpus is real career detail and this repo is public. The database is a
+# rebuildable index over these files, so losing them loses the source of truth --
+# back them up somewhere private rather than relying on this repo.
+corpus/*
+!corpus/.gitkeep

@@ -269,3 +269,48 @@ class TestTitleHeadingIsNotPosition:
     def test_no_headings_at_all_gives_empty_paths(self) -> None:
         doc = parse_document("file:notes.md", "- One\n\n- Two\n", USER)
         assert {s.section_path for s in doc.spans} == {""}
+
+
+class TestBoldLabelsAreHeadings:
+    """People write "**Numbers**" over a list instead of "#### Numbers".
+
+    Treating that as a paragraph produces a citable span whose entire content is
+    the word "Numbers", and strips that context off every bullet beneath it.
+    """
+
+    DOC = (
+        "# Record\n\n## Visa\n\n### EM\n\n**Numbers**\n\n"
+        "- Release velocity improved ~30%.\n\n**Dates**\n\n- Nov 2024 to present.\n"
+    )
+
+    def test_bold_label_does_not_become_a_paragraph_span(self) -> None:
+        doc = parse_document("file:r.md", self.DOC, USER)
+        assert not [s for s in doc.spans if s.text.startswith("**")]
+
+    def test_bold_label_joins_the_breadcrumb(self) -> None:
+        doc = parse_document("file:r.md", self.DOC, USER)
+        bullet = next(s for s in doc.spans if s.text.startswith("Release velocity"))
+        assert bullet.section_path == "Visa > EM > Numbers"
+
+    def test_sibling_bold_labels_do_not_nest(self) -> None:
+        doc = parse_document("file:r.md", self.DOC, USER)
+        bullet = next(s for s in doc.spans if s.text.startswith("Nov 2024"))
+        assert bullet.section_path == "Visa > EM > Dates"
+
+    def test_bold_label_offsets_round_trip(self) -> None:
+        doc = parse_document("file:r.md", self.DOC, USER)
+        heading = next(s for s in doc.spans if s.text == "Numbers")
+        assert self.DOC[heading.char_start : heading.char_end] == "Numbers"
+
+    def test_trailing_colon_is_stripped(self) -> None:
+        doc = parse_document("file:r.md", "## A\n\n**Boundary:**\n\n- One.\n", USER)
+        assert next(s for s in doc.spans if s.kind == "bullet").section_path == "A > Boundary"
+
+    def test_inline_bold_mid_paragraph_is_not_a_heading(self) -> None:
+        doc = parse_document("file:r.md", "## A\n\nThis is **very** important.\n", USER)
+        para = next(s for s in doc.spans if s.kind == "paragraph")
+        assert para.text == "This is **very** important."
+
+    def test_bold_sentence_with_internal_bold_is_not_treated_as_a_label(self) -> None:
+        doc = parse_document("file:r.md", "## A\n\n**one** and **two**\n", USER)
+        assert any(s.kind == "paragraph" for s in doc.spans)

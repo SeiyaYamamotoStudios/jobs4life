@@ -34,6 +34,12 @@ from jfl_core.ids import content_hash, document_id, normalise, span_id
 from jfl_core.models import Sentence, Span
 
 _H1 = re.compile(r"^#[^#].*$", re.MULTILINE)
+# A line that is nothing but a bold run is a heading in practice -- people
+# write "**Numbers**" over a list rather than "#### Numbers". Treating it as a
+# paragraph makes it a citable span saying only "Numbers", and strips that
+# context off every bullet beneath it. Level 4 nests it under real h1-h3.
+_BOLD_LABEL = re.compile(r"^\*\*(?P<text>[^*]+)\*\*$")
+_BOLD_LABEL_LEVEL = 4
 _HEADING = re.compile(r"^(#{1,6})\s+(.+)$")
 _BULLET_PREFIX = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 
@@ -189,10 +195,16 @@ def parse_document(source_uri: str, content: str, user_id: uuid.UUID) -> ParsedD
             continue
 
         heading_match = _HEADING.match(line)
-        if heading_match:
+        bold_match = None if heading_match else _BOLD_LABEL.match(line.strip())
+        if heading_match or bold_match:
             close_block()
-            level = len(heading_match.group(1))
-            heading_text = heading_match.group(2).rstrip()
+            if heading_match:
+                level = len(heading_match.group(1))
+                heading_text = heading_match.group(2).rstrip()
+            else:
+                assert bold_match is not None
+                level = _BOLD_LABEL_LEVEL
+                heading_text = bold_match.group("text").strip().rstrip(":.")
             while heading_stack and heading_stack[-1][0] >= level:
                 heading_stack.pop()
             is_title = level == 1 and title is None and not title_is_structural
@@ -200,8 +212,9 @@ def parse_document(source_uri: str, content: str, user_id: uuid.UUID) -> ParsedD
                 heading_stack.append((level, heading_text))
             if title is None and level == 1:
                 title = heading_text
-            h_start = line_start + heading_match.start(2)
+            h_start = line_start + line.index(heading_text)
             h_end = h_start + len(heading_text)
+
             spans.append(make_span("heading", heading_text, h_start, h_end))
             continue
 
