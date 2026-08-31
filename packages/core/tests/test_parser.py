@@ -27,38 +27,38 @@ class TestSectionPath:
 
     def test_nested_headings_build_a_breadcrumb(self) -> None:
         parsed = _parse(
-            "## Kaluza\n### Platform\n- Led the platform team\n",
+            "## Northwind\n### Platform\n- Led the platform team\n",
         )
         bullet = next(s for s in parsed.spans if s.kind == "bullet")
-        assert bullet.section_path == "Kaluza > Platform"
+        assert bullet.section_path == "Northwind > Platform"
 
     def test_sibling_heading_replaces_the_previous_one_at_its_level(self) -> None:
         parsed = _parse(
-            "## Kaluza\n### Platform\n- one\n### Data\n- two\n",
+            "## Northwind\n### Platform\n- one\n### Data\n- two\n",
         )
         bullets = [s for s in parsed.spans if s.kind == "bullet"]
-        assert bullets[0].section_path == "Kaluza > Platform"
-        assert bullets[1].section_path == "Kaluza > Data"
+        assert bullets[0].section_path == "Northwind > Platform"
+        assert bullets[1].section_path == "Northwind > Data"
 
     def test_returning_to_a_shallower_heading_pops_the_deeper_ones(self) -> None:
         parsed = _parse(
-            "## Kaluza\n### Platform\n- one\n## Other Co\n- two\n",
+            "## Northwind\n### Platform\n- one\n## Other Co\n- two\n",
         )
         bullets = [s for s in parsed.spans if s.kind == "bullet"]
-        assert bullets[0].section_path == "Kaluza > Platform"
+        assert bullets[0].section_path == "Northwind > Platform"
         assert bullets[1].section_path == "Other Co"
 
     def test_skipped_heading_levels_still_nest_under_whatever_is_open(self) -> None:
         """h2 -> h4 with no h3 in between; the h4 nests under the h2 rather than erroring."""
-        parsed = _parse("## Kaluza\n#### Detail\n- one\n")
+        parsed = _parse("## Northwind\n#### Detail\n- one\n")
         bullet = next(s for s in parsed.spans if s.kind == "bullet")
-        assert bullet.section_path == "Kaluza > Detail"
+        assert bullet.section_path == "Northwind > Detail"
 
 
 class TestCitationUnitKinds:
     def test_distinguishes_bullets_paragraphs_and_headings(self) -> None:
         parsed = _parse(
-            "## Kaluza\n\nWorked as a platform engineer.\n\n- Led the platform team\n",
+            "## Northwind\n\nWorked as a platform engineer.\n\n- Led the platform team\n",
         )
         kinds = [s.kind for s in parsed.spans]
         assert kinds == ["heading", "paragraph", "bullet"]
@@ -101,7 +101,7 @@ class TestOccurrenceDisambiguation:
 
 class TestCharOffsets:
     def test_bullet_offsets_round_trip_through_the_original_content(self) -> None:
-        content = "## Kaluza\n- Led the platform team\n- Shipped v2\n"
+        content = "## Northwind\n- Led the platform team\n- Shipped v2\n"
         parsed = _parse(content)
         for span in parsed.spans:
             assert content[span.char_start : span.char_end] == span.text
@@ -165,7 +165,7 @@ class TestSentenceSplittingAbbreviations:
         assert len(offsets) == 1
 
     def test_does_not_split_on_company_suffix_ltd(self) -> None:
-        offsets = split_sentences("Worked at Kaluza Ltd. They build energy software.")
+        offsets = split_sentences("Worked at Northwind Ltd. They build energy software.")
         assert len(offsets) == 1
 
     def test_does_not_split_on_company_suffix_inc(self) -> None:
@@ -188,11 +188,11 @@ class TestSentenceSplittingAbbreviations:
 
 class TestDocumentTitle:
     def test_first_h1_becomes_the_title(self) -> None:
-        parsed = _parse("# Seiya Yamamoto\n## Kaluza\n- x\n")
-        assert parsed.title == "Seiya Yamamoto"
+        parsed = _parse("# Alex Rivera\n## Northwind\n- x\n")
+        assert parsed.title == "Alex Rivera"
 
     def test_no_h1_means_no_title(self) -> None:
-        parsed = _parse("## Kaluza\n- x\n")
+        parsed = _parse("## Northwind\n- x\n")
         assert parsed.title is None
 
     def test_only_the_first_h1_is_used_as_title(self) -> None:
@@ -218,7 +218,7 @@ class TestEdgeCaseDocuments:
 
 class TestStability:
     def test_reparsing_identical_content_produces_identical_ids(self) -> None:
-        content = "## Kaluza\n- Led the platform team\n- Shipped v2\n"
+        content = "## Northwind\n- Led the platform team\n- Shipped v2\n"
         first = _parse(content)
         second = _parse(content)
         assert [s.id for s in first.spans] == [s.id for s in second.spans]
@@ -229,7 +229,7 @@ class TestStability:
         assert {s.id for s in original.spans} == {s.id for s in reordered.spans}
 
     def test_document_content_hash_is_stable_across_reparses(self) -> None:
-        content = "## Kaluza\n- Led the platform team\n"
+        content = "## Northwind\n- Led the platform team\n"
         assert _parse(content).content_hash == _parse(content).content_hash
 
 
@@ -241,30 +241,30 @@ class TestTitleHeadingIsNotPosition:
     renames every span beneath it and orphans every reference to them.
     """
 
-    CV = "# Seiya Yamamoto\n\n## Kaluza\n\n### Platform\n\n- Led the platform team\n"
+    CV = "# Alex Rivera\n\n## Northwind\n\n### Platform\n\n- Led the platform team\n"
 
     def test_lone_h1_is_excluded_from_section_path(self) -> None:
         doc = parse_document("file:cv.md", self.CV, USER)
         bullet = next(s for s in doc.spans if s.kind == "bullet")
-        assert bullet.section_path == "Kaluza > Platform"
+        assert bullet.section_path == "Northwind > Platform"
 
     def test_lone_h1_is_still_the_title(self) -> None:
-        assert parse_document("file:cv.md", self.CV, USER).title == "Seiya Yamamoto"
+        assert parse_document("file:cv.md", self.CV, USER).title == "Alex Rivera"
 
     def test_renaming_the_title_does_not_change_span_ids(self) -> None:
         before = parse_document("file:cv.md", self.CV, USER)
         after = parse_document(
-            "file:cv.md", self.CV.replace("# Seiya Yamamoto", "# Seiya Yamamoto - CV"), USER
+            "file:cv.md", self.CV.replace("# Alex Rivera", "# Alex Rivera - CV"), USER
         )
         b = next(s for s in before.spans if s.kind == "bullet")
         a = next(s for s in after.spans if s.kind == "bullet")
         assert a.id == b.id
 
     def test_several_h1s_are_structural_and_stay_in_the_path(self) -> None:
-        content = "# Kaluza\n\n- Built billing\n\n# Currencycloud\n\n- Built FX\n"
+        content = "# Northwind\n\n- Built billing\n\n# Contoso\n\n- Built FX\n"
         doc = parse_document("file:roles.md", content, USER)
         paths = [s.section_path for s in doc.spans if s.kind == "bullet"]
-        assert paths == ["Kaluza", "Currencycloud"]
+        assert paths == ["Northwind", "Contoso"]
 
     def test_no_headings_at_all_gives_empty_paths(self) -> None:
         doc = parse_document("file:notes.md", "- One\n\n- Two\n", USER)

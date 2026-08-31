@@ -13,7 +13,7 @@ from jfl_core.ids import adjudicated_span_id, content_hash, normalise, sentence_
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
 DOC = "file:corpus/cv.md"
-SECTION = "Kaluza > Platform"
+SECTION = "Northwind > Platform"
 
 
 class TestNormalise:

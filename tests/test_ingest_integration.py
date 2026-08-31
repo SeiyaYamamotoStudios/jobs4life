@@ -64,7 +64,7 @@ def _write_corpus(tmp_path: Path, files: dict[str, str]) -> Path:
     return corpus_dir
 
 
-CV = "## Kaluza\n\n- Led the platform team\n- Shipped v2\n"
+CV = "## Northwind\n\n- Led the platform team\n- Shipped v2\n"
 
 
 def test_ingesting_a_fixture_corpus_twice_is_idempotent(
@@ -176,7 +176,7 @@ def test_cli_end_to_end_via_run_ingestion_lands_rows_in_postgres(
     """
     corpus_dir = _write_corpus(
         tmp_path,
-        {"cv.md": "# Seiya\n\n## Kaluza\n\n- Led the platform team\n- Shipped v2\n"},
+        {"cv.md": "# Alex\n\n## Northwind\n\n- Led the platform team\n- Shipped v2\n"},
     )
     repo = PostgresIngestRepository(conn)
     ctx = _ctx(user)
@@ -185,8 +185,8 @@ def test_cli_end_to_end_via_run_ingestion_lands_rows_in_postgres(
     assert summary.documents_seen == 1
     doc_rows = conn.execute(select(documents).where(documents.c.user_id == user)).all()
     assert len(doc_rows) == 1
-    assert doc_rows[0].title == "Seiya"
+    assert doc_rows[0].title == "Alex"
 
     span_rows = conn.execute(select(spans).where(spans.c.user_id == user)).all()
-    assert len(span_rows) == 4  # two headings ("Seiya", "Kaluza") + 2 bullets
+    assert len(span_rows) == 4  # two headings ("Alex", "Northwind") + 2 bullets
     assert {r.kind for r in span_rows} == {"heading", "bullet"}

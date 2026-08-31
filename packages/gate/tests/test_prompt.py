@@ -14,7 +14,7 @@ USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
 _SCHEMA = cast("dict[str, Any]", GATE_OUTPUT_SCHEMA)
 
 
-def _span(text: str, section_path: str = "Kaluza") -> Span:
+def _span(text: str, section_path: str = "Northwind") -> Span:
     return Span(
         id=uuid.uuid4(),
         user_id=USER,

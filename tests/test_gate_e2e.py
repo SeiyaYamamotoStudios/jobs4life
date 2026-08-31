@@ -28,7 +28,7 @@ pytestmark = pytest.mark.e2e
 
 _CV = """# Jamie Rivera
 
-## Kaluza
+## Northwind
 
 - Led the platform team of 4 engineers rebuilding the metering pipeline.
 - Reduced billing-run latency from 6 hours to 40 minutes.

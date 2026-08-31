@@ -164,7 +164,7 @@ spans = Table(
     Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True),
     Column("provenance", Text, nullable=False),
     Column("kind", Text, nullable=False),
-    Column("section_path", Text),  # heading breadcrumb, e.g. "Kaluza > Platform"
+    Column("section_path", Text),  # heading breadcrumb, e.g. "Northwind > Platform"
     Column("ordinal", Integer),  # position in doc; ordering only, NOT part of the id
     Column("text", Text, nullable=False),
     Column("content_hash", String(64), nullable=False),
