@@ -1,10 +1,11 @@
 """The baseline gate: fixed control flow, one model call.
 
 Not agentic -- see CLAUDE.md, "What is agentic, and what is not." The steps are:
-split input text into sentences (reusing the ingestion sentence splitter), load the
-whole corpus for the user, one call to Claude with the corpus cached and the
-sentences volatile, parse the structured response, record exactly one `runs` row.
-No retrieval, no verifier, no second call, no loop.
+split input text into blocks and then sentences within each block (see
+`split_blocks` below), load the whole corpus for the user, one call to Claude
+with the corpus cached and the sentences volatile, parse the structured
+response, record exactly one `runs` row. No retrieval, no verifier, no second
+call, no loop.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from jfl_core.ingest.parser import split_sentences
 from jfl_core.models import RunRecord
 from jfl_core.repositories import GroundingRepository, RunRepository
 
+from jfl_gate.input import BULLET_START
 from jfl_gate.pricing import MODEL, compute_cost_usd
 from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_prompt, build_user_message
 from jfl_gate.schema import GateOutput
@@ -37,8 +39,55 @@ class GateError(RuntimeError):
     """
 
 
-def _sentences_from_text(text: str) -> list[str]:
-    return [text[start:end] for start, end in split_sentences(text)]
+def split_blocks(text: str) -> list[str]:
+    """Group text into blocks: bullets or paragraphs.
+
+    Mirrors the block model in jfl_core.ingest.parser -- a blank line ends a
+    block, and a bullet marker always starts a new one, even directly below
+    another bullet -- minus headings and section tracking, which checked text
+    (unlike the corpus) has no use for: every block here is just a unit to
+    sentence-split and send to the model. Text handed in from `read_input`'s
+    PDF path already has every real break expressed as a blank line, so this
+    only needs blank lines and bullet markers to recover the same blocks;
+    plain hand-written or pasted text (never touched by that PDF pass) relies
+    on the same two signals, exactly as corpus markdown does.
+    """
+    blocks: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        if current:
+            blocks.append(" ".join(current))
+            current.clear()
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            flush()
+            continue
+        bullet_match = BULLET_START.match(line)
+        if bullet_match:
+            flush()
+            current.append(line[bullet_match.end() :])
+            continue
+        current.append(line)
+    flush()
+
+    return blocks
+
+
+def sentences_from_text(text: str) -> list[str]:
+    """One unit per sentence *within a block* -- never across blocks, so a
+    heading, a bullet, and the next bullet down can never be fused into one
+    claim the way flat, block-blind sentence-splitting fused them before.
+
+    Public, like jfl_core.ingest.parser.split_sentences, so this can be tested
+    directly instead of only through `check_text`, which needs a live (or
+    mocked) model call to exercise at all.
+    """
+    return [
+        block[start:end] for block in split_blocks(text) for start, end in split_sentences(block)
+    ]
 
 
 def check_text(
@@ -51,7 +100,7 @@ def check_text(
     on success, on an API error, and on a refusal alike -- before returning or
     raising.
     """
-    sentences = _sentences_from_text(text)
+    sentences = sentences_from_text(text)
     if not sentences:
         raise GateError("no sentences found in the input text")
 

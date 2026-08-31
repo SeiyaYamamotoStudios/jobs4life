@@ -18,7 +18,7 @@ import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
 from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord, Span, SpanCandidate
-from jfl_gate.gate import GateError, check_text
+from jfl_gate.gate import GateError, check_text, sentences_from_text, split_blocks
 from jfl_gate.pricing import MODEL, compute_cost_usd
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -137,6 +137,93 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, client: _FakeAnthropicClient)
     # jfl_gate.gate does `import anthropic` -- patching the attribute on the shared
     # module object (not a copy) is what makes gate.py's own reference see the fake.
     monkeypatch.setattr(anthropic, "Anthropic", lambda **kwargs: client)
+
+
+# --- splitting -------------------------------------------------------------------
+
+
+class TestSplitBlocks:
+    """Bullets and paragraphs, mirroring jfl_core.ingest.parser's block model --
+    a blank line or a fresh bullet marker starts a new block, everything else
+    extends whatever block is already open.
+    """
+
+    def test_a_bullet_with_no_terminal_punctuation_is_one_block(self) -> None:
+        assert split_blocks("- Did the thing") == ["Did the thing"]
+
+    def test_a_new_bullet_marker_always_starts_a_fresh_block(self) -> None:
+        text = "- First\n- Second\n- Third"
+        assert split_blocks(text) == ["First", "Second", "Third"]
+
+    def test_consecutive_bullets_never_merge_even_without_a_blank_line(self) -> None:
+        text = "- First point\n- Second point"
+        assert len(split_blocks(text)) == 2
+
+    def test_blank_line_separates_two_paragraphs(self) -> None:
+        text = "First paragraph.\n\nSecond paragraph."
+        assert split_blocks(text) == ["First paragraph.", "Second paragraph."]
+
+    def test_wrapped_paragraph_lines_with_no_blank_line_merge_into_one_block(self) -> None:
+        """Not a PDF artifact here -- ordinary hand-wrapped prose, which stays one
+        block exactly as it does in corpus markdown.
+        """
+        text = "This is a paragraph\nthat wraps onto a second line."
+        assert split_blocks(text) == ["This is a paragraph that wraps onto a second line."]
+
+    def test_a_document_of_only_headings_is_one_block_per_heading(self) -> None:
+        text = "WHAT I BRING\n\nEDUCATION\n\nPERSONAL INTERESTS"
+        assert split_blocks(text) == ["WHAT I BRING", "EDUCATION", "PERSONAL INTERESTS"]
+
+    def test_empty_text_has_no_blocks(self) -> None:
+        assert split_blocks("") == []
+
+    def test_whitespace_only_text_has_no_blocks(self) -> None:
+        assert split_blocks("   \n\n  \n") == []
+
+
+class TestSentencesFromText:
+    """`sentences_from_text` composes `split_blocks` with the existing
+    corpus sentence splitter -- the point of both is that a unit never crosses
+    a block boundary, so two unrelated claims are never fused into one verdict.
+    """
+
+    def test_a_bullet_with_no_terminal_punctuation_is_one_unit(self) -> None:
+        assert sentences_from_text("- Did the thing") == ["Did the thing"]
+
+    def test_a_bullet_containing_two_sentences_becomes_two_units(self) -> None:
+        result = sentences_from_text("- Did one thing. Then did another thing.")
+        assert result == ["Did one thing.", "Then did another thing."]
+
+    def test_plain_prose_is_unchanged(self) -> None:
+        """The property CLAUDE.md calls out explicitly: `jfl check` on a plain
+        two-sentence string must still yield exactly two units.
+        """
+        assert sentences_from_text("Two sentences. Like this.") == [
+            "Two sentences.",
+            "Like this.",
+        ]
+
+    def test_a_heading_is_its_own_unit_not_fused_with_a_bullet_below_it(self) -> None:
+        text = "EDUCATION\n\n- Completed a course"
+        assert sentences_from_text(text) == ["EDUCATION", "Completed a course"]
+
+    def test_consecutive_bullets_never_merge(self) -> None:
+        text = "- First point\n- Second point"
+        assert sentences_from_text(text) == ["First point", "Second point"]
+
+    def test_blank_line_separated_paragraphs_stay_separate(self) -> None:
+        text = "First paragraph.\n\nSecond paragraph."
+        assert sentences_from_text(text) == ["First paragraph.", "Second paragraph."]
+
+    def test_empty_text_yields_no_sentences(self) -> None:
+        assert sentences_from_text("") == []
+
+    def test_whitespace_only_text_yields_no_sentences(self) -> None:
+        assert sentences_from_text("   \n\n  ") == []
+
+    def test_a_document_of_only_headings_yields_one_unit_per_heading(self) -> None:
+        text = "WHAT I BRING\n\nEDUCATION\n\nPERSONAL INTERESTS"
+        assert sentences_from_text(text) == ["WHAT I BRING", "EDUCATION", "PERSONAL INTERESTS"]
 
 
 # --- tests -------------------------------------------------------------------
