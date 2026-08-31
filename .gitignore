@@ -13,3 +13,8 @@ dist/
 # back them up somewhere private rather than relying on this repo.
 corpus/*
 !corpus/.gitkeep
+
+# Drift analyses quote real career detail and boundaries. Same reasoning as
+# corpus/: this repo is not where that lives, even while private.
+analysis/*
+!analysis/.gitkeep

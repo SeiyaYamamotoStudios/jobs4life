@@ -28,18 +28,31 @@ alone — the behaviour that decides whether the tool stays switched on.
 
 ## Next
 
-1. **Finish the 33-CV drift analysis.** Started but not completed; the session ended
-   first. Run it as a subagent against `corpus/verification-record.md` rather than through
-   the API — it is a one-off analysis, and the subscription covers it. Its output is the
-   evidence for the deterministic rule set, so it comes before that code.
-2. **Deterministic rule tier**, built from what the analysis actually found.
-3. **Generation** — see the generation section in CLAUDE.md for the agreed shape.
+1. **Read the drift analysis** in `analysis/` (gitignored — it quotes real career detail).
+   Produced by a subagent, not by the claim gate, so its numbers are not the product's
+   numbers. Its headline was independently checked and found overstated; the correction is
+   at the top of the file. Its findings are the evidence for the deterministic rule set.
+   Two things in it need the author, not code: whether the Visa team included Poland
+   before Atlanta, and how much of the commission reporting system he personally wrote.
+2. **Add the record gaps** the analysis found — the commission reporting system is the
+   biggest. Corpus coverage, not gate accuracy, is currently the binding constraint: the
+   gate correctly returns "unsupported" on the CVs' strongest material because the record
+   is silent on it.
+3. **Deterministic rule tier**, built from what the analysis actually found. Note that
+   `invented_quantity` never fired across 2,347 units — every number traced. The load is
+   carried by ownership_inflation, scope_inflation and outcome_attribution.
+4. **Generation** — see the generation section in CLAUDE.md for the agreed shape.
 
 ## Known to be wrong
 
 - The gate cannot distinguish "the corpus contradicts this" from "the corpus is silent on
   this". A true but unrecorded fact reads as an over-claim. The fix is the gap-question
-  write-back path, not a prompt change.
+  write-back path, not a prompt change. The analysis makes this concrete: seven CVs' most
+  detailed technical claim is unadjudicable because the record does not cover it.
+- The record is a present-tense snapshot of a role running since Nov 2024, so any
+  historically-accurate claim about an earlier team composition reads as drift. It needs
+  time-boxed entries.
+- A gate looking only for inflation misses half the distance: the CVs under-claim too.
 - PDF extraction rejoins a hyphen-wrapped word with a stray space around the hyphen.
 - A wrapped line ending in a bare four-digit number is read as a title boundary. Accepted:
   over-splitting is far cheaper than fusing unrelated claims into one verdict.
