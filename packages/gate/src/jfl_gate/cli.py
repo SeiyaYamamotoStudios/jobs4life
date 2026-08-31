@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import typer
@@ -12,9 +16,11 @@ from jfl_core.storage.postgres import (
     PostgresIngestRepository,
     PostgresRunRepository,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import Connection, create_engine
+from sqlalchemy.exc import OperationalError
 
 from jfl_gate.gate import GateError, check_text
+from jfl_gate.input import read_input
 from jfl_gate.schema import SentenceResult
 
 app = typer.Typer()
@@ -26,6 +32,28 @@ _VERDICT_COLOR = {
 }
 
 
+def _redact(url: str) -> str:
+    """Never print the password, even in an error the user is about to paste."""
+    return re.sub(r"://[^:/@]+:[^@]*@", "://***:***@", url)
+
+
+@contextmanager
+def _transaction(ctx: RequestContext) -> Iterator[Connection]:
+    """One transaction, with a readable message when the database is unreachable.
+
+    Without this, a stopped container surfaces as ~17k characters of SQLAlchemy
+    and rich traceback, which buries the one fact that matters.
+    """
+    engine = create_engine(ctx.database_url)
+    try:
+        with engine.begin() as conn:
+            yield conn
+    except OperationalError as e:
+        typer.secho(f"cannot reach Postgres at {_redact(ctx.database_url)}", fg="red", err=True)
+        typer.echo("  start it with: docker compose up -d", err=True)
+        raise typer.Exit(code=1) from e
+
+
 @app.callback()
 def _callback() -> None:
     """job-for-life: the grounding gate for AI-generated job application text."""
@@ -35,8 +63,7 @@ def _callback() -> None:
 def ingest() -> None:
     """Rebuild the corpus index in Postgres from corpus/**/*.md."""
     ctx = RequestContext.from_env()
-    engine = create_engine(ctx.database_url)
-    with engine.begin() as conn:
+    with _transaction(ctx) as conn:
         repo = PostgresIngestRepository(conn)
         summary = run_ingestion(ctx, repo)
     typer.echo(f"documents seen: {summary.documents_seen} (retired {summary.documents_retired})")
@@ -52,12 +79,12 @@ def check(
         None, help="Text to check. Omit this and pass --file instead."
     ),
     file: Path | None = typer.Option(  # noqa: B008 -- typer's documented pattern
-        None, "--file", help="Read the text to check from a file instead of the argument."
+        None, "--file", help="Read the text from a file instead. .pdf is extracted."
     ),
 ) -> None:
     """Run the baseline grounding gate over TEXT (or --file) against the corpus."""
     if file is not None:
-        input_text = file.read_text(encoding="utf-8")
+        input_text = read_input(file)
     elif text is not None:
         input_text = text
     else:
@@ -65,12 +92,11 @@ def check(
         raise typer.Exit(code=1)
 
     ctx = RequestContext.from_env()
-    engine = create_engine(ctx.database_url)
     # Catch GateError *inside* the `with` block so the transaction commits even on
     # failure -- check_text already wrote a `runs` row for the failure on this same
     # connection, and letting the exception escape the block would roll that back.
     error: str | None = None
-    with engine.begin() as conn:
+    with _transaction(ctx) as conn:
         grounding_repo = PostgresGroundingRepository(conn)
         run_repo = PostgresRunRepository(conn)
         try:
@@ -85,6 +111,17 @@ def check(
 
     for sentence in result.sentences:
         _print_sentence(sentence)
+    _print_summary(result.sentences)
+
+
+def _print_summary(sentences: list[SentenceResult]) -> None:
+    counts = Counter(s.verdict for s in sentences)
+    parts = [
+        typer.style(f"{counts[v]} {v}", fg=_VERDICT_COLOR[v])
+        for v in ("supported", "review", "unsupported")
+        if counts[v]
+    ]
+    typer.echo(f"\n{len(sentences)} sentences: " + ", ".join(parts))
 
 
 def _print_sentence(sentence: SentenceResult) -> None:

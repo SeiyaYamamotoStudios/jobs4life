@@ -23,6 +23,7 @@ dev = [
   "ruff>=0.8",
   "mypy>=1.13",
   "testcontainers[postgres]>=4.9",
+  "reportlab>=5.0.1",
 ]
 
 [tool.ruff]
