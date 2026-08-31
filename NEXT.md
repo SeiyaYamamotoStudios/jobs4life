@@ -32,12 +32,21 @@ alone — the behaviour that decides whether the tool stays switched on.
    Produced by a subagent, not by the claim gate, so its numbers are not the product's
    numbers. Its headline was independently checked and found overstated; the correction is
    at the top of the file. Its findings are the evidence for the deterministic rule set.
-   Two things in it need the author, not code: whether the Visa team included Poland
-   before Atlanta, and how much of the commission reporting system he personally wrote.
-2. **Add the record gaps** the analysis found — the commission reporting system is the
-   biggest. Corpus coverage, not gate accuracy, is currently the binding constraint: the
-   gate correctly returns "unsupported" on the CVs' strongest material because the record
-   is silent on it.
+   Both questions it raised for the author were **answered on 2026-09-01 and added to the
+   record**: the Visa team did include Poland before the current UK/Atlanta split, so the
+   16 CVs flagged for "UK, US and Poland" were accurate for their period and that finding
+   is retracted; and the commission reporting system was designed by him but not written
+   by him beyond a small share of fixes and changes.
+
+   Verified after re-ingesting: "wrote the code" now returns unsupported, "got involved in
+   the code" returns supported, and the Poland claim returns supported. Same facts, three
+   verdicts, decided entirely by what the record holds. That is the gap-question flywheel
+   working by hand -- domain 2 automates it.
+2. **Add the remaining record gaps** the analysis found. The two largest are now closed;
+   next are the Yamamoto client roster, SC clearance held via BMT 2012-2018, personal
+   hands-on code at Visa, and the Ziglu EM coaching. Corpus coverage, not gate accuracy,
+   remains the binding constraint -- each answered question removes a class of false
+   positive rather than a single one.
 3. **Deterministic rule tier**, built from what the analysis actually found. Note that
    `invented_quantity` never fired across 2,347 units — every number traced. The load is
    carried by ownership_inflation, scope_inflation and outcome_attribution.
