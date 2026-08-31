@@ -67,6 +67,36 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
+**2026-09-01 — Repository is private.** Flipping private to public later preserves the
+whole commit history, so nothing is lost by waiting; public to private does not retract
+what has been cloned or indexed. Revisit when there is something worth showing.
+
+**2026-09-01 — Deterministic tier first, model tier for the residue.** Sending the whole
+corpus plus the whole document to Opus on every check costs ~$0.13 and re-derives things
+no model is needed for. Three things are decidable without one: the hard boundaries in
+the corpus's "explicitly NOT true" section, `invented_quantity` (the definition is
+literally that the number appears nowhere), and over-claim phrases already seen to recur.
+The five evidence-dependent labels genuinely need judgement and stay with the model.
+**Build the rules from observed patterns, never from invented ones** — same discipline as
+the taxonomy.
+
+**2026-09-01 — The claim gate runs automatically on generated text, on demand for pasted
+text.** Generation without the gate is the tool this project exists to oppose, and at
+application volume an optional check does not get pressed. Pasted text — a recruiter's
+question, an imported draft — is the user asking, so it waits to be asked. This does not
+weaken "it informs, it never blocks": a flagged draft is still emitted.
+
+**2026-09-01 — Whole documents, never sections.** Asking someone to paste the prose parts
+of a CV is the friction that gets a tool abandoned. The splitter handles document
+structure instead.
+
+**2026-09-01 — Generated documents influence form, never truth.** Previous CVs are
+legitimate for structure, voice, and which topics earned attention, and for consistency
+checking. They are never grounding. A mild stretch that becomes a grounding reference
+makes the next draft stretch further, and by the fifth the tool measures distance against
+its own prior output and reports everything as supported. The corpus grows only through
+the user, via answered gap questions and adjudications.
+
 **2026-08-24 — Golden set reinstated, sourced from public data.** Supersedes an earlier
 decision to ship without one. The blocker was never the concept but the assumption that
 items had to come from the owner's corpus; tier 1 comes from public sources instead, so
@@ -161,12 +191,34 @@ for a CV is private to its author:
 by market conditions and competition; it is near-uncorrelated with whether a claim was
 grounded, and training on it would build the tool this project exists to oppose.
 
+## Generation (domain 2) — shape agreed, not yet built
+
+Anchored on a **job**, created from a pasted job ad — the antithesis of an ATS, same
+anchor entity, opposite direction. Fixed control flow throughout: extract requirements,
+check corpus coverage, generate, gate. Not an agent loop.
+
+Two interaction modes, one pipeline:
+
+- **Interactive** — gaps become questions before generating; answers become `adjudicated`
+  spans, so the corpus improves with every application. This is the flywheel.
+- **Autonomous** — "just generate it". Assumptions get made and the gate marks them, so
+  the gate output *is* the question list, delivered after instead of before.
+
+Also in scope: free-text answers for application questions and recruiter conversations,
+against corpus plus job context.
+
+**A flagged claim may be a corpus gap rather than drift.** The gate cannot tell
+"contradicted" from "not recorded" — a true fact the corpus is silent on looks like an
+over-claim. Report the two separately; the fix for a gap is to add the fact, which is the
+same write-back path.
+
 ## Build order
 
-- **Now** — schema, corpus ingestion, then the end-to-end path: whole corpus in
-  context, single call, verdict out. Runnable by hand. CLI only. No Inspect harness.
-- **Next** — generation behind the gate, review queue with write-back, sent-document
-  consistency checks.
+- **Done** — schema, corpus ingestion, the baseline claim gate end to end. Whole corpus
+  in context, single call, verdict out, `runs` row written. CLI only.
+- **Now** — deterministic rule tier, then generation behind the gate: job entity, gap
+  questions, `adjudicated` write-back, both interaction modes. Sent-document store for
+  structure and consistency.
 - **Then** — intake with pluggable sources, deterministic prompt filter, unmeasured fit
   scoring.
 - **Later** — FastAPI and browser UI, MCP server, accounts, education planning, the rest.
