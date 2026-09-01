@@ -107,7 +107,11 @@ From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 - A gate looking only for inflation misses half the distance: the CVs under-claim too.
 - **`runs` under-reports spend.** Any script using an in-memory `RunRepository` -- as the
   measurement scripts and the eval harness both do -- spends real money invisibly. Treat
-  the table as a lower bound.
+  the table as a lower bound. The test suite cannot spend (see the guard in
+  `conftest.py`), but a throwaway script run by hand still can, and does.
+- **The eval harness is not covered by the test guard.** It is run through
+  `inspect eval`, not pytest, so nothing stops a full 210-item run costing ~$4.44. Its
+  item limit defaults to 5; a full run has to be asked for explicitly with `-T limit=210`.
 - Coverage and extraction match results to requirements positionally (`zip(strict=True)`),
   treating a count mismatch as a parse failure, rather than echoing an id back.
 - `packages/evals` needs `datasets` to rebuild the FEVER slice; it is deliberately not a

@@ -323,6 +323,7 @@ domain, so it may depend on every package and none may depend on it) · `package
 | New migration     | `uv run alembic revision --autogenerate -m "..."` |
 | Unit tests        | `uv run pytest` |
 | Integration tests | `uv run pytest -m integration` (needs the database) |
+| End-to-end tests  | `JFL_ALLOW_REAL_API=1 uv run pytest -m e2e` (**costs money**) |
 | Lint              | `uv run ruff check . && uv run ruff format --check .` |
 | Typecheck         | `uv run mypy packages` |
 
@@ -338,6 +339,16 @@ added to the first migration that runs on a fresh database.
 Testing triangle: many component/unit tests, some integration tests, a handful of
 critical end-to-end tests. Markers: `integration` (live Postgres), `e2e` (real model
 API). Both are excluded from the default `pytest` run.
+
+**No test spends API credits by accident, and the marker exclusion is not what stops
+it.** `addopts` is a default, and an explicit `-m e2e`, an `--override-ini`, or a CI
+job with its own `addopts` walks past it -- and none of that protects against the
+likeliest mistake, a new test that constructs a client and was never marked. So the
+guard sits at the client: an autouse fixture in the root `conftest.py` replaces
+`anthropic.Anthropic` and `AsyncAnthropic` with something that raises, and a real
+client requires **both** the `e2e` marker **and** `JFL_ALLOW_REAL_API=1`. Either alone
+fails. Tests that install their own fake client are unaffected -- their monkeypatch
+runs after the fixture. Do not weaken this to one condition.
 
 The golden set and the Inspect harness live in `packages/evals`. This paragraph used to
 say there were none in v1; that was superseded by the 2026-08-24 decision above and the
