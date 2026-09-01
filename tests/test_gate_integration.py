@@ -58,7 +58,9 @@ def _fake_response() -> Message:
     payload = {
         "sentences": [
             {
-                "text": "Led the platform team.",
+                # 1-based index into the input sentences; the wire format no longer
+                # echoes the text back (see gate._check_alignment).
+                "index": 1,
                 "kind": "claim",
                 "verdict": "supported",
                 "drift_label": "supported",

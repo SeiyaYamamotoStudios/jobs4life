@@ -95,6 +95,13 @@ class TestPdfBlockStructure:
         credential's title. By length alone this reads as "still wrapping".
         Resolved by the trailing-date signal instead: a line ending in a year is
         never a valid continuation of what came before it.
+
+        This is also the record of NEXT.md's "known to be wrong" acceptance for
+        defect 2: over-splitting (a title wrongly kept apart) is far cheaper than
+        fusing (two unrelated claims merged into one verdict), so the trailing-date
+        signal stays even though it is a heuristic that can occasionally misfire --
+        see TestBareDateFragment below for the one real-CV misfire this project has
+        actually found, and why fixing it narrowly does not touch this case.
         """
         p = tmp_path / "cv.pdf"
         p.write_bytes(
@@ -105,6 +112,99 @@ class TestPdfBlockStructure:
         )
         blocks = _blocks(read_input(p))
         assert "Postgraduate Certificate (Distinction) 2011" in blocks
+
+
+class TestHyphenRejoin:
+    """A word broken across a line break by a hyphen used to come back with a
+    stray space around the hyphen -- "cross-\\nborder" as "cross- border".
+    Confirmed on real CVs: "cross- border", "trade- offs", "on- call",
+    "AI- assisted" -- every one a genuinely hyphenated compound that merely
+    happened to fall at the page margin, never an old-style soft hyphen
+    inserted purely to break a word. See `_join_wrapped`'s docstring for the
+    chosen rule (always keep the hyphen, only remove the stray space) and its
+    failure mode.
+    """
+
+    def test_a_compound_word_broken_at_the_hyphen_rejoins_with_no_space(
+        self, tmp_path: Path
+    ) -> None:
+        p = tmp_path / "cv.pdf"
+        p.write_bytes(_one_page_pdf("Delivered a large cross-", "border payments programme."))
+        text = read_input(p)
+        assert "cross-border" in text
+        assert "cross - border" not in text
+        assert "cross- border" not in text
+        assert "cross -border" not in text
+
+    def test_a_hyphen_that_would_be_a_soft_break_also_keeps_the_hyphen(
+        self, tmp_path: Path
+    ) -> None:
+        """The other direction of the same judgement call: nothing in the
+        extracted text distinguishes an old-style soft hyphen ("colla-\\nboration"
+        for "collaboration") from a real compound's hyphen landing at the same
+        spot, so this project's rule -- keep the hyphen, fix only the spacing --
+        applies here too, deliberately. The result ("colla-boration") is a wrong
+        spelling, not a merged or split claim, which is why `_join_wrapped`
+        accepts it as the cheaper failure mode rather than guessing.
+        """
+        p = tmp_path / "cv.pdf"
+        p.write_bytes(_one_page_pdf("Improved cross-team colla-", "boration on delivery."))
+        text = read_input(p)
+        assert "colla-boration" in text
+        assert "colla- boration" not in text
+
+    def test_a_hyphen_with_a_space_before_it_is_not_a_wrap_point(self, tmp_path: Path) -> None:
+        """A suspended/shared hyphen inside one physical line ("performance- and
+        reliability-critical", meaning "performance-critical and
+        reliability-critical") is the author's own typography, not a PDF line
+        wrap -- `_join_wrapped` only ever looks at the join *between* physical
+        lines, so a hyphen with a space already before it inside one line must
+        pass through untouched.
+        """
+        p = tmp_path / "cv.pdf"
+        p.write_bytes(_one_page_pdf("Operated a performance- and reliability-critical system."))
+        text = read_input(p)
+        assert "performance- and reliability-critical" in text
+
+
+class TestBareDateFragment:
+    """A wrapped title-and-dates line whose own date range gets split across
+    two physical lines by the PDF layout -- "Feb 2011 - Mar" / "2020" -- used
+    to read the stranded "2020" as a title boundary in its own right (the same
+    trailing-date signal that correctly separates real titles in
+    TestPdfBlockStructure). Confirmed on one real CV: the fragment landed as
+    its own useless one-line block, upstream of the company/location line that
+    should follow the full title. See `_joins_forward`'s `_BARE_DATE_LINE`
+    check.
+    """
+
+    def test_a_stranded_bare_year_rejoins_onto_its_title(self, tmp_path: Path) -> None:
+        p = tmp_path / "cv.pdf"
+        p.write_bytes(
+            _one_page_pdf(
+                "Founder and Software Engineer Feb 2011 - Mar",
+                "2020",
+                "Yamamoto Studios | Bristol, UK",
+            )
+        )
+        blocks = _blocks(read_input(p))
+        assert "Founder and Software Engineer Feb 2011 - Mar 2020" in blocks
+        # The rejoin must not go on to swallow the next, unrelated line --
+        # that would be the fusion this project treats as the worse failure.
+        assert "Yamamoto Studios | Bristol, UK" in blocks
+
+    def test_a_stranded_present_or_current_also_rejoins(self, tmp_path: Path) -> None:
+        p = tmp_path / "cv.pdf"
+        p.write_bytes(
+            _one_page_pdf(
+                "Engineering Manager Nov 2024 -",
+                "Present",
+                "giffgaff | London, UK",
+            )
+        )
+        blocks = _blocks(read_input(p))
+        assert "Engineering Manager Nov 2024 - Present" in blocks
+        assert "giffgaff | London, UK" in blocks
 
 
 def _blocks(text: str) -> list[str]:
