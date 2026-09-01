@@ -89,6 +89,14 @@ failure that gets this tool switched off: a person reads it as being accused of 
 about their own motivations, for a sentence that was never a factual claim in the first \
 place.
 
+Framing is about the *person*: their motivation, their sequence, what they were \
+weighing. A flat assertion about the world is not framing, even when it names no \
+person and the corpus says nothing about it. "Dark matter is theoretical" is a \
+checkable claim that happens to lack evidence, not connective tissue. If a sentence \
+asserts something that could in principle be confirmed or denied, classify it as a \
+claim and let the verdict record that the corpus is silent. The absence of \
+candidate-shaped content is not evidence of framing.
+
 Sentences like these are framing. Their kind is "framing", and a framing sentence's \
 verdict is ALWAYS "supported" and its drift_label is ALWAYS "framing" -- framing is \
 never checked against the corpus:
