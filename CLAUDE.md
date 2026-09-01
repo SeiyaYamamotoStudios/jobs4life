@@ -89,23 +89,31 @@ buys is a *guarantee no prompt can give*: the model catches `invented_quantity` 
 stated-boundary crossings most of the time, and rules catch them every time. That is
 worth more than the saving was.
 
-Scope is narrowed to what reads the corpus at runtime and works for anybody: unsourced
-numbers, and claims touching the corpus's stated-negative facts. Dropped: "over-claim
-phrases already seen to recur" — a phrase list derived from 33 of the owner's CVs is that
-archive in disguise, and bakes one use case into the mechanism. The five evidence-dependent
-labels need judgement and stay with the model.
-
 **A deterministic rule can prove contact, never crossing — so every rule resolves to
-`review`, never `unsupported`.** Term overlap with "Rust: no experience" shows a claim
-touches a boundary; only the model can say whether it crosses one. And the analysis found
-`invented_quantity` never fired across 2,347 units — every number traced — so the base
-rate of true positives is near zero and a literal-absence rule would mostly catch numbers
-legitimately *derived* from the corpus (a tenure summed from dates). Hard-failing those is
-precisely the over-flagging that gets the tool switched off. Rules therefore run **after**
-the model and may only upgrade `supported` to `review` — the direction that catches misses
-— never downgrade a flag to a pass. A rule-set verdict names the rule in its reason.
-**Build the rules from observed patterns, never from invented ones** — same discipline as
-the taxonomy.
+`review`, never `unsupported`.** Rules run **after** the model, may only move `supported`
+to `review`, never touch `drift_label`, and never touch framing. A rule names itself in
+the sentence's `reason` and in `rule_flags`.
+
+**2026-09-01, later the same day — the two heuristic rules were measured and deleted.**
+`unsourced-number` and `boundary-contact` are gone; see `rules.py`'s docstring for the
+full evidence. The short version: across three real runs the boundary rule escalated 16,
+9 and 14 claims from `supported` to `review` while `drift_label` stayed `supported` —
+about 22% of all claims, overriding a model that had traced them cleanly. It matched the
+owner's **own name** (boundaries are written "<name> is not …", so the name sits in that
+section and scores as rare-hence-distinctive), the word `hold` from the heading
+"boundaries to hold", and ordinary CV vocabulary like `systems`, `team`, `code`. The
+number rule fired only on years, version strings and phone numbers. This was not a
+threshold that needed tuning: unigram overlap cannot separate "he does not have X" from
+"his depth *is* in X", because a boundary span states both halves. Reading the negation
+is judgement, which is the model's job — and the model already has that section in
+context.
+
+What replaced them is **definitional, not statistical**: a cited span id either exists in
+the corpus or it does not, and a `supported` claim either carries a citation or it does
+not. Neither can produce a false positive because neither estimates anything. They fire
+zero times on the owner's real material, which is the correct behaviour for a guarantee.
+**Build the rules from observed patterns, never from invented ones** — and delete them
+when the observation says to.
 
 **2026-09-01 — Coverage is measured against the corpus, never against the candidate.** The
 requirement statuses are `evidenced`, `partial`, `absent`, `contradicted` — deliberately

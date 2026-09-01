@@ -22,6 +22,8 @@ from jfl_gate.gate import EFFORT, GateError, check_text, sentences_from_text, sp
 from jfl_gate.pricing import MODEL, compute_cost_usd
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
+# Fixed rather than random so a response fixture can cite this span by id.
+_SPAN_ID = uuid.uuid5(uuid.NAMESPACE_OID, "jfl-test-span")
 
 
 # --- fakes -------------------------------------------------------------------
@@ -103,7 +105,7 @@ class _FakeAnthropicClient:
 
 def _span(text: str = "Led the platform team") -> Span:
     return Span(
-        id=uuid.uuid4(),
+        id=_SPAN_ID,
         user_id=USER,
         document_id=uuid.uuid4(),
         provenance="document",
@@ -146,12 +148,15 @@ def _response(
     )
 
 
+# A `supported` claim cites the span it traces to. It must: the rule tier escalates
+# an uncited `supported` claim to `review`, because "traces cleanly to the corpus"
+# with nothing to trace to is unverifiable rather than verified.
 _SUPPORTED_ITEM = {
     "index": 1,
     "kind": "claim",
     "verdict": "supported",
     "drift_label": "supported",
-    "cited_span_ids": [],
+    "cited_span_ids": [str(_SPAN_ID)],
     "reason": "Matches the corpus.",
 }
 

@@ -71,12 +71,20 @@ From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 - **Changing `effort` invalidates the prompt cache.** All four runs showed `cache_read=0`
   and a full `cache_write`. So varying effort per call in production would destroy corpus
   caching, which costs more than any effort saving returns.
-- **The two heuristic rules in the tier do not earn their place.** On real claims the
-  unsourced-number rule fired 7/68 and escalated nothing; boundary-contact fired 35/68
-  and escalated nothing. Across 32 CVs the boundary variants fire on 1.1%-54.7% of
-  sentences depending on threshold, and the best-scoring unigram variant's top terms are
-  employer names (`visa`, `ziglu`). Citation integrity, by contrast, is definitional and
-  costs nothing: 0 hallucinated span ids and 0 uncited `supported` claims on that run.
+- **The two heuristic rules in the tier were measured and deleted** (see CLAUDE.md's
+  decisions log and `rules.py`'s docstring). They escalated 16/9/14 claims per run from
+  `supported` to `review` with `drift_label` still `supported` -- about 22% of claims,
+  overriding a model that had traced them cleanly -- matching the owner's own name, a
+  word from the boundary section's heading, and ordinary CV vocabulary. What replaced
+  them is definitional: a cited span id exists or it does not; a `supported` claim cites
+  something or it does not. Those fire zero times on real material, which is correct for
+  a guarantee rather than a detector.
+- **Do not replay `analysis/gate-runs/*.json` against a freshly parsed corpus.** The span
+  ids in those files do not correspond to a fresh `parse_document` (0/65 matched under
+  either `source_uri` prefix -- the measurement script used a different `user_id`, which
+  is part of the span id). Any "fabricated citation" count derived that way is an
+  artefact. Citation integrity was checked correctly in a live run that shared one span
+  list between the repository and the check: 0 hallucinated ids, 0 uncited `supported`.
 - **Numbers inside framing sentences: 0/14, 0/13, 0/12 across three runs.** A rule
   checking for them would never fire. Do not build it.
 - **21 of 68 claims came back `supported`.** Corpus coverage, not gate accuracy, is the
