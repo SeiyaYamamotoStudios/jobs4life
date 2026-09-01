@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -25,9 +26,22 @@ from jfl_core.repositories import GroundingRepository, RunRepository
 from jfl_gate.input import BULLET_START
 from jfl_gate.pricing import MODEL, compute_cost_usd
 from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_prompt, build_user_message
-from jfl_gate.schema import GateOutput
+from jfl_gate.rules import apply_rules
+from jfl_gate.schema import GateOutput, SentenceResult
 
-MAX_TOKENS = 16000
+# One result object per input sentence, each with a drift label, cited span IDs and a
+# reason, so output still scales with document length even without echoed sentence
+# text: a whole CV runs to ~150 sentences and blew through 16000, truncating the JSON
+# mid-string. That surfaced as a parse error, which named the wrong cause entirely --
+# hence the explicit max_tokens check below.
+#
+# A ceiling this high forces streaming: the SDK refuses a non-streaming request whose
+# max_tokens implies a possible >10-minute response. Billing is on tokens actually
+# generated, so the headroom costs nothing when the document is short.
+MAX_TOKENS = 64000
+
+# PLACEHOLDER -- set from measurement below, see analysis/gate-runs/.
+EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "high"
 
 Outcome = Literal["ok", "error", "refused", "skipped"]
 
@@ -90,6 +104,28 @@ def sentences_from_text(text: str) -> list[str]:
     ]
 
 
+def _check_alignment(sentences: Sequence[str], results: Sequence[SentenceResult]) -> None:
+    """Guard the removal of `SentenceResult.text` from the wire format (see
+    GATE_OUTPUT_SCHEMA and SentenceResult's docstrings): the model now returns a
+    1-based `index` per sentence instead of echoing its text back, which is cheaper
+    but removes the one thing that used to make misalignment visible -- a dropped,
+    duplicated, or reordered sentence used to show up as a result whose echoed text
+    didn't match anything, or as a wrong count. `index` gives up none of that: this
+    check demands the *exact* sequence 1..N, in that order, so a right-count-wrong-
+    order response (e.g. two results swapped) is caught exactly as a missing or
+    duplicated one would be. Failing anything less than that would risk attaching a
+    verdict to the wrong sentence, which in a truthfulness tool is worse than an
+    error the caller has to look at.
+    """
+    expected = list(range(1, len(sentences) + 1))
+    actual = [r.index for r in results]
+    if actual != expected:
+        raise GateError(
+            "model output misaligned with input sentences: "
+            f"expected indices {expected}, got {actual}"
+        )
+
+
 def check_text(
     ctx: RequestContext,
     grounding_repo: GroundingRepository,
@@ -129,7 +165,10 @@ def check_text(
     error_text: str | None = None
     response: anthropic.types.Message | None = None
     try:
-        response = client.messages.create(
+        # Streamed, then collapsed back to a single Message: nothing here consumes
+        # partial output, but a request with MAX_TOKENS this high is rejected outright
+        # unless it streams.
+        with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS,
             # Stable prefix (instructions + corpus) in `system`, cached; the
@@ -143,8 +182,12 @@ def check_text(
                 }
             ],
             messages=[{"role": "user", "content": user_message}],
-            output_config={"format": {"type": "json_schema", "schema": GATE_OUTPUT_SCHEMA}},
-        )
+            output_config={
+                "format": {"type": "json_schema", "schema": GATE_OUTPUT_SCHEMA},
+                "effort": EFFORT,
+            },
+        ) as stream:
+            response = stream.get_final_message()
     # Most-specific-first: RateLimitError/AuthenticationError/etc. are themselves
     # APIStatusError subclasses, so the broad catch must come last.
     except anthropic.RateLimitError as e:
@@ -172,6 +215,7 @@ def check_text(
         cache_read_tokens: int | None = None,
         cache_write_tokens: int | None = None,
         cost_usd: object = None,
+        attributes: dict[str, object] | None = None,
     ) -> None:
         run_repo.record(
             RunRecord(
@@ -188,6 +232,7 @@ def check_text(
                 latency_ms=latency_ms,
                 outcome=outcome,
                 error=error,
+                attributes=attributes,
                 started_at=started_at,
             )
         )
@@ -216,6 +261,21 @@ def check_text(
         )
         raise GateError(f"model refused to respond: {category}")
 
+    if response.stop_reason == "max_tokens":
+        record(
+            "error",
+            f"truncated: output hit max_tokens ({MAX_TOKENS})",
+            tokens_in,
+            tokens_out,
+            cache_read_tokens,
+            cache_write_tokens,
+            cost_usd,
+        )
+        raise GateError(
+            f"model output was truncated at max_tokens ({MAX_TOKENS}); "
+            "the document is too long for one call"
+        )
+
     text_block = next((b for b in response.content if isinstance(b, TextBlock)), None)
     if text_block is None:
         record(
@@ -243,6 +303,35 @@ def check_text(
         )
         raise GateError(f"could not parse structured output: {e}") from e
 
+    try:
+        _check_alignment(sentences, result.sentences)
+    except GateError as e:
+        record(
+            "error",
+            str(e),
+            tokens_in,
+            tokens_out,
+            cache_read_tokens,
+            cache_write_tokens,
+            cost_usd,
+        )
+        raise
+
+    # Attach each sentence's own text now that alignment is confirmed -- the model
+    # was never asked for it (see SentenceResult.text's docstring).
+    result = GateOutput(
+        sentences=[
+            sentence.model_copy(update={"text": sentences[sentence.index - 1]})
+            for sentence in result.sentences
+        ]
+    )
+
+    # The rule tier makes no model call and adds no latency worth measuring, so it
+    # runs here, after the one parse that can fail, and before the one `runs` row
+    # this function writes on success -- never a second row of its own.
+    result = apply_rules(result, spans)
+    rule_escalations = sum(1 for sentence in result.sentences if sentence.rule_flags)
+
     record(
         "ok",
         None,
@@ -251,5 +340,6 @@ def check_text(
         cache_read_tokens,
         cache_write_tokens,
         cost_usd,
+        attributes={"rule_escalations": rule_escalations},
     )
     return result

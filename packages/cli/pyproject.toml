@@ -1,0 +1,21 @@
+[project]
+name = "jfl-cli"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# A delivery mechanism, not a domain: depends on every package, none depends on it.
+dependencies = ["jfl-core", "jfl-gate", "jfl-generate", "typer>=0.15"]
+
+[project.scripts]
+jfl = "jfl_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jfl_cli"]
+
+[tool.uv.sources]
+jfl-core = { workspace = true }
+jfl-gate = { workspace = true }
+jfl-generate = { workspace = true }

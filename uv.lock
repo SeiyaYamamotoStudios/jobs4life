@@ -4,9 +4,11 @@ requires-python = "==3.12.*"
 
 [manifest]
 members = [
+    "jfl-cli",
     "jfl-core",
     "jfl-evals",
     "jfl-gate",
+    "jfl-generate",
     "job-for-life",
 ]
 
@@ -767,6 +769,25 @@ wheels = [
 ]
 
 [[package]]
+name = "jfl-cli"
+version = "0.1.0"
+source = { editable = "packages/cli" }
+dependencies = [
+    { name = "jfl-core" },
+    { name = "jfl-gate" },
+    { name = "jfl-generate" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jfl-core", editable = "packages/core" },
+    { name = "jfl-gate", editable = "packages/gate" },
+    { name = "jfl-generate", editable = "packages/generate" },
+    { name = "typer", specifier = ">=0.15" },
+]
+
+[[package]]
 name = "jfl-core"
 version = "0.1.0"
 source = { editable = "packages/core" }
@@ -821,7 +842,6 @@ dependencies = [
     { name = "anthropic" },
     { name = "jfl-core" },
     { name = "pypdf" },
-    { name = "typer" },
 ]
 
 [package.metadata]
@@ -829,7 +849,23 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "jfl-core", editable = "packages/core" },
     { name = "pypdf", specifier = ">=5.1" },
-    { name = "typer", specifier = ">=0.15" },
+]
+
+[[package]]
+name = "jfl-generate"
+version = "0.1.0"
+source = { editable = "packages/generate" }
+dependencies = [
+    { name = "anthropic" },
+    { name = "jfl-core" },
+    { name = "jfl-gate" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
+    { name = "jfl-core", editable = "packages/core" },
+    { name = "jfl-gate", editable = "packages/gate" },
 ]
 
 [[package]]
@@ -884,9 +920,11 @@ name = "job-for-life"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "jfl-cli" },
     { name = "jfl-core" },
     { name = "jfl-evals" },
     { name = "jfl-gate" },
+    { name = "jfl-generate" },
 ]
 
 [package.dev-dependencies]
@@ -901,9 +939,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jfl-cli", editable = "packages/cli" },
     { name = "jfl-core", editable = "packages/core" },
     { name = "jfl-evals", editable = "packages/evals" },
     { name = "jfl-gate", editable = "packages/gate" },
+    { name = "jfl-generate", editable = "packages/generate" },
 ]
 
 [package.metadata.requires-dev]

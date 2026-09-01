@@ -16,6 +16,14 @@ from jfl_core.models import Span
 
 # Kept in exact correspondence with jfl_gate.schema.GateOutput. See that module's
 # docstring for why these are hand-kept in sync rather than generated from each other.
+#
+# Two deliberate exceptions, both populated after parsing rather than asked of the
+# model: `SentenceResult.rule_flags`, filled in by the deterministic rule tier
+# (jfl_gate.rules.apply_rules), and `SentenceResult.text`, filled in by
+# jfl_gate.gate.check_text from the input sentence list once `_check_alignment` has
+# confirmed `index` below lines up with it. Asking the model to echo the sentence
+# text back (it already has the numbered list in the user message) cost output
+# tokens for no informational gain -- `index` is what replaced it.
 GATE_OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
@@ -24,7 +32,7 @@ GATE_OUTPUT_SCHEMA: dict[str, object] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string"},
+                    "index": {"type": "integer"},
                     "kind": {"type": "string", "enum": ["claim", "framing"]},
                     "verdict": {
                         "type": "string",
@@ -48,7 +56,7 @@ GATE_OUTPUT_SCHEMA: dict[str, object] = {
                     "reason": {"type": "string"},
                 },
                 "required": [
-                    "text",
+                    "index",
                     "kind",
                     "verdict",
                     "drift_label",
@@ -139,10 +147,12 @@ Not drift -- never flag these as anything other than what they are:
 ## Output
 
 Return exactly one result per input sentence, in the same order the sentences were \
-given. For each: kind, verdict, drift_label, the corpus span IDs (if any) that support \
-the verdict, and one short sentence giving the reason. cited_span_ids may be empty -- \
-for framing, or for a claim with no support in the corpus at all. Use only the exact \
-span IDs given in the corpus below; never invent one.
+given -- one result object per sentence number below, in ascending order, none \
+skipped, none repeated. For each: its index (the sentence's number from the list \
+below), kind, verdict, drift_label, the corpus span IDs (if any) that support the \
+verdict, and one short sentence giving the reason. cited_span_ids may be empty -- for \
+framing, or for a claim with no support in the corpus at all. Use only the exact span \
+IDs given in the corpus below; never invent one.
 
 ## Corpus
 

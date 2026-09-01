@@ -45,6 +45,23 @@ _TRAILING_DATE = re.compile(r"(?:(?:19|20)\d{2}|present|current)\s*$", re.IGNORE
 # and font size instead of being tuned to one document.
 _WRAP_THRESHOLD_RATIO = 0.75
 
+# A line consisting of nothing but a bare year (or "present"/"current") --
+# same tokens as _TRAILING_DATE, anchored at both ends instead of just the
+# end. Nobody titles a CV entry "2020": a line that is *only* this token is
+# never a heading in its own right, so it is always the stranded tail of a
+# title-and-dates line whose date range itself got wrapped ("... Feb 2011 --
+# Mar" / "2020"), a case actually observed on real CVs. See _joins_forward.
+_BARE_DATE_LINE = re.compile(r"^(?:(?:19|20)\d{2}|present|current)$", re.IGNORECASE)
+
+# A hyphen immediately after a letter or digit, at the very end of a line --
+# no space before it. This is what a PDF extractor produces both for a
+# genuinely hyphenated compound that happens to fall at the page margin
+# ("cross-\nborder", "on-\ncall") and, in principle, for an old-style
+# soft/typesetting hyphen inserted purely to break a word across the line
+# ("col-\nlaboration"). See _join_wrapped for which way this project resolves
+# that ambiguity and why.
+_WORD_HYPHEN_EOL = re.compile(r"[A-Za-z0-9]-$")
+
 
 def read_input(path: Path) -> str:
     if path.suffix.lower() == ".pdf":
@@ -85,7 +102,7 @@ def _from_pdf(path: Path) -> str:
 
     def flush() -> None:
         if current:
-            blocks.append(" ".join(current))
+            blocks.append(_join_wrapped(current))
             current.clear()
 
     for line in lines:
@@ -114,11 +131,60 @@ def _joins_forward(prev_line: str, next_line: str, threshold: float) -> bool:
         return False
     if BULLET_START.match(next_line):
         return False
-    if _TRAILING_DATE.search(next_line):
-        return False
     # A "|"-delimited line (a subtitle, a contact-details line) is header
     # metadata, not prose -- it can be long enough to clear the wrap
     # threshold without ever being a mid-sentence wrap.
     if "|" in prev_line:
         return False
+    # A bare "2020" (or "Present"/"Current") is never a title in its own
+    # right, so it always belongs to whatever came before it -- join it
+    # unconditionally rather than let the checks below reject it. This
+    # matters because it would otherwise fail two different ways: the
+    # trailing-date check below reads it as a title boundary (that is
+    # defect 2 from NEXT.md), and even with that check removed the length
+    # check would still reject it on real data -- a four-character line
+    # essentially never clears the wrap-length threshold on its own. Real
+    # CVs never title an entry with a bare year, so joining unconditionally
+    # has no observed downside; see packages/gate/tests/test_input.py.
+    if _BARE_DATE_LINE.match(next_line):
+        return True
+    if _TRAILING_DATE.search(next_line):
+        return False
     return len(prev_line) >= threshold
+
+
+def _join_wrapped(lines: list[str]) -> str:
+    """Join one block's physical lines into the text `read_input` returns.
+
+    Ordinarily a single space -- an honest word-wrap. But a line ending in a
+    hyphen directly after a letter or digit, no space before it, is the wrap
+    point of either a genuinely hyphenated compound ("cross-" / "border") or
+    an old-style soft hyphen inserted purely to break a word across the line
+    ("col-" / "laboration"). Joining either with a bare space, as a plain
+    `" ".join` does, produces a stray space around the hyphen -- confirmed on
+    real CVs as "trade- offs", "cross- border", "AI- assisted", never a
+    soft-hyphen break.
+
+    Chosen rule: always keep the hyphen, only remove the stray space, giving
+    "trade-offs" / "cross-border". This is a deliberate judgement call, not a
+    detected distinction -- nothing in the extracted text tells a compound's
+    hyphen apart from a soft one; pypdf does not preserve a separate
+    soft-hyphen codepoint, and every hyphen-at-line-end actually observed
+    across 32 real CVs turned out to be a genuine compound. Per this
+    project's rule against inventing categories without evidence (see
+    CLAUDE.md's drift taxonomy), there is no basis yet for the alternative
+    (drop the hyphen). Failure mode: a document from a source that really
+    does soft-hyphenate ("col-laboration" for "collaboration") would keep an
+    unwanted hyphen. That corrupts a word's spelling but never merges or
+    splits a claim, so it is the cheaper of the two failure directions --
+    the same trade-off `_joins_forward` above makes for defect 2.
+    """
+    if not lines:
+        return ""
+    joined: list[str] = [lines[0]]
+    for line in lines[1:]:
+        if _WORD_HYPHEN_EOL.search(joined[-1]):
+            joined[-1] = joined[-1] + line
+        else:
+            joined.append(line)
+    return " ".join(joined)

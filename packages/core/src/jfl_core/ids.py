@@ -29,6 +29,9 @@ NS_ROOT = uuid.UUID("6f5c2f7e-1c5a-5f9e-9b1e-6a3d0c8f4a21")
 NS_DOCUMENT = uuid.uuid5(NS_ROOT, "document")
 NS_SPAN = uuid.uuid5(NS_ROOT, "span")
 NS_SENTENCE = uuid.uuid5(NS_ROOT, "sentence")
+NS_JOB = uuid.uuid5(NS_ROOT, "job")
+NS_REQUIREMENT = uuid.uuid5(NS_ROOT, "requirement")
+NS_GAP_QUESTION = uuid.uuid5(NS_ROOT, "gap_question")
 
 _LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _WS = re.compile(r"\s+")
@@ -71,3 +74,36 @@ def adjudicated_span_id(
 
 def sentence_id(span: uuid.UUID, idx: int) -> uuid.UUID:
     return uuid.uuid5(NS_SENTENCE, f"{span}|{idx}")
+
+
+def job_id(user_id: uuid.UUID, raw_text: str) -> uuid.UUID:
+    """Deterministic on the pasted text itself, so re-pasting the same ad resolves to
+    the same job row instead of minting a duplicate (see `jobs`' unique constraint).
+    """
+    return uuid.uuid5(NS_JOB, f"{user_id}|{content_hash(raw_text)}")
+
+
+def requirement_id(job: uuid.UUID, text: str) -> uuid.UUID:
+    """Scoped to the job, not to position: re-extracting after an edited ad keeps the
+    ids of requirements whose wording did not change.
+    """
+    return uuid.uuid5(NS_REQUIREMENT, f"{job}|{content_hash(text)}")
+
+
+def gap_question_id(requirement: uuid.UUID) -> uuid.UUID:
+    """Derived from the requirement ALONE, not the question text -- re-running
+    coverage must refresh one stable question per requirement, never accumulate
+    near-duplicates of it.
+    """
+    return uuid.uuid5(NS_GAP_QUESTION, str(requirement))
+
+
+def adjudicated_span_id_from_answer(
+    user_id: uuid.UUID, answer_text: str, gap_question: uuid.UUID
+) -> uuid.UUID:
+    """Adjudicated span minted from a gap answer. Distinct namespace key
+    ("gap_answer") from `adjudicated_span_id`'s ("adjudicated") so the two
+    write-back paths -- review-item adjudication and gap-question answers --
+    can never collide even given the same user and text.
+    """
+    return uuid.uuid5(NS_SPAN, f"{user_id}|gap_answer|{gap_question}|{content_hash(answer_text)}")

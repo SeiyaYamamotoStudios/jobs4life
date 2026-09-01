@@ -71,14 +71,53 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 whole commit history, so nothing is lost by waiting; public to private does not retract
 what has been cloned or indexed. Revisit when there is something worth showing.
 
-**2026-09-01 — Deterministic tier first, model tier for the residue.** Sending the whole
-corpus plus the whole document to Opus on every check costs ~$0.13 and re-derives things
-no model is needed for. Three things are decidable without one: the hard boundaries in
-the corpus's "explicitly NOT true" section, `invented_quantity` (the definition is
-literally that the number appears nowhere), and over-claim phrases already seen to recur.
-The five evidence-dependent labels genuinely need judgement and stay with the model.
+**2026-09-01 — The owner's corpus is a test fixture, not a backlog.** Filling its gaps by
+hand produces no code, and does by hand exactly what domain 2 automates: a gap becomes a
+question, the answer becomes an `adjudicated` span. Verdict is a function of the corpus,
+so a thin corpus produces *more flags*, not different behaviour — the mechanism is
+identical whatever it holds. Run against real material to find defects; never schedule
+work to improve one person's coverage. One finding from that gap work is mechanism and
+survives: the record is a present-tense snapshot, so a historically accurate claim about
+an earlier team composition reads as drift. Spans need validity periods.
+
+**2026-09-01 — The deterministic tier buys guarantees, not savings.** Refines the same
+day's earlier "deterministic tier first, model tier for the residue". The cost argument
+in that entry was wrong: the corpus is already cached, a marginal check reads it for
+about $0.02, and the tier cannot skip the call anyway — deciding claim-versus-framing
+needs the model on every sentence, so the call happens regardless. What the tier actually
+buys is a *guarantee no prompt can give*: the model catches `invented_quantity` and
+stated-boundary crossings most of the time, and rules catch them every time. That is
+worth more than the saving was.
+
+Scope is narrowed to what reads the corpus at runtime and works for anybody: unsourced
+numbers, and claims touching the corpus's stated-negative facts. Dropped: "over-claim
+phrases already seen to recur" — a phrase list derived from 33 of the owner's CVs is that
+archive in disguise, and bakes one use case into the mechanism. The five evidence-dependent
+labels need judgement and stay with the model.
+
+**A deterministic rule can prove contact, never crossing — so every rule resolves to
+`review`, never `unsupported`.** Term overlap with "Rust: no experience" shows a claim
+touches a boundary; only the model can say whether it crosses one. And the analysis found
+`invented_quantity` never fired across 2,347 units — every number traced — so the base
+rate of true positives is near zero and a literal-absence rule would mostly catch numbers
+legitimately *derived* from the corpus (a tenure summed from dates). Hard-failing those is
+precisely the over-flagging that gets the tool switched off. Rules therefore run **after**
+the model and may only upgrade `supported` to `review` — the direction that catches misses
+— never downgrade a flag to a pass. A rule-set verdict names the rule in its reason.
 **Build the rules from observed patterns, never from invented ones** — same discipline as
 the taxonomy.
+
+**2026-09-01 — Coverage is measured against the corpus, never against the candidate.** The
+requirement statuses are `evidenced`, `partial`, `absent`, `contradicted` — deliberately
+not met/unmet. The tool reports what it can evidence; it does not rate the person.
+`absent` means the corpus is silent, which is the gap-question trigger, and is the claim
+gate's corpus-silence problem seen from the other side.
+
+**2026-09-01 — A gap answer is stored verbatim.** The user's own words become the
+`adjudicated` span text, with no model anywhere in that path. Having a model tidy an
+answer into a neater corpus fact is the ratchet in miniature: the user is then held to
+wording they did not choose, by a tool whose whole claim is that it measures distance
+from what they actually said.
 
 **2026-09-01 — The claim gate runs automatically on generated text, on demand for pasted
 text.** Generation without the gate is the tool this project exists to oppose, and at
@@ -191,7 +230,7 @@ for a CV is private to its author:
 by market conditions and competition; it is near-uncorrelated with whether a claim was
 grounded, and training on it would build the tool this project exists to oppose.
 
-## Generation (domain 2) — shape agreed, not yet built
+## Generation (domain 2) — 2a being built, 2b agreed
 
 Anchored on a **job**, created from a pasted job ad — the antithesis of an ATS, same
 anchor entity, opposite direction. Fixed control flow throughout: extract requirements,
@@ -216,9 +255,15 @@ same write-back path.
 
 - **Done** — schema, corpus ingestion, the baseline claim gate end to end. Whole corpus
   in context, single call, verdict out, `runs` row written. CLI only.
-- **Now** — deterministic rule tier, then generation behind the gate: job entity, gap
-  questions, `adjudicated` write-back, both interaction modes. Sent-document store for
-  structure and consistency.
+- **Now, slice 2a** — job entity from a pasted ad, requirement extraction, per-requirement
+  corpus coverage, gap questions, verbatim `adjudicated` write-back. No drafting yet: this
+  produces a coverage report, which is the honest-fit number the thesis is about and the
+  input drafting needs.
+- **Now, alongside 2a** — the deterministic rule tier in the claim gate, narrowed as the
+  decisions log describes. Independent of generation, so it runs in parallel.
+- **Next, slice 2b** — drafting behind the claim gate: CV bullets, cover letters,
+  free-text answers, both interaction modes. Sent-document store for structure and
+  consistency.
 - **Then** — intake with pluggable sources, deterministic prompt filter, unmeasured fit
   scoring.
 - **Later** — FastAPI and browser UI, MCP server, accounts, education planning, the rest.
@@ -262,8 +307,11 @@ These are cheap now and expensive to retrofit. They exist because this gets depl
 
 ## Repo shape
 
-`packages/core` (storage, schemas, ingestion, embeddings) · `packages/gate` (the gate
-itself) · `packages/evals` (Inspect tasks, golden set). Migrations in `migrations/`.
+`packages/core` (storage, schemas, ingestion, embeddings) · `packages/gate` (the claim
+gate) · `packages/generate` (domain 2: jobs, requirements, coverage, gap questions, and
+later drafting) · `packages/cli` (the `jfl` entry point — a delivery mechanism, not a
+domain, so it may depend on every package and none may depend on it) · `packages/evals`
+(Inspect tasks, golden set). Migrations in `migrations/`.
 
 ## Commands
 
@@ -291,9 +339,16 @@ Testing triangle: many component/unit tests, some integration tests, a handful o
 critical end-to-end tests. Markers: `integration` (live Postgres), `e2e` (real model
 API). Both are excluded from the default `pytest` run.
 
-No golden set or eval harness in v1 — see the decisions log. If one is ever added: it
-is a test fixture, never part of a user flow, and **do not generate synthetic items or
-adjust labels to improve a score.**
+The golden set and the Inspect harness live in `packages/evals`. This paragraph used to
+say there were none in v1; that was superseded by the 2026-08-24 decision above and the
+stale wording is corrected here. Standing rules, unchanged: the golden set is a **test
+fixture, never part of a user flow**, and **do not generate synthetic items or adjust
+labels to improve a score.** Tier-1 items are drawn from public data, never invented.
+
+The harness measures **over-claim rate** — claims passed as grounded that were not — not
+accuracy. A gate that flags everything scores perfectly on over-claim rate and is
+worthless, so report the over-flagging rate beside it and never collapse the two into one
+number.
 
 ## Conventions
 

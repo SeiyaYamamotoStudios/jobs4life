@@ -20,11 +20,24 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection
 
 from jfl_core.db.tables import documents as documents_table
+from jfl_core.db.tables import gap_questions as gap_questions_table
+from jfl_core.db.tables import job_requirements as job_requirements_table
+from jfl_core.db.tables import jobs as jobs_table
+from jfl_core.db.tables import requirement_coverage as requirement_coverage_table
 from jfl_core.db.tables import runs as runs_table
 from jfl_core.db.tables import span_sentences
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.ids import sentence_id
-from jfl_core.models import RunRecord, Span, SpanCandidate
+from jfl_core.models import (
+    GapQuestion,
+    Job,
+    JobRequirement,
+    JobSummary,
+    RequirementCoverage,
+    RunRecord,
+    Span,
+    SpanCandidate,
+)
 
 
 class PostgresIngestRepository:
@@ -251,5 +264,267 @@ class PostgresRunRepository:
                 error=run.error,
                 attributes=run.attributes,
                 started_at=run.started_at,
+            )
+        )
+
+
+def _row_to_job(row: Any) -> Job:
+    return Job(
+        id=row.id,
+        user_id=row.user_id,
+        source=row.source,
+        employer=row.employer,
+        title=row.title,
+        location=row.location,
+        url=row.url,
+        raw_text=row.raw_text,
+        content_hash=row.content_hash,
+    )
+
+
+def _row_to_requirement(row: Any) -> JobRequirement:
+    return JobRequirement(
+        id=row.id,
+        user_id=row.user_id,
+        job_id=row.job_id,
+        ordinal=row.ordinal,
+        text=row.text,
+        necessity=row.necessity,
+    )
+
+
+def _row_to_coverage(row: Any) -> RequirementCoverage:
+    return RequirementCoverage(
+        id=row.id,
+        user_id=row.user_id,
+        requirement_id=row.requirement_id,
+        trace_id=row.trace_id,
+        status=row.status,
+        cited_span_ids=list(row.cited_span_ids),
+        reason=row.reason,
+    )
+
+
+def _row_to_question(row: Any) -> GapQuestion:
+    return GapQuestion(
+        id=row.id,
+        user_id=row.user_id,
+        requirement_id=row.requirement_id,
+        question=row.question,
+        status=row.status,
+        answer_text=row.answer_text,
+        answered_at=row.answered_at,
+        resulting_span_id=row.resulting_span_id,
+    )
+
+
+class PostgresJobRepository:
+    """`JobRepository` against Postgres. Same conventions as the repositories
+    above: ids are precomputed and deterministic where ids.py defines them, the
+    caller owns the transaction.
+    """
+
+    def __init__(self, conn: Connection) -> None:
+        self._conn = conn
+
+    def upsert_job(self, job: Job) -> bool:
+        exists = self._conn.execute(
+            select(jobs_table.c.id).where(jobs_table.c.id == job.id)
+        ).first()
+        if exists is None:
+            self._conn.execute(
+                insert(jobs_table).values(
+                    id=job.id,
+                    user_id=job.user_id,
+                    source=job.source,
+                    employer=job.employer,
+                    title=job.title,
+                    location=job.location,
+                    url=job.url,
+                    raw_text=job.raw_text,
+                    content_hash=job.content_hash,
+                )
+            )
+            return True
+        # The text hasn't changed -- content_hash is the id's own input -- but
+        # extraction may have read the employer/title/location differently.
+        self._conn.execute(
+            update(jobs_table)
+            .where(jobs_table.c.id == job.id)
+            .values(employer=job.employer, title=job.title, location=job.location, url=job.url)
+        )
+        return False
+
+    def replace_requirements(
+        self, user_id: uuid.UUID, job_id: uuid.UUID, requirements: list[JobRequirement]
+    ) -> None:
+        self._conn.execute(
+            delete(job_requirements_table).where(
+                job_requirements_table.c.job_id == job_id,
+                job_requirements_table.c.user_id == user_id,
+            )
+        )
+        if requirements:
+            self._conn.execute(
+                insert(job_requirements_table),
+                [
+                    {
+                        "id": r.id,
+                        "user_id": r.user_id,
+                        "job_id": r.job_id,
+                        "ordinal": r.ordinal,
+                        "text": r.text,
+                        "necessity": r.necessity,
+                    }
+                    for r in requirements
+                ],
+            )
+
+    def list_jobs(self, user_id: uuid.UUID) -> list[JobSummary]:
+        requirement_count = func.count(job_requirements_table.c.id).label("requirement_count")
+        stmt = (
+            select(
+                jobs_table.c.id,
+                jobs_table.c.employer,
+                jobs_table.c.title,
+                jobs_table.c.created_at,
+                requirement_count,
+            )
+            .select_from(
+                jobs_table.outerjoin(
+                    job_requirements_table, job_requirements_table.c.job_id == jobs_table.c.id
+                )
+            )
+            .where(jobs_table.c.user_id == user_id)
+            .group_by(jobs_table.c.id)
+            .order_by(jobs_table.c.created_at.desc())
+        )
+        return [
+            JobSummary(
+                id=row.id,
+                employer=row.employer,
+                title=row.title,
+                requirement_count=row.requirement_count,
+                created_at=row.created_at,
+            )
+            for row in self._conn.execute(stmt).all()
+        ]
+
+    def get_job(
+        self, user_id: uuid.UUID, job_id: uuid.UUID
+    ) -> tuple[Job, list[JobRequirement]] | None:
+        job_row = self._conn.execute(
+            select(jobs_table).where(jobs_table.c.id == job_id, jobs_table.c.user_id == user_id)
+        ).first()
+        if job_row is None:
+            return None
+        requirement_rows = self._conn.execute(
+            select(job_requirements_table)
+            .where(job_requirements_table.c.job_id == job_id)
+            .order_by(job_requirements_table.c.ordinal)
+        ).all()
+        return _row_to_job(job_row), [_row_to_requirement(r) for r in requirement_rows]
+
+    def record_coverage(self, coverage: RequirementCoverage) -> None:
+        self._conn.execute(
+            insert(requirement_coverage_table).values(
+                id=coverage.id,
+                user_id=coverage.user_id,
+                requirement_id=coverage.requirement_id,
+                trace_id=coverage.trace_id,
+                status=coverage.status,
+                cited_span_ids=coverage.cited_span_ids,
+                reason=coverage.reason,
+            )
+        )
+
+    def latest_coverage(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[RequirementCoverage]:
+        stmt = (
+            select(requirement_coverage_table)
+            .select_from(
+                requirement_coverage_table.join(
+                    job_requirements_table,
+                    job_requirements_table.c.id == requirement_coverage_table.c.requirement_id,
+                )
+            )
+            .where(
+                requirement_coverage_table.c.user_id == user_id,
+                job_requirements_table.c.job_id == job_id,
+            )
+            .distinct(requirement_coverage_table.c.requirement_id)
+            .order_by(
+                requirement_coverage_table.c.requirement_id,
+                requirement_coverage_table.c.created_at.desc(),
+            )
+        )
+        return [_row_to_coverage(row) for row in self._conn.execute(stmt).all()]
+
+    def upsert_gap_question(self, question: GapQuestion) -> None:
+        existing = self._conn.execute(
+            select(gap_questions_table.c.status).where(gap_questions_table.c.id == question.id)
+        ).first()
+        if existing is None:
+            self._conn.execute(
+                insert(gap_questions_table).values(
+                    id=question.id,
+                    user_id=question.user_id,
+                    requirement_id=question.requirement_id,
+                    question=question.question,
+                    status="open",
+                )
+            )
+            return
+        # Never overwrite an answered or dismissed row -- see gap_questions in
+        # tables.py.
+        if existing.status == "open":
+            self._conn.execute(
+                update(gap_questions_table)
+                .where(gap_questions_table.c.id == question.id)
+                .values(question=question.question)
+            )
+
+    def list_open_questions(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[GapQuestion]:
+        stmt = (
+            select(gap_questions_table)
+            .select_from(
+                gap_questions_table.join(
+                    job_requirements_table,
+                    job_requirements_table.c.id == gap_questions_table.c.requirement_id,
+                )
+            )
+            .where(
+                gap_questions_table.c.user_id == user_id,
+                gap_questions_table.c.status == "open",
+                job_requirements_table.c.job_id == job_id,
+            )
+            .order_by(gap_questions_table.c.created_at)
+        )
+        return [_row_to_question(row) for row in self._conn.execute(stmt).all()]
+
+    def get_question(self, user_id: uuid.UUID, question_id: uuid.UUID) -> GapQuestion | None:
+        row = self._conn.execute(
+            select(gap_questions_table).where(
+                gap_questions_table.c.id == question_id, gap_questions_table.c.user_id == user_id
+            )
+        ).first()
+        return _row_to_question(row) if row is not None else None
+
+    def mark_question_answered(
+        self,
+        user_id: uuid.UUID,
+        question_id: uuid.UUID,
+        answer_text: str,
+        resulting_span_id: uuid.UUID,
+    ) -> None:
+        self._conn.execute(
+            update(gap_questions_table)
+            .where(
+                gap_questions_table.c.id == question_id, gap_questions_table.c.user_id == user_id
+            )
+            .values(
+                status="answered",
+                answer_text=answer_text,
+                answered_at=func.now(),
+                resulting_span_id=resulting_span_id,
             )
         )

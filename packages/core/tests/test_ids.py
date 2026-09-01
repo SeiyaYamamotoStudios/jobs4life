@@ -9,7 +9,17 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from jfl_core.ids import adjudicated_span_id, content_hash, normalise, sentence_id, span_id
+from jfl_core.ids import (
+    adjudicated_span_id,
+    adjudicated_span_id_from_answer,
+    content_hash,
+    gap_question_id,
+    job_id,
+    normalise,
+    requirement_id,
+    sentence_id,
+    span_id,
+)
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
 DOC = "file:corpus/cv.md"
@@ -96,3 +106,89 @@ def test_sentence_ids_are_stable_and_ordered() -> None:
 
 def test_content_hash_matches_normalised_form() -> None:
     assert content_hash("-  Led   the team ") == content_hash("Led the team")
+
+
+class TestJobId:
+    def test_is_deterministic(self) -> None:
+        ad = "Senior Engineer at Acme. Must know Python."
+        assert job_id(USER, ad) == job_id(USER, ad)
+
+    def test_re_pasting_the_same_ad_resolves_to_the_same_id(self) -> None:
+        """Whitespace-only differences must not mint a new job -- content_hash
+        normalises them away, same as a span's.
+        """
+        assert job_id(USER, "  Senior Engineer  ") == job_id(USER, "Senior Engineer")
+
+    def test_different_ad_text_mints_a_different_id(self) -> None:
+        assert job_id(USER, "Senior Engineer") != job_id(USER, "Staff Engineer")
+
+    def test_scoped_by_user(self) -> None:
+        assert job_id(USER, "Senior Engineer") != job_id(uuid.uuid4(), "Senior Engineer")
+
+
+class TestRequirementId:
+    def test_is_deterministic(self) -> None:
+        job = uuid.uuid4()
+        assert requirement_id(job, "5+ years of Python") == requirement_id(
+            job, "5+ years of Python"
+        )
+
+    def test_scoped_by_job(self) -> None:
+        assert requirement_id(uuid.uuid4(), "Python") != requirement_id(uuid.uuid4(), "Python")
+
+    def test_different_text_mints_a_different_id(self) -> None:
+        job = uuid.uuid4()
+        assert requirement_id(job, "Python") != requirement_id(job, "Kubernetes")
+
+    def test_unchanged_requirement_keeps_its_id_across_re_extraction(self) -> None:
+        """The point of scoping by (job, text) rather than by ordinal: an ad
+        edited to add a requirement must not renumber the ones already there.
+        """
+        job = uuid.uuid4()
+        assert requirement_id(job, "Python") == requirement_id(job, "Python")
+
+
+class TestGapQuestionId:
+    def test_is_deterministic(self) -> None:
+        requirement = uuid.uuid4()
+        assert gap_question_id(requirement) == gap_question_id(requirement)
+
+    def test_depends_only_on_the_requirement_not_the_question_text(self) -> None:
+        """Re-running coverage must refresh one stable question per requirement,
+        never accumulate near-duplicates -- so the id must NOT vary with the
+        question text the model happens to generate this time.
+        """
+        requirement = uuid.uuid4()
+        assert gap_question_id(requirement) == gap_question_id(requirement)
+
+    def test_differs_per_requirement(self) -> None:
+        assert gap_question_id(uuid.uuid4()) != gap_question_id(uuid.uuid4())
+
+
+class TestAdjudicatedSpanIdFromAnswer:
+    def test_is_deterministic(self) -> None:
+        question = uuid.uuid4()
+        assert adjudicated_span_id_from_answer(
+            USER, "I led the migration", question
+        ) == adjudicated_span_id_from_answer(USER, "I led the migration", question)
+
+    def test_differs_per_question(self) -> None:
+        assert adjudicated_span_id_from_answer(
+            USER, "Yes", uuid.uuid4()
+        ) != adjudicated_span_id_from_answer(USER, "Yes", uuid.uuid4())
+
+    def test_differs_per_answer_text(self) -> None:
+        question = uuid.uuid4()
+        assert adjudicated_span_id_from_answer(
+            USER, "Yes", question
+        ) != adjudicated_span_id_from_answer(USER, "No", question)
+
+    def test_never_collides_with_review_item_adjudication(self) -> None:
+        """Two different write-back paths into the same NS_SPAN namespace -- the
+        distinct 'gap_answer' key must keep them apart even given the same user,
+        text, and (coincidentally equal) id.
+        """
+        shared_id = uuid.uuid4()
+        assert adjudicated_span_id_from_answer(USER, "same text", shared_id) != adjudicated_span_id(
+            USER, "same text", shared_id
+        )

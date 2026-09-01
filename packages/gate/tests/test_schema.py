@@ -15,7 +15,7 @@ def test_valid_payload_parses() -> None:
     data = {
         "sentences": [
             {
-                "text": "Led a team of 12 engineers.",
+                "index": 1,
                 "kind": "claim",
                 "verdict": "supported",
                 "drift_label": "supported",
@@ -29,10 +29,28 @@ def test_valid_payload_parses() -> None:
     assert result.sentences[0].cited_span_ids == [uuid.UUID(SPAN_ID)]
 
 
+def test_text_defaults_empty_since_the_model_is_never_asked_for_it() -> None:
+    """The wire payload carries `index`, never `text` -- `text` is filled in later,
+    by jfl_gate.gate.check_text, from the input sentence list. Parsed on its own
+    (as here), it stays at its default.
+    """
+    result = SentenceResult.model_validate(
+        {
+            "index": 1,
+            "kind": "framing",
+            "verdict": "supported",
+            "drift_label": "framing",
+            "cited_span_ids": [],
+            "reason": "Motivation is ungroundable framing.",
+        }
+    )
+    assert result.text == ""
+
+
 def test_empty_cited_span_ids_is_allowed() -> None:
     result = SentenceResult.model_validate(
         {
-            "text": "Wanting more autonomy, they changed teams.",
+            "index": 1,
             "kind": "framing",
             "verdict": "supported",
             "drift_label": "framing",
@@ -47,7 +65,7 @@ def test_unknown_verdict_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SentenceResult.model_validate(
             {
-                "text": "x",
+                "index": 1,
                 "kind": "claim",
                 "verdict": "maybe",  # not one of supported/review/unsupported
                 "drift_label": "supported",
@@ -61,7 +79,7 @@ def test_unknown_drift_label_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SentenceResult.model_validate(
             {
-                "text": "x",
+                "index": 1,
                 "kind": "claim",
                 "verdict": "supported",
                 "drift_label": "temporal_compression",  # rejected taxonomy category
@@ -75,7 +93,7 @@ def test_unknown_kind_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SentenceResult.model_validate(
             {
-                "text": "x",
+                "index": 1,
                 "kind": "opinion",
                 "verdict": "supported",
                 "drift_label": "supported",
@@ -89,7 +107,7 @@ def test_non_uuid_cited_span_id_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SentenceResult.model_validate(
             {
-                "text": "x",
+                "index": 1,
                 "kind": "claim",
                 "verdict": "supported",
                 "drift_label": "supported",
@@ -103,7 +121,7 @@ def test_missing_required_field_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SentenceResult.model_validate(
             {
-                "text": "x",
+                "index": 1,
                 "kind": "claim",
                 "verdict": "supported",
                 "drift_label": "supported",
@@ -113,11 +131,28 @@ def test_missing_required_field_is_rejected() -> None:
         )
 
 
+def test_missing_index_is_rejected() -> None:
+    """`index` is the field that replaced echoed text -- unlike `text`, it has no
+    default, since a result the alignment check cannot place is exactly the failure
+    mode the wire-format change must not introduce silently.
+    """
+    with pytest.raises(ValidationError):
+        SentenceResult.model_validate(
+            {
+                "kind": "claim",
+                "verdict": "supported",
+                "drift_label": "supported",
+                "cited_span_ids": [],
+                "reason": "x",
+            }
+        )
+
+
 def test_multiple_sentences_preserve_order() -> None:
     data = {
         "sentences": [
             {
-                "text": "first",
+                "index": 1,
                 "kind": "framing",
                 "verdict": "supported",
                 "drift_label": "framing",
@@ -125,7 +160,7 @@ def test_multiple_sentences_preserve_order() -> None:
                 "reason": "r1",
             },
             {
-                "text": "second",
+                "index": 2,
                 "kind": "claim",
                 "verdict": "unsupported",
                 "drift_label": "invented_quantity",
@@ -135,4 +170,4 @@ def test_multiple_sentences_preserve_order() -> None:
         ]
     }
     result = GateOutput.model_validate(data)
-    assert [s.text for s in result.sentences] == ["first", "second"]
+    assert [s.index for s in result.sentences] == [1, 2]

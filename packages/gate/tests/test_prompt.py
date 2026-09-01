@@ -96,7 +96,7 @@ def test_volatile_sentences_are_never_baked_into_the_cached_system_prompt() -> N
 def test_output_schema_requires_every_field_and_forbids_extras() -> None:
     item_schema = _SCHEMA["properties"]["sentences"]["items"]
     assert set(item_schema["required"]) == {
-        "text",
+        "index",
         "kind",
         "verdict",
         "drift_label",

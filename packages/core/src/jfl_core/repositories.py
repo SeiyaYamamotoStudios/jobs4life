@@ -10,7 +10,16 @@ from __future__ import annotations
 import uuid
 from typing import Protocol
 
-from jfl_core.models import RunRecord, Span, SpanCandidate
+from jfl_core.models import (
+    GapQuestion,
+    Job,
+    JobRequirement,
+    JobSummary,
+    RequirementCoverage,
+    RunRecord,
+    Span,
+    SpanCandidate,
+)
 
 
 class IngestRepository(Protocol):
@@ -75,6 +84,64 @@ class RunRepository(Protocol):
     def record(self, run: RunRecord) -> None: ...
 
 
+class JobRepository(Protocol):
+    """What slice 2a (job intake, requirement extraction, coverage, gap questions)
+    needs. Separate from `GroundingRepository` because coverage *reads* the corpus
+    through that interface and writes an answered gap back through its
+    `add_adjudicated_span` -- this interface owns the job-shaped tables only.
+    """
+
+    def upsert_job(self, job: Job) -> bool:
+        """Insert or refresh a job row (id is deterministic, see ids.py). Returns
+        True if this created a new row.
+        """
+        ...
+
+    def replace_requirements(
+        self, user_id: uuid.UUID, job_id: uuid.UUID, requirements: list[JobRequirement]
+    ) -> None:
+        """Replace every requirement row for a job: requirement ids are deterministic
+        from (job_id, text), so re-extraction after an edited ad is a clean swap, not
+        a diff.
+        """
+        ...
+
+    def list_jobs(self, user_id: uuid.UUID) -> list[JobSummary]: ...
+
+    def get_job(
+        self, user_id: uuid.UUID, job_id: uuid.UUID
+    ) -> tuple[Job, list[JobRequirement]] | None: ...
+
+    def record_coverage(self, coverage: RequirementCoverage) -> None:
+        """Append-only insert: one row per requirement, per coverage run."""
+        ...
+
+    def latest_coverage(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[RequirementCoverage]:
+        """The most recent coverage row per requirement -- `DISTINCT ON
+        (requirement_id) ... ORDER BY requirement_id, created_at DESC`.
+        """
+        ...
+
+    def upsert_gap_question(self, question: GapQuestion) -> None:
+        """Insert a gap question, or refresh its `question` text -- but only while
+        the existing row is still `open`. An `answered` or `dismissed` row is never
+        overwritten by a later coverage run.
+        """
+        ...
+
+    def list_open_questions(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[GapQuestion]: ...
+
+    def get_question(self, user_id: uuid.UUID, question_id: uuid.UUID) -> GapQuestion | None: ...
+
+    def mark_question_answered(
+        self,
+        user_id: uuid.UUID,
+        question_id: uuid.UUID,
+        answer_text: str,
+        resulting_span_id: uuid.UUID,
+    ) -> None: ...
+
+
 class JobSource(Protocol):
     """Pluggable intake.
 
@@ -90,4 +157,4 @@ class JobSource(Protocol):
 
     def fetch(
         self, config: dict[str, object], cursor: str | None
-    ) -> tuple[list[dict], str | None]: ...
+    ) -> tuple[list[dict[str, object]], str | None]: ...

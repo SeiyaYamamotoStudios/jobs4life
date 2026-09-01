@@ -86,9 +86,22 @@ def _fake_response() -> Message:
 def test_a_successful_gate_call_writes_one_runs_row_with_correct_fields(
     monkeypatch: pytest.MonkeyPatch, conn: Connection, user: uuid.UUID
 ) -> None:
-    class _FakeMessages:
-        def create(self, **kwargs: object) -> Message:
+    class _FakeStream:
+        def __enter__(self) -> _FakeStream:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def get_final_message(self) -> Message:
             return _fake_response()
+
+    class _FakeMessages:
+        # Mirrors `client.messages.stream(...)`: the gate streams because its
+        # max_tokens is too high for a non-streaming request. It consumes no
+        # partial output, so the double only has to yield the final message.
+        def stream(self, **kwargs: object) -> _FakeStream:
+            return _FakeStream()
 
     class _FakeClient:
         def __init__(self, **kwargs: object) -> None:

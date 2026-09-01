@@ -10,6 +10,7 @@ Conventions used throughout:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -48,7 +49,7 @@ metadata = MetaData(
 )
 
 
-def _ts(name: str, **kw: object) -> Column:
+def _ts(name: str, **kw: object) -> Column[datetime]:
     return Column(name, TIMESTAMP(timezone=True), **kw)  # type: ignore[arg-type]
 
 
@@ -267,6 +268,109 @@ sent_spans = Table(
     Column("text", Text, nullable=False),
     Column("content_hash", String(64), nullable=False),
 )
+
+# --------------------------------------------------------------------------
+# Generation (domain 2a): jobs, extracted requirements, and per-requirement
+# coverage against the corpus. No drafting lives here yet -- see CLAUDE.md's
+# build order.
+# --------------------------------------------------------------------------
+
+jobs = Table(
+    "jobs",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # deterministic, see ids.py
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("source", Text, nullable=False),
+    Column("employer", Text),
+    Column("title", Text),
+    Column("location", Text),
+    Column("url", Text),
+    Column("raw_text", Text, nullable=False),
+    Column("content_hash", String(64), nullable=False),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint("source in ('paste','file')", name="source"),
+    # Re-pasting the same ad resolves to the same row instead of minting a duplicate.
+    UniqueConstraint("user_id", "content_hash"),
+)
+
+job_requirements = Table(
+    "job_requirements",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # deterministic, see ids.py
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("job_id", UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+    # order in the ad; ordering only, NOT part of the id
+    Column("ordinal", Integer, nullable=False),
+    Column("text", Text, nullable=False),
+    Column("necessity", Text, nullable=False),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint("necessity in ('essential','desirable','unstated')", name="necessity"),
+)
+
+# APPEND-ONLY: one row per requirement, per coverage run. Showing coverage
+# change before and after a gap answer is the point of this slice, so a re-run
+# adds a row rather than overwriting the last one. Query "latest per
+# requirement" with `DISTINCT ON (requirement_id) ... ORDER BY requirement_id,
+# created_at DESC`.
+requirement_coverage = Table(
+    "requirement_coverage",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # random: one id per run, not deterministic
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "requirement_id",
+        UUID(as_uuid=True),
+        ForeignKey("job_requirements.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("trace_id", UUID(as_uuid=True), nullable=False),  # groups one coverage run
+    Column("status", Text, nullable=False),
+    Column("cited_span_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    Column("reason", Text, nullable=False),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint("status in ('evidenced','partial','absent','contradicted')", name="status"),
+    Index(
+        "ix_requirement_coverage_user_id_requirement_id_created_at",
+        "user_id",
+        "requirement_id",
+        "created_at",
+    ),
+)
+
+gap_questions = Table(
+    "gap_questions",
+    metadata,
+    # Deterministic from requirement_id ALONE (see ids.py): re-running coverage
+    # refreshes one stable question per requirement rather than accumulating
+    # near-duplicates of it.
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "requirement_id",
+        UUID(as_uuid=True),
+        ForeignKey("job_requirements.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("question", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default="open"),
+    Column("answer_text", Text),
+    _ts("answered_at"),
+    # No FK cascade: an adjudicated span outlives the question that produced it,
+    # same as `adjudications.resulting_span_id` above.
+    Column("resulting_span_id", UUID(as_uuid=True), ForeignKey("spans.id")),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint("status in ('open','answered','dismissed')", name="status"),
+    Index("ix_gap_questions_user_id_status_created_at", "user_id", "status", "created_at"),
+)
+
 
 # --------------------------------------------------------------------------
 # Review queue. Ambiguous cases only; clear passes and clear failures never land here.

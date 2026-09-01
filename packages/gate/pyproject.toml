@@ -3,10 +3,8 @@ name = "jfl-gate"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 # pypdf because the real inputs are PDF CVs; pure python, no system poppler.
-dependencies = ["jfl-core", "anthropic>=0.40", "typer>=0.15", "pypdf>=5.1"]
-
-[project.scripts]
-jfl = "jfl_gate.cli:app"
+# No typer here -- the CLI lives in packages/cli; this package has no entry point.
+dependencies = ["jfl-core", "anthropic>=0.40", "pypdf>=5.1"]
 
 [build-system]
 requires = ["hatchling"]

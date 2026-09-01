@@ -1,0 +1,63 @@
+"""Pydantic models for generation's two structured-output calls.
+
+Field-for-field, these mirror the JSON schemas in `prompts.py`: those JSON
+schemas constrain what the model can return over the wire, these models give
+callers typed access to the parsed result. Kept in sync by hand, same
+discipline as `jfl_gate.schema` -- there is only one of each, so generating
+one from the other would be one abstraction for one caller.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
+
+Necessity = Literal["essential", "desirable", "unstated"]
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    """The model returns "" rather than a nullable JSON type for "the ad doesn't
+    say" -- normalised to None here so callers get an ordinary optional field.
+    """
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+class ExtractedRequirement(BaseModel):
+    text: str
+    necessity: Necessity
+
+
+class ExtractOutput(BaseModel):
+    employer: str | None
+    title: str | None
+    location: str | None
+    requirements: list[ExtractedRequirement]
+
+    @field_validator("employer", "title", "location", mode="before")
+    @classmethod
+    def _normalise(cls, value: str | None) -> str | None:
+        return _blank_to_none(value)
+
+
+CoverageStatus = Literal["evidenced", "partial", "absent", "contradicted"]
+
+
+class RequirementCoverageResult(BaseModel):
+    status: CoverageStatus
+    cited_span_ids: list[uuid.UUID]
+    reason: str
+    # Non-empty only when status is "absent" or "partial" -- see prompts.py.
+    question: str | None = None
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def _normalise(cls, value: str | None) -> str | None:
+        return _blank_to_none(value)
+
+
+class CoverageOutput(BaseModel):
+    results: list[RequirementCoverageResult]

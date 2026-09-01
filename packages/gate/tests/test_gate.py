@@ -18,7 +18,7 @@ import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
 from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord, Span, SpanCandidate
-from jfl_gate.gate import GateError, check_text, sentences_from_text, split_blocks
+from jfl_gate.gate import EFFORT, GateError, check_text, sentences_from_text, split_blocks
 from jfl_gate.pricing import MODEL, compute_cost_usd
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -62,10 +62,33 @@ class _FakeMessages:
         self._exception = exception
         self.calls: list[dict[str, Any]] = []
 
-    def create(self, **kwargs: Any) -> Message:
+    def stream(self, **kwargs: Any) -> _FakeStream:
+        """Mirrors `client.messages.stream(...)`: a context manager yielding an object
+        whose `get_final_message()` returns the assembled Message. The gate streams
+        because its `max_tokens` is too high for a non-streaming request, but it
+        consumes no partial output, so the double only needs the final message.
+
+        An API error is raised on entering the stream, which is where the real SDK
+        raises it too -- the request is issued by `__enter__`, not by `stream()`.
+        """
         self.calls.append(kwargs)
+        return _FakeStream(self._response, self._exception)
+
+
+class _FakeStream:
+    def __init__(self, response: Message | None, exception: Exception | None):
+        self._response = response
+        self._exception = exception
+
+    def __enter__(self) -> _FakeStream:
         if self._exception is not None:
             raise self._exception
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get_final_message(self) -> Message:
         assert self._response is not None
         return self._response
 
@@ -124,7 +147,7 @@ def _response(
 
 
 _SUPPORTED_ITEM = {
-    "text": "Led the platform team.",
+    "index": 1,
     "kind": "claim",
     "verdict": "supported",
     "drift_label": "supported",
@@ -305,6 +328,9 @@ def test_successful_call_parses_result_and_records_an_ok_run(
 
     assert len(result.sentences) == 1
     assert result.sentences[0].verdict == "supported"
+    # Never asked of the model (see SentenceResult.text) -- filled in from the input
+    # sentence list once `_check_alignment` confirms the returned index lines up.
+    assert result.sentences[0].text == "Led the platform team."
 
     assert len(runs.recorded) == 1
     run = runs.recorded[0]
@@ -354,6 +380,7 @@ def test_request_caches_the_corpus_and_keeps_sentences_out_of_the_cached_block(
     assert "Led the platform team." in user_content
 
     assert kwargs["output_config"]["format"]["type"] == "json_schema"
+    assert kwargs["output_config"]["effort"] == EFFORT
 
 
 @pytest.mark.parametrize(
@@ -483,3 +510,136 @@ def test_loads_all_non_retired_spans_for_the_context_user(
     check_text(ctx, grounding, runs, "Led the platform team.")
 
     assert grounding.all_spans_calls == [ctx.user_id]
+
+
+def test_rule_tier_runs_after_parsing_and_records_escalations_on_the_same_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rule tier (jfl_gate.rules.apply_rules) makes no model call of its own, so
+    it must not add a second `runs` row -- and its firing rate belongs in the one row
+    `check_text` already writes, as `attributes["rule_escalations"]`.
+    """
+    boundary_span = Span(
+        id=uuid.uuid4(),
+        user_id=USER,
+        document_id=uuid.uuid4(),
+        provenance="document",
+        kind="bullet",
+        section_path="Things stated explicitly as NOT true, or as boundaries to hold",
+        ordinal=0,
+        text="Has not personally operated a self-managed kayelisk cluster.",
+        content_hash="0" * 64,
+    )
+    item = {
+        "index": 1,
+        "kind": "claim",
+        "verdict": "supported",
+        "drift_label": "supported",
+        "cited_span_ids": [],
+        "reason": "Matches the corpus.",
+    }
+    client = _FakeAnthropicClient(response=_response([item]))
+    _patch_client(monkeypatch, client)
+
+    grounding = _FakeGroundingRepo([boundary_span])
+    runs = _FakeRunRepo()
+
+    result = check_text(
+        _ctx(), grounding, runs, "Personally operated the kayelisk cluster end to end."
+    )
+
+    # The rule tier escalated the sentence -- verdict moved to "review" and it
+    # carries at least one rule flag, but drift_label is untouched.
+    assert result.sentences[0].verdict == "review"
+    assert result.sentences[0].rule_flags
+    assert result.sentences[0].drift_label == "supported"
+
+    assert len(runs.recorded) == 1  # still exactly one row, not two
+    run = runs.recorded[0]
+    assert run.outcome == "ok"
+    assert run.attributes == {"rule_escalations": 1}
+
+
+class TestAlignment:
+    """`SentenceResult` carries a 1-based `index` instead of an echoed sentence text
+    (see schema.py) -- these tests are the deterministic replacement for what echoed
+    text used to catch: a dropped, duplicated, or reordered result silently attaching
+    a verdict to the wrong sentence. `_check_alignment` must catch every shape of
+    that and only that; a correct response must still populate `.text` for every
+    sentence from the input list, in order.
+    """
+
+    _MULTI_TEXT = "First point. Second point. Third point."
+
+    @staticmethod
+    def _item(index: int, text_for_reason: str = "ok") -> dict[str, Any]:
+        return {
+            "index": index,
+            "kind": "claim",
+            "verdict": "supported",
+            "drift_label": "supported",
+            "cited_span_ids": [],
+            "reason": text_for_reason,
+        }
+
+    def test_correct_indices_populate_text_from_the_input_list_in_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        items = [self._item(1), self._item(2), self._item(3)]
+        client = _FakeAnthropicClient(response=_response(items))
+        _patch_client(monkeypatch, client)
+
+        result = check_text(_ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), self._MULTI_TEXT)
+
+        assert [s.text for s in result.sentences] == [
+            "First point.",
+            "Second point.",
+            "Third point.",
+        ]
+
+    def test_missing_result_raises_and_records_an_error_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Only 2 results for 3 input sentences.
+        items = [self._item(1), self._item(2)]
+        client = _FakeAnthropicClient(response=_response(items))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match="misaligned"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._MULTI_TEXT)
+
+        assert len(runs.recorded) == 1
+        assert runs.recorded[0].outcome == "error"
+        assert runs.recorded[0].error is not None
+        assert "misaligned" in runs.recorded[0].error
+
+    def test_duplicated_index_raises_and_records_an_error_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Right count, but index 2 repeated and index 3 missing.
+        items = [self._item(1), self._item(2), self._item(2)]
+        client = _FakeAnthropicClient(response=_response(items))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match="misaligned"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._MULTI_TEXT)
+
+        assert runs.recorded[0].outcome == "error"
+
+    def test_reordered_indices_raise_even_with_the_right_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Same set {1, 2, 3}, wrong order -- must still be caught, since a
+        # position-based zip against a merely-correct *set* would silently attach
+        # verdicts to the wrong sentences.
+        items = [self._item(1), self._item(3), self._item(2)]
+        client = _FakeAnthropicClient(response=_response(items))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match="misaligned"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._MULTI_TEXT)
+
+        assert runs.recorded[0].outcome == "error"
