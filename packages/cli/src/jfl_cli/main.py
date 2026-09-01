@@ -16,7 +16,7 @@ from pathlib import Path
 import typer
 from jfl_core.context import RequestContext
 from jfl_core.ingest.ingest import run_ingestion
-from jfl_core.models import Job, JobRequirement, RequirementCoverage
+from jfl_core.models import Draft, DraftKind, Job, JobRequirement, RequirementCoverage
 
 # PostgresIngestRepository backs `ingest` and `answer` -- the gap-answer write-back
 # re-ingests the corpus, it never writes a grounding span directly. See CLAUDE.md's
@@ -29,7 +29,8 @@ from jfl_core.storage.postgres import (
 )
 from jfl_gate.gate import GateError, check_text
 from jfl_gate.input import read_input
-from jfl_gate.schema import SentenceResult
+from jfl_gate.schema import GateOutput, SentenceResult
+from jfl_generate.draft import generate_draft
 from jfl_generate.errors import GenerateError
 from jfl_generate.jobs import add_job, answer_question, run_coverage
 from sqlalchemy import Connection, create_engine
@@ -59,6 +60,10 @@ _COVERAGE_COLOR = {
     "absent": typer.colors.YELLOW,
     "contradicted": typer.colors.RED,
 }
+
+# CLI vocabulary ("cv") vs the stored `drafts.kind` CHECK values -- "cv_bullets" is
+# what the table and the drift taxonomy call it, "cv" is what a user types.
+_DRAFT_KIND_MAP: dict[str, DraftKind] = {"cv": "cv_bullets", "cover_letter": "cover_letter"}
 
 
 def _redact(url: str) -> str:
@@ -354,6 +359,64 @@ def answer(
         raise typer.Exit(code=1)
 
     typer.echo(f"stored as span {span_id}")
+
+
+@app.command()
+def draft(
+    job_id: uuid.UUID = typer.Argument(  # noqa: B008 -- typer's documented pattern
+        ..., help="Job id, from `jfl job list`."
+    ),
+    kind: str = typer.Option(  # noqa: B008 -- typer's documented pattern
+        ..., "--kind", help="cv or cover_letter."
+    ),
+) -> None:
+    """Generate a draft against the job's requirements and latest corpus coverage,
+    then run the claim gate on it automatically. Requires `jfl job coverage JOB_ID`
+    to have been run first -- this command never runs coverage itself, that would
+    be a second, unbudgeted model call.
+
+    A flagged draft is still printed in full: the claim gate informs, it never
+    blocks (see CLAUDE.md, "How the claim gate behaves").
+    """
+    if kind not in _DRAFT_KIND_MAP:
+        typer.echo(f"--kind must be one of: {', '.join(_DRAFT_KIND_MAP)}", err=True)
+        raise typer.Exit(code=1)
+    stored_kind = _DRAFT_KIND_MAP[kind]
+
+    ctx = RequestContext.from_env()
+    error: str | None = None
+    result: Draft | None = None
+    # Same pattern as `check`/`job add`/`job coverage`: catch inside the `with`
+    # block so a failed call's `runs` row(s) still commit.
+    with _transaction(ctx) as conn:
+        grounding_repo = PostgresGroundingRepository(conn)
+        run_repo = PostgresRunRepository(conn)
+        job_repo = PostgresJobRepository(conn)
+        try:
+            result = generate_draft(ctx, job_repo, grounding_repo, run_repo, job_id, stored_kind)
+        except (GenerateError, GateError) as e:
+            error = str(e)
+
+        # Read open questions on the same connection regardless of outcome, same
+        # as `job coverage`.
+        open_questions = job_repo.list_open_questions(ctx.user_id, job_id)
+
+    if error is not None or result is None:
+        typer.echo(f"draft failed: {error}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(result.text)
+
+    gate_output = GateOutput.model_validate(result.gate_result)
+    typer.echo("")
+    for sentence in gate_output.sentences:
+        _print_sentence(sentence)
+    _print_summary(gate_output.sentences)
+
+    if open_questions:
+        typer.echo("\nopen questions:")
+        for q in open_questions:
+            typer.echo(f"  {q.id}  {q.question}")
 
 
 if __name__ == "__main__":

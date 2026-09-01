@@ -373,6 +373,34 @@ gap_questions = Table(
 
 
 # --------------------------------------------------------------------------
+# Generation (domain 2b-core): drafts, anchored on a job, generated from the
+# corpus and gated automatically -- see CLAUDE.md's decisions log, "The claim
+# gate runs automatically on generated text." Autonomous mode only; the
+# interactive gaps-first mode is 2b-full and not built.
+# --------------------------------------------------------------------------
+
+drafts = Table(
+    "drafts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # random: one id per draft
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("job_id", UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("text", Text, nullable=False),  # the generated draft, verbatim
+    Column("gate_result", JSONB, nullable=False),  # the parsed claim-gate output for this draft
+    # Shared with both this draft's `runs` rows (the draft call, stage='draft', and
+    # the automatic claim-gate pass, stage='baseline'), so a draft's total cost is
+    # one query: SELECT sum(cost_usd) FROM runs WHERE trace_id = drafts.trace_id.
+    Column("trace_id", UUID(as_uuid=True), nullable=False),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint("kind in ('cv_bullets','cover_letter')", name="kind"),
+    Index("ix_drafts_user_id_job_id_created_at", "user_id", "job_id", "created_at"),
+)
+
+
+# --------------------------------------------------------------------------
 # Review queue. Ambiguous cases only; clear passes and clear failures never land here.
 # --------------------------------------------------------------------------
 

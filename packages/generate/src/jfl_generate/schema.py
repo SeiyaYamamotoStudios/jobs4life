@@ -1,4 +1,4 @@
-"""Pydantic models for generation's two structured-output calls.
+"""Pydantic models for generation's structured-output calls.
 
 Field-for-field, these mirror the JSON schemas in `prompts.py`: those JSON
 schemas constrain what the model can return over the wire, these models give
@@ -61,3 +61,7 @@ class RequirementCoverageResult(BaseModel):
 
 class CoverageOutput(BaseModel):
     results: list[RequirementCoverageResult]
+
+
+class DraftOutput(BaseModel):
+    draft: str

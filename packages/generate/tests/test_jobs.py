@@ -27,6 +27,7 @@ from jfl_core.ids import content_hash, gap_question_id
 from jfl_core.ingest.gap_answers import gap_answer_span_id
 from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import (
+    Draft,
     GapQuestion,
     Job,
     JobRequirement,
@@ -128,6 +129,7 @@ class _FakeJobRepository:
         self.requirements: dict[uuid.UUID, list[JobRequirement]] = {}
         self.coverage: list[RequirementCoverage] = []
         self.questions: dict[uuid.UUID, GapQuestion] = {}
+        self.drafts: list[Draft] = []
 
     def upsert_job(self, job: Job) -> bool:
         created = job.id not in self.jobs
@@ -190,6 +192,12 @@ class _FakeJobRepository:
                 "resulting_span_id": resulting_span_id,
             }
         )
+
+    def record_draft(self, draft: Draft) -> None:
+        self.drafts.append(draft)
+
+    def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
+        return [d for d in self.drafts if d.job_id == job_id]
 
 
 def _ctx() -> RequestContext:

@@ -1,4 +1,4 @@
-"""Prompt assembly for generation's two model calls.
+"""Prompt assembly for generation's model calls.
 
 Kept short and close to default model judgement on purpose -- see CLAUDE.md,
 "How to develop the model-facing parts": no elaborate scaffolding up front,
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from jfl_core.models import Span
+from jfl_core.models import DraftKind, Job, JobRequirement, RequirementCoverage, Span
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -134,3 +134,81 @@ def build_coverage_user_message(requirements: Sequence[str]) -> str:
         f"Check corpus coverage for each of the following {len(requirements)} requirements, "
         f"in order:\n\n{numbered}"
     )
+
+
+# Kept in exact correspondence with jfl_generate.schema.DraftOutput.
+DRAFT_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "draft": {"type": "string"},
+    },
+    "required": ["draft"],
+    "additionalProperties": False,
+}
+
+_KIND_INSTRUCTIONS: dict[DraftKind, str] = {
+    "cv_bullets": (
+        "Write CV bullet points for this job application: concise, achievement-focused "
+        "bullets a candidate could add to their CV, one per line."
+    ),
+    "cover_letter": (
+        "Write a cover letter for this job application: a few short paragraphs in the "
+        "candidate's own voice, addressed to the employer."
+    ),
+}
+
+# Deliberately short -- see CLAUDE.md, "How to develop the model-facing parts": no
+# elaborate scaffolding up front, tailor from observed behaviour once there is
+# behaviour to observe. This asks the model to genuinely try to be accurate; it does
+# not try to prompt drift away (dishonest -- the claim gate exists to measure whatever
+# residual drift a genuine attempt still produces) and it does not induce drift either
+# (equally dishonest, the opposite direction).
+_DRAFT_INSTRUCTIONS = """\
+You are drafting application material for job4life, a tool that measures the distance \
+between what a candidate's corpus documents and what is claimed on their behalf. \
+{kind_instructions}
+
+Select and emphasise what the job's requirements call for. Ground every factual claim in \
+the corpus below, and do not assert anything the corpus does not support -- where the \
+corpus is silent or only partial on a requirement, either omit the claim or write around \
+it rather than inventing evidence to fill the gap.
+
+## Corpus
+
+{corpus}
+"""
+
+
+def build_draft_system_prompt(spans: Sequence[Span], kind: DraftKind) -> str:
+    return _DRAFT_INSTRUCTIONS.format(
+        kind_instructions=_KIND_INSTRUCTIONS[kind], corpus=format_corpus(spans)
+    )
+
+
+def build_draft_user_message(
+    job: Job, requirements: Sequence[JobRequirement], coverage: Sequence[RequirementCoverage]
+) -> str:
+    """The volatile half of the request -- goes in `messages`, never in `system`, so
+    a byte change here never invalidates the cached corpus prefix. Requirements are
+    paired with their latest corpus-coverage verdict (see
+    `JobRepository.latest_coverage`) so the model knows, before it writes anything,
+    which requirements the corpus can actually back.
+    """
+    coverage_by_requirement = {c.requirement_id: c for c in coverage}
+    lines = [f"Job: {job.title or '(unknown title)'} at {job.employer or '(unknown employer)'}"]
+    if job.location:
+        lines.append(f"Location: {job.location}")
+    lines.append("")
+    lines.append("Job ad:")
+    lines.append(job.raw_text)
+    lines.append("")
+    lines.append("Requirements and current corpus coverage:")
+    for i, requirement in enumerate(requirements, start=1):
+        coverage_row = coverage_by_requirement.get(requirement.id)
+        status = coverage_row.status if coverage_row else "unknown"
+        reason = coverage_row.reason if coverage_row else "(no coverage recorded)"
+        lines.append(f"{i}. [{requirement.necessity}] {requirement.text}")
+        lines.append(f"   coverage: {status} -- {reason}")
+    lines.append("")
+    lines.append("Write the draft now.")
+    return "\n".join(lines)

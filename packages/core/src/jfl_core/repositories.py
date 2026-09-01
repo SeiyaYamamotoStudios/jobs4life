@@ -11,6 +11,7 @@ import uuid
 from typing import Protocol
 
 from jfl_core.models import (
+    Draft,
     GapQuestion,
     Job,
     JobRequirement,
@@ -140,6 +141,16 @@ class JobRepository(Protocol):
         answer_text: str,
         resulting_span_id: uuid.UUID,
     ) -> None: ...
+
+    def record_draft(self, draft: Draft) -> None:
+        """Insert a draft row. Id is random (see `Draft.id`), so this is a plain
+        insert, never an upsert.
+        """
+        ...
+
+    def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
+        """Drafts for a job, most recent first."""
+        ...
 
 
 class JobSource(Protocol):

@@ -128,3 +128,25 @@ class GapQuestion(BaseModel):
     answer_text: str | None = None
     answered_at: dt.datetime | None = None
     resulting_span_id: uuid.UUID | None = None
+
+
+# --------------------------------------------------------------------------
+# Generation (domain 2b-core): a draft anchored on a job, gated automatically.
+# See CLAUDE.md's decisions log, "The claim gate runs automatically on
+# generated text." `gate_result` is `jfl_gate.schema.GateOutput.model_dump()`
+# -- kept as a plain dict here rather than typed against that model, since
+# `jfl_core` has no dependency on `jfl_gate` (core holds no HTTP/framework/
+# other-package types; see CLAUDE.md's architectural constraints).
+# --------------------------------------------------------------------------
+
+DraftKind = Literal["cv_bullets", "cover_letter"]
+
+
+class Draft(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    user_id: uuid.UUID
+    job_id: uuid.UUID
+    kind: DraftKind
+    text: str
+    gate_result: dict[str, object]
+    trace_id: uuid.UUID

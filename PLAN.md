@@ -86,8 +86,15 @@ people. Committable — that is the point of fiction.
 A script (committable, `demo/generate_results.py`) that, per candidate, ingests the
 fictional corpus under a scratch user id and runs the real pipeline for all 9
 combinations: extract → coverage → draft → gate. Saves full JSON per combination to
-`demo/fixtures/results/`. These are committable (fiction). Budget: ~$3–6; hard-stop the
-script if projected spend exceeds $8.
+`demo/fixtures/results/`. These are committable (fiction).
+
+Budget, from W1's **measured** per-call costs rather than estimates: 3 extractions
+(~$0.012 each, one per job ad, reused across candidates) + 9 coverage (~$0.157) + 9
+drafts (~$0.43, which is a draft call *and* its gate pass) ≈ **$5.30**. Hard-stop the
+script if projected spend exceeds $8. Note the draft figure is ~29% above the original
+$0.33 estimate because the draft call and the gate call sit behind different instruction
+prefixes and so cannot share a cache entry — each pays a full corpus cache write, and
+neither ever gets a cache read.
 
 - Acceptance: 9 result files, each carrying the real `runs`-style token/cost numbers so
   the demo can honestly show what a check costs; a regeneration is one command.

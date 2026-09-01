@@ -20,6 +20,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection
 
 from jfl_core.db.tables import documents as documents_table
+from jfl_core.db.tables import drafts as drafts_table
 from jfl_core.db.tables import gap_questions as gap_questions_table
 from jfl_core.db.tables import job_requirements as job_requirements_table
 from jfl_core.db.tables import jobs as jobs_table
@@ -29,6 +30,7 @@ from jfl_core.db.tables import span_sentences
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.ids import sentence_id
 from jfl_core.models import (
+    Draft,
     GapQuestion,
     Job,
     JobRequirement,
@@ -305,6 +307,18 @@ def _row_to_coverage(row: Any) -> RequirementCoverage:
     )
 
 
+def _row_to_draft(row: Any) -> Draft:
+    return Draft(
+        id=row.id,
+        user_id=row.user_id,
+        job_id=row.job_id,
+        kind=row.kind,
+        text=row.text,
+        gate_result=row.gate_result,
+        trace_id=row.trace_id,
+    )
+
+
 def _row_to_question(row: Any) -> GapQuestion:
     return GapQuestion(
         id=row.id,
@@ -528,3 +542,24 @@ class PostgresJobRepository:
                 resulting_span_id=resulting_span_id,
             )
         )
+
+    def record_draft(self, draft: Draft) -> None:
+        self._conn.execute(
+            insert(drafts_table).values(
+                id=draft.id,
+                user_id=draft.user_id,
+                job_id=draft.job_id,
+                kind=draft.kind,
+                text=draft.text,
+                gate_result=draft.gate_result,
+                trace_id=draft.trace_id,
+            )
+        )
+
+    def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
+        stmt = (
+            select(drafts_table)
+            .where(drafts_table.c.user_id == user_id, drafts_table.c.job_id == job_id)
+            .order_by(drafts_table.c.created_at.desc())
+        )
+        return [_row_to_draft(row) for row in self._conn.execute(stmt).all()]
