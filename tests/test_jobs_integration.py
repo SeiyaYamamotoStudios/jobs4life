@@ -11,8 +11,10 @@ from __future__ import annotations
 import datetime
 import os
 import uuid
+from pathlib import Path
 
 import pytest
+from jfl_core.context import RequestContext
 from jfl_core.db.tables import requirement_coverage as requirement_coverage_table
 from jfl_core.db.tables import users
 from jfl_core.ids import (
@@ -22,8 +24,15 @@ from jfl_core.ids import (
     job_id,
     requirement_id,
 )
+from jfl_core.ingest.gap_answers import gap_answer_span_id
+from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import GapQuestion, Job, JobRequirement, RequirementCoverage, Span
-from jfl_core.storage.postgres import PostgresGroundingRepository, PostgresJobRepository
+from jfl_core.storage.postgres import (
+    PostgresGroundingRepository,
+    PostgresIngestRepository,
+    PostgresJobRepository,
+)
+from jfl_generate.jobs import answer_question
 from sqlalchemy import create_engine, insert
 from sqlalchemy.engine import Connection
 
@@ -355,6 +364,12 @@ def test_gap_question_upsert_refreshes_text_while_open(
 def test_gap_question_upsert_never_overwrites_an_answered_row(
     conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository
 ) -> None:
+    """Uses `add_adjudicated_span` directly to get an answered row on the
+    board quickly -- that repository method is not what `jfl answer` uses any
+    more (see "the answer path" section below), but it remains the write path
+    for the unbuilt review-items flow, so exercising it here is still real
+    coverage, not a stand-in for a path this test isn't actually testing.
+    """
     job = _job(user)
     job_repo.upsert_job(job)
     requirements = _requirements(user, job, ["Python"])
@@ -409,15 +424,22 @@ def test_gap_question_upsert_never_overwrites_an_answered_row(
     assert job_repo.list_open_questions(user, job.id) == []
 
 
-# --- the whole loop: answer feeds back into the corpus ---------------------------
+# --- add_adjudicated_span repository mechanics (review-items flow, not `jfl answer`) ---
 
 
 def test_answered_gap_question_span_is_visible_to_the_next_coverage_check(
     conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository
 ) -> None:
-    """Not a model call -- just the DB-level proof that the loop is wired:
-    after answering, the new span is part of what `all_spans` (what the next
-    coverage call reads) returns.
+    """Not a model call -- just the DB-level proof that `add_adjudicated_span`
+    plus `mark_question_answered` wire together correctly: the new span shows
+    up in `all_spans` (what the next coverage call reads).
+
+    This is repository-mechanics coverage for the still-present
+    `add_adjudicated_span` path, kept for the unbuilt review-items flow (see
+    CLAUDE.md's decisions log, "A gap answer lands in corpus markdown, not the
+    database"). `jfl answer` itself no longer calls this method -- see
+    `test_answer_question_writes_to_markdown_and_ingests_a_document_span`
+    below for that path.
     """
     job = _job(user)
     job_repo.upsert_job(job)
@@ -460,3 +482,102 @@ def test_answered_gap_question_span_is_visible_to_the_next_coverage_check(
     assert after[0].id == span_id
     assert after[0].text == answer_text
     assert after[0].provenance == "adjudicated"
+
+
+# --- the answer path: jfl_generate.jobs.answer_question against live Postgres ----
+
+
+def _ctx(user_id: uuid.UUID) -> RequestContext:
+    return RequestContext(user_id=user_id, anthropic_api_key=None, database_url="unused-in-tests")
+
+
+def test_answer_question_writes_to_markdown_and_ingests_a_document_span(
+    conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository, tmp_path: Path
+) -> None:
+    """The real `jfl answer` path, end to end against live Postgres: the
+    question moves to `answered`, `resulting_span_id` points at a real
+    `provenance='document'` span row (not `adjudicated`), and the fact lives
+    in `corpus/answered-questions.md` where the author can read, edit, or
+    delete it.
+    """
+    job = _job(user)
+    job_repo.upsert_job(job)
+    requirements = _requirements(user, job, ["Kubernetes"])
+    job_repo.replace_requirements(user, job.id, requirements)
+
+    qid = gap_question_id(requirements[0].id)
+    job_repo.upsert_gap_question(
+        GapQuestion(
+            id=qid,
+            user_id=user,
+            requirement_id=requirements[0].id,
+            question="Have you operated Kubernetes in production?",
+        )
+    )
+
+    ingest_repo = PostgresIngestRepository(conn)
+    grounding_repo = PostgresGroundingRepository(conn)
+    answer_text = "I ran a production Kubernetes cluster for two years at Acme."
+
+    span_id = answer_question(
+        _ctx(user), ingest_repo, job_repo, qid, answer_text, corpus_dir=tmp_path
+    )
+
+    # The markdown file gained the fact, verbatim.
+    content = (tmp_path / "answered-questions.md").read_text(encoding="utf-8")
+    assert f"- {answer_text}" in content
+    assert span_id == gap_answer_span_id(user, answer_text)
+
+    # The question moved to answered, pointing at that span.
+    fetched = job_repo.get_question(user, qid)
+    assert fetched is not None
+    assert fetched.status == "answered"
+    assert fetched.resulting_span_id == span_id
+
+    # A real span row exists, document-provenance, and it is the only one --
+    # no adjudicated span was created by this path.
+    spans = grounding_repo.all_spans(user)
+    matching = [s for s in spans if s.id == span_id]
+    assert len(matching) == 1
+    assert matching[0].provenance == "document"
+    assert matching[0].text == answer_text
+    assert all(s.provenance != "adjudicated" for s in spans)
+
+
+def test_answer_question_reingest_is_idempotent(
+    conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository, tmp_path: Path
+) -> None:
+    """Re-running `jfl ingest` after an answer must not duplicate the span --
+    content-addressed ids make the second pass a pure no-op."""
+    job = _job(user)
+    job_repo.upsert_job(job)
+    requirements = _requirements(user, job, ["Kubernetes"])
+    job_repo.replace_requirements(user, job.id, requirements)
+
+    qid = gap_question_id(requirements[0].id)
+    job_repo.upsert_gap_question(
+        GapQuestion(
+            id=qid,
+            user_id=user,
+            requirement_id=requirements[0].id,
+            question="Have you operated Kubernetes in production?",
+        )
+    )
+
+    ingest_repo = PostgresIngestRepository(conn)
+    grounding_repo = PostgresGroundingRepository(conn)
+    answer_question(
+        _ctx(user),
+        ingest_repo,
+        job_repo,
+        qid,
+        "I ran a production Kubernetes cluster for two years at Acme.",
+        corpus_dir=tmp_path,
+    )
+    before = {s.id for s in grounding_repo.all_spans(user)}
+
+    summary = run_ingestion(_ctx(user), ingest_repo, corpus_dir=tmp_path)
+
+    after = {s.id for s in grounding_repo.all_spans(user)}
+    assert summary.spans_created == 0
+    assert after == before

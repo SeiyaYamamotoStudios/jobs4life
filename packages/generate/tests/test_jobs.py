@@ -4,17 +4,28 @@ calls (`extract_requirements`, `check_coverage`) are monkeypatched directly
 rather than faking the Anthropic client a second time; that plumbing is
 already covered by test_extract.py and test_coverage.py. Repositories are
 trivial in-memory stand-ins for the Protocols in jfl_core.repositories.
+
+`answer_question` writes through a real filesystem (a tmp_path corpus_dir) and
+a real `run_ingestion`/`parse_document` pass rather than a fake parser -- the
+whole point of that path is that the id it stores is the one ingestion
+actually produces, and faking the parser would hide a drift between the two.
+Only the repositories are faked. See packages/core/tests/test_gap_answers.py
+for the append/id-formula properties this module leans on (idempotency,
+verbatim preservation) -- they are not re-derived here.
 """
 
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import anthropic
 import jfl_generate.jobs as jobs_module
 import pytest
 from jfl_core.context import RequestContext
-from jfl_core.ids import adjudicated_span_id_from_answer, content_hash, gap_question_id
+from jfl_core.ids import content_hash, gap_question_id
+from jfl_core.ingest.gap_answers import gap_answer_span_id
+from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import (
     GapQuestion,
     Job,
@@ -58,6 +69,45 @@ class _FakeGroundingRepo:
         self.added.append(span)
         self._spans.append(span)
         return span.id
+
+
+class _FakeIngestRepository:
+    """In-memory stand-in for `IngestRepository`, enough to let a real
+    `run_ingestion` pass over a real tmp_path corpus_dir without a database.
+    """
+
+    def __init__(self) -> None:
+        self.documents: dict[uuid.UUID, str] = {}  # id -> content_hash
+        self.spans: dict[uuid.UUID, Span] = {}
+
+    def upsert_document(
+        self,
+        user_id: uuid.UUID,
+        document_id: uuid.UUID,
+        source_uri: str,
+        title: str | None,
+        content_hash: str,
+    ) -> bool:
+        created = document_id not in self.documents
+        self.documents[document_id] = content_hash
+        return created
+
+    def upsert_span(self, span: Span) -> bool:
+        created = span.id not in self.spans
+        self.spans[span.id] = span
+        return created
+
+    def retire_missing_documents(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
+        retired = [i for i in self.documents if i not in seen]
+        for i in retired:
+            del self.documents[i]
+        return len(retired)
+
+    def retire_missing_spans(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
+        retired = [i for i, s in self.spans.items() if s.provenance == "document" and i not in seen]
+        for i in retired:
+            del self.spans[i]
+        return len(retired)
 
 
 class _FakeRunRepo:
@@ -329,36 +379,49 @@ def test_run_coverage_raises_for_a_job_with_no_requirements() -> None:
 
 
 # --- answer_question -------------------------------------------------------------
+#
+# These write through a real corpus_dir (tmp_path) and a real run_ingestion pass --
+# see the module docstring for why the parser is not faked here.
 
 
-def test_answer_question_writes_a_verbatim_adjudicated_span_with_no_model_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fail_if_model_called(monkeypatch)
-
-    job_repo = _FakeJobRepository()
+def _open_question(
+    job_repo: _FakeJobRepository, question_text: str = "Have you led a migration?"
+) -> GapQuestion:
     requirement_id = uuid.uuid4()
     question = GapQuestion(
         id=gap_question_id(requirement_id),
         user_id=USER,
         requirement_id=requirement_id,
-        question="Have you led a migration?",
+        question=question_text,
     )
     job_repo.questions[question.id] = question
+    return question
 
-    grounding = _FakeGroundingRepo()
+
+def test_answer_question_appends_to_markdown_and_writes_a_document_span_with_no_model_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fail_if_model_called(monkeypatch)
+
+    job_repo = _FakeJobRepository()
+    ingest_repo = _FakeIngestRepository()
+    question = _open_question(job_repo)
     answer_text = "I led the Q3 database migration and was on-call for the cutover."
 
-    span_id = jobs_module.answer_question(_ctx(), grounding, job_repo, question.id, answer_text)
+    span_id = jobs_module.answer_question(
+        _ctx(), ingest_repo, job_repo, question.id, answer_text, corpus_dir=tmp_path
+    )
 
-    assert span_id == adjudicated_span_id_from_answer(USER, answer_text, question.id)
-    assert len(grounding.added) == 1
-    span = grounding.added[0]
+    # The markdown file, not the database, is what gained the fact.
+    content = (tmp_path / "answered-questions.md").read_text(encoding="utf-8")
+    assert f"- {answer_text}" in content
+
+    # Ingestion turned that line into a normal, document-provenance span.
+    assert span_id == gap_answer_span_id(USER, answer_text)
+    assert span_id in ingest_repo.spans
+    span = ingest_repo.spans[span_id]
     assert span.text == answer_text  # stored word-for-word, no rewriting
-    assert span.provenance == "adjudicated"
-    assert span.kind == "paragraph"
-    assert span.section_path == "Answered questions"
-    assert span.document_id is None
+    assert span.provenance == "document"
 
     stored = job_repo.questions[question.id]
     assert stored.status == "answered"
@@ -366,18 +429,49 @@ def test_answer_question_writes_a_verbatim_adjudicated_span_with_no_model_call(
     assert stored.resulting_span_id == span_id
 
 
+def test_answer_question_never_writes_an_adjudicated_span(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`add_adjudicated_span` belongs to the unbuilt review-items flow now --
+    this path must never call it, and never produce a provenance='adjudicated'
+    row for a gap answer.
+    """
+    _fail_if_model_called(monkeypatch)
+
+    job_repo = _FakeJobRepository()
+    ingest_repo = _FakeIngestRepository()
+    question = _open_question(job_repo)
+
+    jobs_module.answer_question(
+        _ctx(),
+        ingest_repo,
+        job_repo,
+        question.id,
+        "I own the on-call rotation.",
+        corpus_dir=tmp_path,
+    )
+
+    assert all(s.provenance == "document" for s in ingest_repo.spans.values())
+
+
 def test_answer_question_raises_for_a_question_that_does_not_exist(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _fail_if_model_called(monkeypatch)
     with pytest.raises(GenerateError):
         jobs_module.answer_question(
-            _ctx(), _FakeGroundingRepo(), _FakeJobRepository(), uuid.uuid4(), "answer"
+            _ctx(),
+            _FakeIngestRepository(),
+            _FakeJobRepository(),
+            uuid.uuid4(),
+            "answer",
+            corpus_dir=tmp_path,
         )
+    assert not (tmp_path / "answered-questions.md").exists()  # nothing written on failure
 
 
 def test_answer_question_raises_for_an_already_answered_question(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _fail_if_model_called(monkeypatch)
 
@@ -395,5 +489,73 @@ def test_answer_question_raises_for_an_already_answered_question(
 
     with pytest.raises(GenerateError, match="already"):
         jobs_module.answer_question(
-            _ctx(), _FakeGroundingRepo(), job_repo, question.id, "a new answer"
+            _ctx(),
+            _FakeIngestRepository(),
+            job_repo,
+            question.id,
+            "a new answer",
+            corpus_dir=tmp_path,
         )
+    assert not (tmp_path / "answered-questions.md").exists()  # nothing written on failure
+
+
+def test_answering_the_same_question_twice_does_not_duplicate_the_line_or_span(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The normal path blocks a literal second call once the question is
+    `answered` (see the test above) -- this exercises the lower-level
+    guarantee directly: calling the write-back twice with the same text is a
+    no-op the second time, regardless of what gates it at the question level.
+    """
+    _fail_if_model_called(monkeypatch)
+
+    job_repo = _FakeJobRepository()
+    ingest_repo = _FakeIngestRepository()
+    question = _open_question(job_repo)
+    answer_text = "I led the Q3 database migration and was on-call for the cutover."
+
+    first_id = jobs_module.answer_question(
+        _ctx(), ingest_repo, job_repo, question.id, answer_text, corpus_dir=tmp_path
+    )
+
+    # Simulate a retry after the question row's own update never committed --
+    # the append + ingest steps run again with the question still "open".
+    job_repo.questions[question.id] = job_repo.questions[question.id].model_copy(
+        update={"status": "open"}
+    )
+    second_id = jobs_module.answer_question(
+        _ctx(), ingest_repo, job_repo, question.id, answer_text, corpus_dir=tmp_path
+    )
+
+    assert first_id == second_id
+    content = (tmp_path / "answered-questions.md").read_text(encoding="utf-8")
+    assert content.count(answer_text) == 1
+    assert sum(1 for s in ingest_repo.spans.values() if s.text == answer_text) == 1
+
+
+def test_reingesting_after_an_answer_is_a_no_op(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Acceptance criterion: re-running `jfl ingest` after an answer must not
+    create or duplicate anything -- content-addressed ids make the second pass
+    a pure no-op.
+    """
+    _fail_if_model_called(monkeypatch)
+
+    job_repo = _FakeJobRepository()
+    ingest_repo = _FakeIngestRepository()
+    question = _open_question(job_repo)
+    jobs_module.answer_question(
+        _ctx(),
+        ingest_repo,
+        job_repo,
+        question.id,
+        "I led the Q3 database migration.",
+        corpus_dir=tmp_path,
+    )
+    spans_after_answer = dict(ingest_repo.spans)
+
+    summary = run_ingestion(_ctx(), ingest_repo, corpus_dir=tmp_path)
+
+    assert summary.spans_created == 0  # nothing new
+    assert ingest_repo.spans.keys() == spans_after_answer.keys()

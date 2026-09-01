@@ -17,6 +17,10 @@ import typer
 from jfl_core.context import RequestContext
 from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import Job, JobRequirement, RequirementCoverage
+
+# PostgresIngestRepository backs `ingest` and `answer` -- the gap-answer write-back
+# re-ingests the corpus, it never writes a grounding span directly. See CLAUDE.md's
+# decisions log, "A gap answer lands in corpus markdown, not the database."
 from jfl_core.storage.postgres import (
     PostgresGroundingRepository,
     PostgresIngestRepository,
@@ -338,10 +342,10 @@ def answer(
     # Same pattern as `check`/`job add`: catch inside the `with` block so a
     # failure still commits whatever it needs to.
     with _transaction(ctx) as conn:
-        grounding_repo = PostgresGroundingRepository(conn)
+        ingest_repo = PostgresIngestRepository(conn)
         job_repo = PostgresJobRepository(conn)
         try:
-            span_id = answer_question(ctx, grounding_repo, job_repo, question_id, answer_text)
+            span_id = answer_question(ctx, ingest_repo, job_repo, question_id, answer_text)
         except GenerateError as e:
             error = str(e)
 
