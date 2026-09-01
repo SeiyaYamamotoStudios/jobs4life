@@ -41,27 +41,18 @@ fixtures. Every defect that mattered was found that way and none by review.
 
 ## Next
 
-1. **Decide where an answered gap question lands.** CLAUDE.md says "corpus markdown is the
-   source of truth; the database is a rebuildable index over it". `jfl answer` currently
-   writes an `adjudicated` span straight to Postgres, so that invariant is false the
-   moment anyone answers a question -- and the fact exists nowhere the author can read,
-   edit or correct. Recommendation: append to `corpus/answered-questions.md` and
-   re-ingest instead. It must be one or the other, never both: the same text ingested as
-   a document span and written as an adjudicated span gets two different ids and the gate
-   sees the fact twice.
-2. **Slice 2b -- drafting behind the claim gate.** CV bullets, cover letters, free-text
-   answers, both interaction modes. See the generation section in CLAUDE.md for the
-   agreed shape. `packages/generate` already depends on nothing that blocks this, and
-   `packages/cli` exists so `jfl_generate` can import `jfl_gate` without a cycle.
-3. **Run the full eval** (210 items, ~$4.44) when there is credit. It is now the only way
-   to measure the framing prompt change made at the end of this session, which is
-   unverified and pushes in the direction that risks over-flagging.
-4. **Sent-document store.** The 33 CVs belong in `sent_documents`/`sent_spans` for
-   structure and consistency comparison. Never in grounding -- the tables deliberately
-   share no FK path with the corpus.
+**Follow `PLAN.md`** -- the full sequencing to the September deliverable (hosted
+pre-computed demo + measured eval numbers), written 2026-09-01, with fences, budgets and
+acceptance criteria per workstream. Order: W0 gap-answers-to-markdown, W1 slice 2b-core
+drafting behind the claim gate, W2 demo fiction (parallel), W3 demo results generation
+(needs ~$15 credit top-up), W4 the demo page, W5 the full eval run. W6 (local web UI +
+job queue) is stretch only. The decisions behind it -- demo/product split, the corpus
+never leaving this machine in v1, the 2b split, answers landing in markdown -- are in
+CLAUDE.md's decisions log under 2026-09-01.
 
-Filling gaps in the author's own corpus is **not** on this list, deliberately. See the
-decisions log: it produces no code and does by hand what slice 2a automates.
+The sent-document store moved into 2b-full (deferred). Filling gaps in the author's own
+corpus remains deliberately off the list: it produces no code and does by hand what
+slice 2a automates.
 
 ## Measurements worth not re-deriving
 

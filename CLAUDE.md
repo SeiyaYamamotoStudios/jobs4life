@@ -147,6 +147,44 @@ sections.
 embedding interface stay in place but nothing writes to them. Revisit if the corpus
 outgrows the context window.
 
+**2026-09-01 — Demo and product split; the corpus never leaves the owner's machine in
+v1.** The public page at `hiltonlabs.org/job4life` is a pre-computed demo over fictional
+material: a small matrix of fictional candidates × job ads, results produced by the real
+pipeline and committed as fixtures. The live tool stays local — CLI now, a localhost web
+UI later. Three reasons. The verification record is a liability document by design (its
+most valuable section is a list of stated boundaries), and its protection is that it
+never leaves this machine. A public model-calling page is an unmetered $0.27 per click.
+And the standing "no auth in v1" decision stays true instead of being overridden. When
+remote access is ever actually needed, gate at the edge with Cloudflare Access — no
+in-app OAuth until real multi-user. Demo fixtures are fiction and therefore committable;
+they are not golden-set items, so the synthetic-data prohibition does not apply to them —
+but every result the demo shows **must be produced by the real pipeline, never
+hand-written**: the page claims "this is what the tool outputs," and that claim must be
+true.
+
+**2026-09-01 — A gap answer lands in corpus markdown, not the database.** `jfl answer`
+appends the user's words to `corpus/answered-questions.md` and re-ingests; the resulting
+span is `provenance='document'` like any other corpus fact, recorded in
+`gap_questions.resulting_span_id`. This restores "markdown is the source of truth; the
+database is a rebuildable index" — which the direct adjudicated-span write had silently
+broken — and makes every answer a plain-text line the author can read, edit, and delete.
+In a truthfulness tool, "I can't find or fix the fact you recorded about me" is
+disqualifying. Never both paths for one fact: two span ids for the same text means the
+gate sees it twice. `add_adjudicated_span` remains only for the unbuilt review-items
+flow; revisit when that is built.
+
+**2026-09-01 — Slice 2b is split; September needs only the core.** 2b-core: job → draft
+(CV bullets, cover letter) → automatic claim-gate pass → per-sentence verdicts,
+autonomous mode only — the gate output *is* the question list, per the generation
+design. 2b-full (later): interactive gaps-first mode, sent-document-store voice and
+form influence, free-text answers. 2b-core uses the corpus alone as input, so the
+form-never-truth ratchet holds trivially.
+
+**2026-09-01 — The September deliverable is the demo page plus the measured number.**
+A hosted pre-computed demo showing the distance, and the 210-item eval's over-claim and
+over-flag rates, honestly caveated. Execution plan, sequencing, budgets and fences live
+in `PLAN.md`.
+
 ## Vocabulary — two different gates, never say "gate" alone
 
 This collision has cost real time. Always use the qualified name.
@@ -255,15 +293,14 @@ same write-back path.
 
 - **Done** — schema, corpus ingestion, the baseline claim gate end to end. Whole corpus
   in context, single call, verdict out, `runs` row written. CLI only.
-- **Now, slice 2a** — job entity from a pasted ad, requirement extraction, per-requirement
-  corpus coverage, gap questions, verbatim `adjudicated` write-back. No drafting yet: this
-  produces a coverage report, which is the honest-fit number the thesis is about and the
-  input drafting needs.
-- **Now, alongside 2a** — the deterministic rule tier in the claim gate, narrowed as the
-  decisions log describes. Independent of generation, so it runs in parallel.
-- **Next, slice 2b** — drafting behind the claim gate: CV bullets, cover letters,
-  free-text answers, both interaction modes. Sent-document store for structure and
-  consistency.
+- **Done** — slice 2a: job entity from a pasted ad, requirement extraction,
+  per-requirement corpus coverage, gap questions, verbatim answer write-back. The rule
+  tier, the Inspect harness and the FEVER tier-1 golden set.
+- **Now** — `PLAN.md` end to end: gap answers to markdown, slice 2b-core (drafting
+  behind the claim gate, autonomous mode), the demo fixtures and hosted demo page, the
+  full eval run.
+- **Then** — 2b-full (interactive mode, sent-document store), local web UI with the job
+  queue the ~2-minute gate latency demands.
 - **Then** — intake with pluggable sources, deterministic prompt filter, unmeasured fit
   scoring.
 - **Later** — FastAPI and browser UI, MCP server, accounts, education planning, the rest.
