@@ -26,8 +26,11 @@ fixtures. Every defect that mattered was found that way and none by review.
 - `set -a; source .env; set +a` -- holds `JFL_DATABASE_URL` and `ANTHROPIC_API_KEY`.
   Never export the key globally: it silently shadows any `ant auth login` profile.
 - API credit is separate from a Claude subscription and is **nearly exhausted** -- of the
-  $5 added, roughly $4 is spent. A gate run over a whole CV is ~$0.26. Check with:
+  $5 added, roughly $3.50 is spent, so ~$1.50 remains. A gate run over a whole CV is
+  ~$0.27 at steady state. Check with:
   `select component, stage, count(*), sum(cost_usd) from runs group by 1,2;`
+  That query returns ~$1.18, which is a **lower bound**: measurement scripts and the eval
+  harness use in-memory repositories and spend invisibly (see "known to be wrong").
 - `corpus/` and `analysis/` are gitignored and hold real career detail. Back `corpus/` up
   somewhere private: the database is a rebuildable index over it, so losing the markdown
   loses the source.
@@ -65,11 +68,18 @@ decisions log: it produces no code and does by hand what slice 2a automates.
 From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 
 - **Output tokens are ~92% of a check's cost.** Corpus caching had already optimised the
-  input side. Dropping the echoed sentence text for an index cut ~21.7%.
-- **`effort` is not a usable lever.** `low` saves 13.7% ex-cache but moved 2 sentences
-  from `claim` to `framing` and 3 verdicts from `review` to `supported`; `medium` moved 1
-  into `framing`. Worse, **changing `effort` invalidates the prompt cache** -- all three
-  runs showed `cache_read=0` and a full `cache_write`. Leave it at the default.
+  input side. Dropping the echoed sentence text for an index cut output tokens 27.9%
+  (13230 -> 9546 on the same document at the same effort), ~21% cheaper at steady state.
+  Controlled A/B, same CV, same effort, wire format the only variable.
+- **`effort` was measured and left at the default `high`.** `low` saves only 15% of
+  output tokens and `medium` 2%, against a risk that could not be ruled out: 2 of 85
+  claims were misclassified as `framing` at `low` and 1 at `medium`. **Do not read that
+  as proof effort causes it** -- the control run at `high` showed 2 as well, and with one
+  document and one call per configuration, effort and sampling noise are not separable.
+  The savings were too small to be worth the uncertainty, not the risk proven.
+- **Changing `effort` invalidates the prompt cache.** All four runs showed `cache_read=0`
+  and a full `cache_write`. So varying effort per call in production would destroy corpus
+  caching, which costs more than any effort saving returns.
 - **The two heuristic rules in the tier do not earn their place.** On real claims the
   unsourced-number rule fired 7/68 and escalated nothing; boundary-contact fired 35/68
   and escalated nothing. Across 32 CVs the boundary variants fire on 1.1%-54.7% of
