@@ -40,7 +40,21 @@ from jfl_gate.schema import GateOutput, SentenceResult
 # generated, so the headroom costs nothing when the document is short.
 MAX_TOKENS = 64000
 
-# PLACEHOLDER -- set from measurement below, see analysis/gate-runs/.
+# Left at the SDK default. Measured low/medium/high on one real CV (85 sentences,
+# see analysis/gate-runs/A_index_low.json, B_index_medium.json, C_index_high.json):
+# framing was never wrongly flagged at any level (the one hard disqualifier), and
+# output tokens only fell 15% at low / 2% at medium vs high -- a small saving next
+# to what the index-vs-text wire format below already buys. Against that: at low
+# effort, 2 of 85 claim sentences ("led the X team for Y") were misclassified as
+# *framing* -- not merely a verdict change, but exempting a real claim from
+# grounding entirely, which is a more dangerous failure than any verdict shift.
+# Medium showed one such case; a second high-effort run (different wire format,
+# same effort) also showed two, so this reads as ordinary sampling noise on
+# borderline sentences rather than something `effort` reliably fixes -- but with
+# one document and one call per level, that can't be told apart from a real
+# effort effect, and the token savings on the table are too small to bet on the
+# distinction. Not taking this lever; revisit with a larger sample if the
+# doc-length ceiling (MAX_TOKENS) ever forces the question.
 EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "high"
 
 Outcome = Literal["ok", "error", "refused", "skipped"]
