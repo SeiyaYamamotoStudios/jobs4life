@@ -1,0 +1,49 @@
+Senior Backend Engineer, Payments Platform
+Ledgerbridge Financial - Remote (UK/EU)
+
+About Ledgerbridge
+
+Ledgerbridge Financial builds settlement infrastructure for mid-sized merchants across
+Europe. We process a lot of money on behalf of businesses who need to trust that it
+moves correctly, every time. Our platform team owns everything from card-network
+integration to nightly settlement, and we're growing it.
+
+The role
+
+We're looking for a Senior Backend Engineer to join our Payments Platform team. You'll
+work on the systems that move money between merchants, card networks, and banks, and
+you'll be one of the people the rest of engineering leans on when a payment doesn't
+reconcile. This is a hands-on engineering role, not a management track.
+
+What you'll do
+
+- Design and build services in the core settlement and reconciliation path
+- Take ownership of at least one production service end to end
+- Be part of the on-call rotation for payment-critical systems
+- Work closely with the risk and compliance teams on how we handle sensitive data
+- Help less experienced engineers on the team grow
+
+What you'll need
+
+- 5+ years building backend services in Go, Java, or a similar statically typed language
+- Experience with Kafka or a comparable message broker in production
+- Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the
+  one formally responsible for it
+- On-call experience for production systems where money is on the line
+- Experience mentoring other engineers
+- A strong communicator who can explain a tricky bug to someone outside the team
+
+Nice to have
+
+- Prior experience at a fintech, payments, or banking company
+- Rust experience
+- Experience managing a team's infrastructure or cloud budget
+- Conference speaking experience
+- Comfortable working in a company with 200+ engineers
+
+Benefits & perks
+
+Competitive salary and equity, private health cover, 28 days holiday plus bank
+holidays, a home office stipend, and a genuinely flexible remote-first culture.
+Ledgerbridge Financial is an equal opportunity employer and welcomes applicants
+regardless of background.

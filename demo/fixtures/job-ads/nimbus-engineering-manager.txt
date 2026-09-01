@@ -1,0 +1,49 @@
+Engineering Manager, Platform Team
+Nimbus Cloudworks - Hybrid (Berlin) or Remote (EU)
+
+Who we are
+
+Nimbus Cloudworks makes the internal developer platform that other companies build
+their own platforms on top of. Our Platform team is the backbone of the engineering
+org: deployment tooling, on-call standards, and the infrastructure everyone else
+depends on to ship.
+
+The role
+
+We're hiring an Engineering Manager to lead our Platform team through its next phase
+of growth. You'll manage a small group of backend engineers, own the team's roadmap
+and budget, and be the person who represents platform concerns when the rest of the
+company is planning. We want someone who has been a hands-on engineer before and
+still remembers what that's like.
+
+What you'll own
+
+- Directly managing a team of software engineers: hiring, growth, and performance
+- The team's budget for cloud infrastructure spend
+- Running incident response and postmortems when platform services go down
+- Representing the team in quarterly cross-org planning
+- Setting the team's technical roadmap in partnership with senior engineers
+
+What we're looking for
+
+- 3+ years directly managing a team of software engineers, including hiring and
+  performance reviews
+- Experience owning a team budget, not just contributing estimates to one
+- A background as a hands-on software engineer before moving into management
+- Experience running incident response and postmortems for production outages
+- Comfortable representing the team in cross-org planning conversations
+- Genuinely good at giving feedback that people can act on
+
+Nice to have
+
+- Experience in a regulated industry such as payments or healthcare
+- Familiarity with Kubernetes or a comparable orchestration platform
+- Experience scaling a team from a handful of engineers to a larger one
+- Public speaking or conference experience
+- Experience setting a company-wide technical strategy, not just a team one
+
+What we offer
+
+Competitive compensation, a relocation package if you need one, generous parental
+leave, and a team that has been through an incident or two together. Nimbus
+Cloudworks is committed to building a diverse and inclusive team.

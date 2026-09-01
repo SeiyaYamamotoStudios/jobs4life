@@ -1,0 +1,48 @@
+Machine Learning Engineer - Perception
+Solstice Vision Labs - Onsite (Toronto) preferred, remote considered for senior candidates
+
+About us
+
+Solstice Vision Labs builds computer vision systems for autonomous inspection robots
+used in warehouses and light manufacturing. Our perception stack has to work on
+real, messy hardware in the field, not just in a notebook.
+
+The role
+
+We're looking for a Machine Learning Engineer to join our Perception team. You'll work
+across the full lifecycle of our vision models: collecting and labeling data, training,
+and getting models running reliably on the robot's onboard compute. This is a
+production-focused role - we care more about a model that runs correctly on the robot
+than one that looks good on a benchmark.
+
+Responsibilities
+
+- Build and improve computer vision models used in production on our robots
+- Work with our data annotation pipeline to decide what gets labeled next
+- Get models running within the memory and latency limits of embedded hardware
+- Debug production failures back to a root cause, whether that's data, model, or camera
+- Collaborate with hardware engineers on camera placement and calibration
+
+What you'll need
+
+- Hands-on experience building and deploying computer vision models to a production
+  system, not only research or coursework
+- Strong Python skills; C++ experience is a plus for the embedded-deployment side
+- Experience with PyTorch or a comparable deep learning framework
+- Experience working with a data annotation or labeling pipeline
+- Comfortable working within hardware constraints such as edge or embedded deployment
+
+Nice to have
+
+- Peer-reviewed publications or patents related to computer vision or robotics
+- Experience mentoring junior scientists or engineers
+- Prior robotics industry experience
+- Experience helping set technical research direction for a team, not just executing it
+- Familiarity with backend or cloud infrastructure, for teams that also ship a
+  cloud-connected fleet dashboard
+
+Compensation & benefits
+
+Salary band posted per local pay transparency requirements, equity, health benefits,
+and relocation assistance for candidates moving to Toronto. Solstice Vision Labs is
+an equal opportunity employer.
