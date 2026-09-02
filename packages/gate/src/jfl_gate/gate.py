@@ -24,8 +24,8 @@ from jfl_core.models import RunRecord
 from jfl_core.repositories import GroundingRepository, RunRepository
 
 from jfl_gate.input import BULLET_START
-from jfl_gate.pricing import MODEL, compute_cost_usd
-from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_prompt, build_user_message
+from jfl_gate.pricing import compute_cost_usd
+from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_blocks, build_user_message
 from jfl_gate.rules import apply_rules
 from jfl_gate.schema import GateOutput, SentenceResult
 
@@ -145,10 +145,24 @@ def check_text(
     grounding_repo: GroundingRepository,
     run_repo: RunRepository,
     text: str,
+    *,
+    shared_corpus: bool = True,
 ) -> GateOutput:
     """Run the baseline gate over `text`. Always writes exactly one `runs` row --
     on success, on an API error, and on a refusal alike -- before returning or
     raising.
+
+    `shared_corpus` describes the workload, and only moves the cache breakpoint.
+    True (the default, and the real product) means many calls run against one
+    user's corpus, so the corpus belongs inside the cached prefix. False means
+    every call carries a *different* corpus -- the eval harness, where each
+    golden item has its own few-hundred-token evidence set -- and caching the
+    corpus writes an entry that is never read. There the breakpoint goes on the
+    instructions instead, which are byte-identical across items: written once,
+    read thereafter, with the per-item corpus billed as ordinary input.
+
+    The rendered prompt text is the same either way, so this cannot change a
+    verdict -- see the byte-identity tests in `tests/test_prompt.py`.
     """
     sentences = sentences_from_text(text)
     if not sentences:
@@ -157,7 +171,7 @@ def check_text(
     # All non-retired spans, both provenances: `all_spans` defaults to excluding
     # retired ones, and does not filter by provenance at all.
     spans = grounding_repo.all_spans(ctx.user_id)
-    system_prompt = build_system_prompt(spans)
+    system_blocks = build_system_blocks(spans, cache="corpus" if shared_corpus else "instructions")
     user_message = build_user_message(sentences)
 
     # An explicit key from the context wins. With no key, hand the SDK a bare
@@ -183,18 +197,12 @@ def check_text(
         # partial output, but a request with MAX_TOKENS this high is rejected outright
         # unless it streams.
         with client.messages.stream(
-            model=MODEL,
+            model=ctx.model,
             max_tokens=MAX_TOKENS,
             # Stable prefix (instructions + corpus) in `system`, cached; the
             # sentences under test go in `messages` below, never in this block --
             # any byte of volatile content here would invalidate the cache.
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
+            system=system_blocks,
             messages=[{"role": "user", "content": user_message}],
             output_config={
                 "format": {"type": "json_schema", "schema": GATE_OUTPUT_SCHEMA},
@@ -237,7 +245,7 @@ def check_text(
                 trace_id=ctx.trace_id,
                 component="gate",
                 stage="baseline",
-                model=MODEL,
+                model=ctx.model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cache_read_tokens=cache_read_tokens,
@@ -260,7 +268,9 @@ def check_text(
     tokens_out = usage.output_tokens
     cache_read_tokens = usage.cache_read_input_tokens or 0
     cache_write_tokens = usage.cache_creation_input_tokens or 0
-    cost_usd = compute_cost_usd(tokens_in, tokens_out, cache_read_tokens, cache_write_tokens)
+    cost_usd = compute_cost_usd(
+        ctx.model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens
+    )
 
     if response.stop_reason == "refusal":
         category = response.stop_details.category if response.stop_details else None

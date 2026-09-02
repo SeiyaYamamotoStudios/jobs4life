@@ -24,6 +24,7 @@ harmless-but-required env var for a command that never opens a connection.
 from __future__ import annotations
 
 import asyncio
+import functools
 from pathlib import Path
 from typing import Any, cast
 
@@ -77,7 +78,19 @@ def run_claim_gate() -> Solver:
         result: GateOutput | None
         error: str | None
         try:
-            result = await asyncio.to_thread(check_text, ctx, grounding_repo, run_repo, item.claim)
+            # `shared_corpus=False`: every golden item carries its own few-hundred-
+            # token evidence set, so caching the corpus writes an entry no later
+            # item ever reads. Measured on the 5-item smoke run, that was 63% of
+            # the cost (10,649 cache-write tokens, cache_read 0 on every sample).
+            # The breakpoint moves to the instructions, which are identical across
+            # all 210 items. Same rendered prompt text either way.
+            result = await asyncio.to_thread(
+                functools.partial(check_text, shared_corpus=False),
+                ctx,
+                grounding_repo,
+                run_repo,
+                item.claim,
+            )
             error = None
         except GateError as e:
             result = None

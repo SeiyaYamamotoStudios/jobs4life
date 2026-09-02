@@ -128,7 +128,7 @@ def test_a_successful_gate_call_writes_one_runs_row_with_correct_fields(
     assert row.cache_read_tokens == 0
     assert row.cache_write_tokens == 789
     # The `runs.cost_usd` column is NUMERIC(12, 6); Postgres rounds on write.
-    expected_cost = compute_cost_usd(1234, 56, 0, 789).quantize(Decimal("0.000001"))
+    expected_cost = compute_cost_usd(MODEL, 1234, 56, 0, 789).quantize(Decimal("0.000001"))
     assert row.cost_usd == expected_cost
     assert row.outcome == "ok"
     assert row.error is None

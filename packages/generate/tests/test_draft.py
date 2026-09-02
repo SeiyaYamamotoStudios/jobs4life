@@ -423,7 +423,7 @@ def test_successful_draft_calls_the_claim_gate_and_persists_both(
     assert draft_run.tokens_in == 1000
     assert draft_run.tokens_out == 200
     assert draft_run.cache_read_tokens == 500
-    assert draft_run.cost_usd == compute_cost_usd(1000, 200, 500, 0)
+    assert draft_run.cost_usd == compute_cost_usd(MODEL, 1000, 200, 500, 0)
     assert isinstance(draft_run.started_at, datetime)
 
     # Both are persisted on the job repository.
@@ -476,14 +476,19 @@ def test_request_caches_the_corpus_and_keeps_job_and_requirements_volatile(
 
     assert kwargs["model"] == MODEL
     system_blocks = kwargs["system"]
-    assert len(system_blocks) == 1
-    assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
-    assert str(span.id) in system_blocks[0]["text"]
-    assert span.text in system_blocks[0]["text"]
+    # Two blocks -- instructions, then corpus -- with the cache breakpoint on the
+    # corpus block (cache="corpus"), so the cached prefix is instructions+corpus,
+    # exactly what the pre-split single-string prompt cached.
+    assert len(system_blocks) == 2
+    assert "cache_control" not in system_blocks[0]
+    assert system_blocks[1]["cache_control"] == {"type": "ephemeral"}
+    combined_system_text = "".join(b["text"] for b in system_blocks)
+    assert str(span.id) in combined_system_text
+    assert span.text in combined_system_text
 
     # Job/requirements are volatile -- belongs in `messages`, not the cached
     # `system` block, or every distinct job would bust the cache.
-    assert requirement.text not in system_blocks[0]["text"]
+    assert requirement.text not in combined_system_text
     user_content = kwargs["messages"][0]["content"]
     assert requirement.text in user_content
 
@@ -595,6 +600,36 @@ def test_refusal_records_a_refused_run_and_raises_generate_error(
 
     assert len(run_repo.recorded) == 1
     assert run_repo.recorded[0].outcome == "refused"
+    assert job_repo.drafts == []
+
+
+def test_max_tokens_truncation_records_an_error_run_and_names_the_real_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated response would otherwise surface as a JSONDecodeError -- see
+    jfl_gate.gate's max_tokens check, which this mirrors: the check must run
+    before any attempt to parse the (truncated, likely invalid) response body,
+    so the error names the real cause instead of a misleading parse failure.
+    """
+    response = _draft_response("", stop_reason="max_tokens")
+    client = _FakeAnthropicClient(response=response)
+    _patch_client(monkeypatch, client)
+
+    job = _job()
+    requirement = _requirement(job)
+    job_repo = _FakeJobRepository(job, [requirement], [_coverage_row(requirement)])
+    run_repo = _FakeRunRepo()
+
+    with pytest.raises(GenerateError, match="max_tokens"):
+        generate_draft(
+            _ctx(), job_repo, _FakeGroundingRepo([_span()]), run_repo, job.id, "cv_bullets"
+        )
+
+    assert len(run_repo.recorded) == 1
+    run = run_repo.recorded[0]
+    assert run.outcome == "error"
+    assert run.error is not None
+    assert "max_tokens" in run.error
     assert job_repo.drafts == []
 
 

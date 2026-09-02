@@ -349,7 +349,7 @@ def test_successful_call_parses_result_and_records_an_ok_run(
     assert run.tokens_out == 200
     assert run.cache_read_tokens == 500
     assert run.cache_write_tokens == 0
-    assert run.cost_usd == compute_cost_usd(1000, 200, 500, 0)
+    assert run.cost_usd == compute_cost_usd(MODEL, 1000, 200, 500, 0)
     assert run.error is None
     assert run.latency_ms is not None and run.latency_ms >= 0
     assert isinstance(run.started_at, datetime)
@@ -373,14 +373,19 @@ def test_request_caches_the_corpus_and_keeps_sentences_out_of_the_cached_block(
 
     assert kwargs["model"] == MODEL
     system_blocks = kwargs["system"]
-    assert len(system_blocks) == 1
-    assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
-    assert str(span.id) in system_blocks[0]["text"]
-    assert span.text in system_blocks[0]["text"]
+    # Two blocks -- instructions, then corpus -- with the cache breakpoint on the
+    # corpus block (cache="corpus"), so the cached prefix is instructions+corpus,
+    # exactly what the pre-split single-string prompt cached.
+    assert len(system_blocks) == 2
+    assert "cache_control" not in system_blocks[0]
+    assert system_blocks[1]["cache_control"] == {"type": "ephemeral"}
+    combined_system_text = "".join(b["text"] for b in system_blocks)
+    assert str(span.id) in combined_system_text
+    assert span.text in combined_system_text
 
     # The sentence under test is volatile -- it belongs in `messages`, not in the
     # cached `system` block, or every distinct input would bust the cache.
-    assert "Led the platform team." not in system_blocks[0]["text"]
+    assert "Led the platform team." not in combined_system_text
     user_content = kwargs["messages"][0]["content"]
     assert "Led the platform team." in user_content
 

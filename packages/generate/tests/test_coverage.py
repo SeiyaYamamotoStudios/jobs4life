@@ -210,7 +210,7 @@ def test_successful_call_parses_result_and_records_an_ok_run(
     assert run.tokens_in == 1000
     assert run.tokens_out == 200
     assert run.cache_read_tokens == 500
-    assert run.cost_usd == compute_cost_usd(1000, 200, 500, 0)
+    assert run.cost_usd == compute_cost_usd(MODEL, 1000, 200, 500, 0)
     assert run.error is None
     assert run.latency_ms is not None and run.latency_ms >= 0
     assert isinstance(run.started_at, datetime)
@@ -234,14 +234,19 @@ def test_request_caches_the_corpus_and_keeps_requirements_out_of_the_cached_bloc
 
     assert kwargs["model"] == MODEL
     system_blocks = kwargs["system"]
-    assert len(system_blocks) == 1
-    assert system_blocks[0]["cache_control"] == {"type": "ephemeral"}
-    assert str(span.id) in system_blocks[0]["text"]
-    assert span.text in system_blocks[0]["text"]
+    # Two blocks -- instructions, then corpus -- with the cache breakpoint on the
+    # corpus block (cache="corpus"), so the cached prefix is instructions+corpus,
+    # exactly what the pre-split single-string prompt cached.
+    assert len(system_blocks) == 2
+    assert "cache_control" not in system_blocks[0]
+    assert system_blocks[1]["cache_control"] == {"type": "ephemeral"}
+    combined_system_text = "".join(b["text"] for b in system_blocks)
+    assert str(span.id) in combined_system_text
+    assert span.text in combined_system_text
 
     # The requirement under check is volatile -- belongs in `messages`, not the
     # cached `system` block, or every distinct job would bust the cache.
-    assert "Led a platform team" not in system_blocks[0]["text"]
+    assert "Led a platform team" not in combined_system_text
     user_content = kwargs["messages"][0]["content"]
     assert "Led a platform team" in user_content
 
@@ -344,6 +349,31 @@ def test_refusal_records_a_refused_run_and_raises_generate_error(
 
     assert len(runs.recorded) == 1
     assert runs.recorded[0].outcome == "refused"
+
+
+def test_max_tokens_truncation_records_an_error_run_and_names_the_real_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated response would otherwise surface as a JSONDecodeError -- see
+    jfl_gate.gate's max_tokens check, which this mirrors: the check must run
+    before any attempt to parse the (truncated, likely invalid) response body,
+    so the error names the real cause instead of a misleading parse failure.
+    """
+    response = _response([], stop_reason="max_tokens")
+    client = _FakeAnthropicClient(response=response)
+    _patch_client(monkeypatch, client)
+
+    grounding = _FakeGroundingRepo([_span()])
+    runs = _FakeRunRepo()
+
+    with pytest.raises(GenerateError, match="max_tokens"):
+        check_coverage(_ctx(), grounding, runs, ["Python"])
+
+    assert len(runs.recorded) == 1
+    run = runs.recorded[0]
+    assert run.outcome == "error"
+    assert run.error is not None
+    assert "max_tokens" in run.error
 
 
 def test_malformed_json_records_an_error_run_and_raises_generate_error(

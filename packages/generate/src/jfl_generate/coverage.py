@@ -21,12 +21,12 @@ from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord
 from jfl_core.repositories import GroundingRepository, RunRepository
-from jfl_gate.pricing import MODEL, compute_cost_usd
+from jfl_gate.pricing import compute_cost_usd
 
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import (
     COVERAGE_OUTPUT_SCHEMA,
-    build_coverage_system_prompt,
+    build_coverage_system_blocks,
     build_coverage_user_message,
 )
 from jfl_generate.schema import CoverageOutput
@@ -53,7 +53,7 @@ def check_coverage(
 
     # All non-retired spans, both provenances -- same call the claim gate makes.
     spans = grounding_repo.all_spans(ctx.user_id)
-    system_prompt = build_coverage_system_prompt(spans)
+    system_blocks = build_coverage_system_blocks(spans, cache="corpus")
     user_message = build_coverage_user_message(requirements)
 
     client = (
@@ -70,18 +70,12 @@ def check_coverage(
     response: anthropic.types.Message | None = None
     try:
         response = client.messages.create(
-            model=MODEL,
+            model=ctx.model,
             max_tokens=MAX_TOKENS,
             # Stable prefix (instructions + corpus) in `system`, cached; the
             # requirements under check go in `messages` below, never here -- any
             # byte of volatile content here would invalidate the cache.
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
+            system=system_blocks,
             messages=[{"role": "user", "content": user_message}],
             output_config={"format": {"type": "json_schema", "schema": COVERAGE_OUTPUT_SCHEMA}},
         )
@@ -119,7 +113,7 @@ def check_coverage(
                 trace_id=ctx.trace_id,
                 component="generate",
                 stage="coverage",
-                model=MODEL,
+                model=ctx.model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cache_read_tokens=cache_read_tokens,
@@ -141,7 +135,9 @@ def check_coverage(
     tokens_out = usage.output_tokens
     cache_read_tokens = usage.cache_read_input_tokens or 0
     cache_write_tokens = usage.cache_creation_input_tokens or 0
-    cost_usd = compute_cost_usd(tokens_in, tokens_out, cache_read_tokens, cache_write_tokens)
+    cost_usd = compute_cost_usd(
+        ctx.model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens
+    )
 
     if response.stop_reason == "refusal":
         category = response.stop_details.category if response.stop_details else None
@@ -155,6 +151,21 @@ def check_coverage(
             cost_usd,
         )
         raise GenerateError(f"model refused to respond: {category}")
+
+    if response.stop_reason == "max_tokens":
+        record(
+            "error",
+            f"truncated: output hit max_tokens ({MAX_TOKENS})",
+            tokens_in,
+            tokens_out,
+            cache_read_tokens,
+            cache_write_tokens,
+            cost_usd,
+        )
+        raise GenerateError(
+            f"model output was truncated at max_tokens ({MAX_TOKENS}); "
+            "the document is too long for one call"
+        )
 
     text_block = next((b for b in response.content if isinstance(b, TextBlock)), None)
     if text_block is None:

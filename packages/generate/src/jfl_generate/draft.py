@@ -31,12 +31,12 @@ from jfl_core.context import RequestContext
 from jfl_core.models import Draft, DraftKind, RunRecord
 from jfl_core.repositories import GroundingRepository, JobRepository, RunRepository
 from jfl_gate.gate import check_text
-from jfl_gate.pricing import MODEL, compute_cost_usd
+from jfl_gate.pricing import compute_cost_usd
 
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import (
     DRAFT_OUTPUT_SCHEMA,
-    build_draft_system_prompt,
+    build_draft_system_blocks,
     build_draft_user_message,
 )
 from jfl_generate.schema import DraftOutput
@@ -88,7 +88,7 @@ def generate_draft(
     # here (see CLAUDE.md's architectural constraints and the decisions log,
     # "Generated documents influence form, never truth").
     spans = grounding_repo.all_spans(ctx.user_id)
-    system_prompt = build_draft_system_prompt(spans, kind)
+    system_blocks = build_draft_system_blocks(spans, kind, cache="corpus")
     user_message = build_draft_user_message(job, requirements, coverage)
 
     client = (
@@ -105,18 +105,12 @@ def generate_draft(
     response: anthropic.types.Message | None = None
     try:
         response = client.messages.create(
-            model=MODEL,
+            model=ctx.model,
             max_tokens=MAX_TOKENS,
             # Stable prefix (instructions + corpus) in `system`, cached; the job,
             # requirements and coverage under draft go in `messages` below, never
             # here -- any byte of volatile content here would invalidate the cache.
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
+            system=system_blocks,
             messages=[{"role": "user", "content": user_message}],
             output_config={"format": {"type": "json_schema", "schema": DRAFT_OUTPUT_SCHEMA}},
         )
@@ -154,7 +148,7 @@ def generate_draft(
                 trace_id=ctx.trace_id,
                 component="generate",
                 stage="draft",
-                model=MODEL,
+                model=ctx.model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cache_read_tokens=cache_read_tokens,
@@ -176,7 +170,9 @@ def generate_draft(
     tokens_out = usage.output_tokens
     cache_read_tokens = usage.cache_read_input_tokens or 0
     cache_write_tokens = usage.cache_creation_input_tokens or 0
-    cost_usd = compute_cost_usd(tokens_in, tokens_out, cache_read_tokens, cache_write_tokens)
+    cost_usd = compute_cost_usd(
+        ctx.model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens
+    )
 
     if response.stop_reason == "refusal":
         category = response.stop_details.category if response.stop_details else None
@@ -190,6 +186,21 @@ def generate_draft(
             cost_usd,
         )
         raise GenerateError(f"model refused to respond: {category}")
+
+    if response.stop_reason == "max_tokens":
+        record(
+            "error",
+            f"truncated: output hit max_tokens ({MAX_TOKENS})",
+            tokens_in,
+            tokens_out,
+            cache_read_tokens,
+            cache_write_tokens,
+            cost_usd,
+        )
+        raise GenerateError(
+            f"model output was truncated at max_tokens ({MAX_TOKENS}); "
+            "the document is too long for one call"
+        )
 
     text_block = next((b for b in response.content if isinstance(b, TextBlock)), None)
     if text_block is None:

@@ -13,8 +13,10 @@ from jfl_generate.prompts import (
     COVERAGE_OUTPUT_SCHEMA,
     DRAFT_OUTPUT_SCHEMA,
     EXTRACT_OUTPUT_SCHEMA,
+    build_coverage_system_blocks,
     build_coverage_system_prompt,
     build_coverage_user_message,
+    build_draft_system_blocks,
     build_draft_system_prompt,
     build_draft_user_message,
     build_extract_prompt,
@@ -114,6 +116,34 @@ def test_volatile_requirements_are_never_baked_into_the_cached_system_prompt() -
 
     for requirement in ["A distinctive requirement about rockets.", "A requirement about jam."]:
         assert requirement not in system_a
+
+
+def test_coverage_system_blocks_cache_corpus_is_byte_identical() -> None:
+    """Same property test_prompt.py's gate-side version checks -- the split must
+    never change the rendered prompt text, since the eval harness measures cost
+    and over-claim rate against exactly this text.
+    """
+    for spans in (
+        [],
+        [_span("Led the platform team")],
+        [_span("Led the platform team"), _span("Shipped v2", section_path="Data")],
+    ):
+        blocks = build_coverage_system_blocks(spans, cache="corpus")
+        assert "".join(b["text"] for b in blocks) == build_coverage_system_prompt(spans)
+
+
+def test_coverage_system_blocks_cache_placement() -> None:
+    spans = [_span("Led the platform team")]
+
+    corpus_cached = build_coverage_system_blocks(spans, cache="corpus")
+    assert len(corpus_cached) == 2
+    assert "cache_control" not in corpus_cached[0]
+    assert corpus_cached[1]["cache_control"] == {"type": "ephemeral"}
+
+    instructions_cached = build_coverage_system_blocks(spans, cache="instructions")
+    assert instructions_cached[0]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in instructions_cached[1]
+    assert "".join(b["text"] for b in instructions_cached) == build_coverage_system_prompt(spans)
 
 
 def test_coverage_output_schema_requires_every_field_and_forbids_extras() -> None:
@@ -238,6 +268,37 @@ def test_draft_user_message_handles_a_requirement_with_no_coverage_recorded() ->
 
     assert requirement.text in message
     assert "unknown" in message
+
+
+def test_draft_system_blocks_cache_corpus_is_byte_identical() -> None:
+    """Same property as the gate's and coverage's versions -- the split must never
+    change the rendered prompt text. Checked for both draft kinds since each
+    picks a different `_KIND_INSTRUCTIONS` entry before the corpus placeholder.
+    """
+    for kind in ("cv_bullets", "cover_letter"):
+        for spans in (
+            [],
+            [_span("Led the platform team")],
+            [_span("Led the platform team"), _span("Shipped v2", section_path="Data")],
+        ):
+            blocks = build_draft_system_blocks(spans, kind, cache="corpus")
+            assert "".join(b["text"] for b in blocks) == build_draft_system_prompt(spans, kind)
+
+
+def test_draft_system_blocks_cache_placement() -> None:
+    spans = [_span("Led the platform team")]
+
+    corpus_cached = build_draft_system_blocks(spans, "cv_bullets", cache="corpus")
+    assert len(corpus_cached) == 2
+    assert "cache_control" not in corpus_cached[0]
+    assert corpus_cached[1]["cache_control"] == {"type": "ephemeral"}
+
+    instructions_cached = build_draft_system_blocks(spans, "cv_bullets", cache="instructions")
+    assert instructions_cached[0]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in instructions_cached[1]
+    assert "".join(b["text"] for b in instructions_cached) == build_draft_system_prompt(
+        spans, "cv_bullets"
+    )
 
 
 def test_draft_output_schema_requires_draft_and_forbids_extras() -> None:

@@ -20,6 +20,10 @@ class RequestContext:
     anthropic_api_key: str | None
     database_url: str
     embedding_device: str = "cuda"
+    # Kept in sync with jfl_gate.pricing.MODEL's default -- core may not depend on
+    # gate (see CLAUDE.md's architectural constraints), so the literal is
+    # necessarily duplicated rather than imported.
+    model: str = "claude-opus-5"
     trace_id: uuid.UUID = field(default_factory=uuid.uuid4)
 
     @classmethod
@@ -34,4 +38,5 @@ class RequestContext:
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
             database_url=os.environ["JFL_DATABASE_URL"],
             embedding_device=os.environ.get("JFL_EMBEDDING_DEVICE", "cuda"),
+            model=os.environ.get("JFL_MODEL", "claude-opus-5"),
         )

@@ -10,7 +10,9 @@ duplicated.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
+from anthropic.types import TextBlockParam
 from jfl_core.models import DraftKind, Job, JobRequirement, RequirementCoverage, Span
 from jfl_gate.prompt import format_corpus
 
@@ -125,6 +127,21 @@ def build_coverage_system_prompt(spans: Sequence[Span]) -> str:
     return _COVERAGE_INSTRUCTIONS.format(corpus=format_corpus(spans))
 
 
+def build_coverage_system_blocks(
+    spans: Sequence[Span], *, cache: Literal["instructions", "corpus"]
+) -> list[TextBlockParam]:
+    """Two cacheable `system` blocks -- instructions first, corpus second -- instead
+    of the one block `build_coverage_system_prompt` returns. See
+    `jfl_gate.prompt.build_system_blocks`'s docstring for the full rationale
+    (prompt caching is a prefix match; this is the same split for coverage's
+    template). `cache="corpus"` is today's product path, byte-identical to the
+    single-string prompt; `cache="instructions"` is for the eval harness, where
+    many tiny per-item corpora would otherwise rewrite the cache from byte zero
+    every call.
+    """
+    return _split_system_blocks(_COVERAGE_INSTRUCTIONS, format_corpus(spans), cache=cache)
+
+
 def build_coverage_user_message(requirements: Sequence[str]) -> str:
     """The volatile half of the request -- requirements go in `messages`, never in
     `system`, so a byte change here never invalidates the cached corpus prefix.
@@ -183,6 +200,40 @@ def build_draft_system_prompt(spans: Sequence[Span], kind: DraftKind) -> str:
     return _DRAFT_INSTRUCTIONS.format(
         kind_instructions=_KIND_INSTRUCTIONS[kind], corpus=format_corpus(spans)
     )
+
+
+def build_draft_system_blocks(
+    spans: Sequence[Span], kind: DraftKind, *, cache: Literal["instructions", "corpus"]
+) -> list[TextBlockParam]:
+    """Two cacheable `system` blocks -- instructions first, corpus second -- instead
+    of the one block `build_draft_system_prompt` returns. See
+    `jfl_gate.prompt.build_system_blocks`'s docstring for the full rationale.
+    `cache="corpus"` is today's product path, byte-identical to the single-string
+    prompt; `cache="instructions"` is for the eval harness's many tiny, mutually
+    distinct per-item corpora.
+    """
+    template = _DRAFT_INSTRUCTIONS.format(
+        kind_instructions=_KIND_INSTRUCTIONS[kind], corpus="{corpus}"
+    )
+    return _split_system_blocks(template, format_corpus(spans), cache=cache)
+
+
+def _split_system_blocks(
+    template: str, corpus_text: str, *, cache: Literal["instructions", "corpus"]
+) -> list[TextBlockParam]:
+    """Partition `template` on its `{corpus}` placeholder into an instructions
+    block and a corpus block, so concatenating the two blocks' text is always
+    byte-identical to `template.format(corpus=corpus_text)` by construction --
+    there is no second copy of any template to drift out of sync.
+    """
+    prefix, _, suffix = template.partition("{corpus}")
+    blocks: list[TextBlockParam] = [
+        {"type": "text", "text": prefix},
+        {"type": "text", "text": corpus_text + suffix},
+    ]
+    cache_index = 0 if cache == "instructions" else 1
+    blocks[cache_index]["cache_control"] = {"type": "ephemeral"}
+    return blocks
 
 
 def build_draft_user_message(

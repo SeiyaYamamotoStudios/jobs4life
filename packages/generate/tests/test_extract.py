@@ -173,7 +173,7 @@ def test_successful_call_parses_result_and_records_an_ok_run(
     assert run.trace_id == ctx.trace_id
     assert run.tokens_in == 1000
     assert run.tokens_out == 200
-    assert run.cost_usd == compute_cost_usd(1000, 200, 0, 0)
+    assert run.cost_usd == compute_cost_usd(MODEL, 1000, 200, 0, 0)
     assert run.error is None
     assert run.latency_ms is not None and run.latency_ms >= 0
     assert isinstance(run.started_at, datetime)
@@ -256,6 +256,30 @@ def test_refusal_records_a_refused_run_and_raises_generate_error(
     assert len(runs.recorded) == 1
     run = runs.recorded[0]
     assert run.outcome == "refused"
+    assert run.tokens_in is not None  # usage is still billed and recorded
+
+
+def test_max_tokens_truncation_records_an_error_run_and_names_the_real_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated response would otherwise surface as a JSONDecodeError -- see
+    jfl_gate.gate's max_tokens check, which this mirrors: the check must run
+    before any attempt to parse the (truncated, likely invalid) response body,
+    so the error names the real cause instead of a misleading parse failure.
+    """
+    response = _response({}, stop_reason="max_tokens")
+    client = _FakeAnthropicClient(response=response)
+    _patch_client(monkeypatch, client)
+
+    runs = _FakeRunRepo()
+    with pytest.raises(GenerateError, match="max_tokens"):
+        extract_requirements(_ctx(), runs, "Some job ad text.")
+
+    assert len(runs.recorded) == 1
+    run = runs.recorded[0]
+    assert run.outcome == "error"
+    assert run.error is not None
+    assert "max_tokens" in run.error
     assert run.tokens_in is not None  # usage is still billed and recorded
 
 

@@ -11,7 +11,9 @@ this module never needs to know what varies per call.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
+from anthropic.types import TextBlockParam
 from jfl_core.models import Span
 
 # Kept in exact correspondence with jfl_gate.schema.GateOutput. See that module's
@@ -185,6 +187,46 @@ def format_corpus(spans: Sequence[Span]) -> str:
 
 def build_system_prompt(spans: Sequence[Span]) -> str:
     return _INSTRUCTIONS.format(corpus=format_corpus(spans))
+
+
+def build_system_blocks(
+    spans: Sequence[Span], *, cache: Literal["instructions", "corpus"]
+) -> list[TextBlockParam]:
+    """Two cacheable `system` blocks -- instructions first, corpus second -- instead
+    of the one block `build_system_prompt` returns. Prompt caching is a prefix
+    match: with one block, a per-call corpus interpolated into the same string as
+    the instructions means every distinct corpus rewrites the cache from byte
+    zero. Splitting the two apart lets the caller put the cache breakpoint on
+    whichever block is actually stable for its call pattern.
+
+    `cache="corpus"` (today's product path) puts the breakpoint on the corpus
+    block, so the cached prefix is instructions+corpus -- byte-for-byte what
+    `build_system_prompt` returns as one block; see
+    test_system_blocks_with_cache_corpus_is_byte_identical_to_the_single_string_prompt.
+
+    `cache="instructions"` puts the breakpoint on the instructions block instead,
+    so the ~1,500-token instructions cache once across many distinct per-item
+    corpora (the eval harness's shape: 210 tiny, mutually distinct corpora) and
+    each corpus then bills as ordinary, uncached input. Anthropic's minimum
+    cacheable prefix is 1024 tokens on claude-sonnet-5 (512 on claude-opus-5);
+    the instructions block is comfortably above both floors, so this option
+    really does cache -- do not trim the instructions below that floor without
+    re-checking this comment.
+
+    The split is a plain partition on the `{corpus}` placeholder in
+    `_INSTRUCTIONS`, so concatenating the two blocks' text is *always*
+    byte-identical to `build_system_prompt`'s output by construction, not by
+    convention -- there is no second copy of the template to drift out of sync.
+    """
+    corpus_text = format_corpus(spans)
+    prefix, _, suffix = _INSTRUCTIONS.partition("{corpus}")
+    blocks: list[TextBlockParam] = [
+        {"type": "text", "text": prefix},
+        {"type": "text", "text": corpus_text + suffix},
+    ]
+    cache_index = 0 if cache == "instructions" else 1
+    blocks[cache_index]["cache_control"] = {"type": "ephemeral"}
+    return blocks
 
 
 def build_user_message(sentences: Sequence[str]) -> str:

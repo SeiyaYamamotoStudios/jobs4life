@@ -8,7 +8,12 @@ import uuid
 from typing import Any, cast
 
 from jfl_core.models import Span
-from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_prompt, build_user_message
+from jfl_gate.prompt import (
+    GATE_OUTPUT_SCHEMA,
+    build_system_blocks,
+    build_system_prompt,
+    build_user_message,
+)
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
 _SCHEMA = cast("dict[str, Any]", GATE_OUTPUT_SCHEMA)
@@ -91,6 +96,44 @@ def test_volatile_sentences_are_never_baked_into_the_cached_system_prompt() -> N
 
     for sentence in sentences_a + sentences_b:
         assert sentence not in system_a
+
+
+def test_system_blocks_with_cache_corpus_is_byte_identical_to_the_single_string_prompt() -> None:
+    """The eval harness's cost numbers, and everything measuring the over-claim
+    rate, depend on the rendered prompt text never changing when it moves from
+    one system-block string to two. This is the whole point of Task 2: verify it
+    on every span shape, not just the happy path.
+    """
+    for spans in (
+        [],
+        [_span("Led the platform team")],
+        [_span("Led the platform team"), _span("Shipped v2", section_path="Data")],
+    ):
+        blocks = build_system_blocks(spans, cache="corpus")
+        assert "".join(b["text"] for b in blocks) == build_system_prompt(spans)
+
+
+def test_system_blocks_with_cache_instructions_still_concatenates_byte_identical() -> None:
+    """Cache placement must never change the rendered text -- only which block
+    carries the `cache_control` breakpoint.
+    """
+    spans = [_span("Led the platform team")]
+    blocks = build_system_blocks(spans, cache="instructions")
+    assert "".join(b["text"] for b in blocks) == build_system_prompt(spans)
+
+
+def test_cache_corpus_puts_the_breakpoint_on_the_last_block() -> None:
+    blocks = build_system_blocks([_span("Led the platform team")], cache="corpus")
+    assert len(blocks) == 2
+    assert "cache_control" not in blocks[0]
+    assert blocks[1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_cache_instructions_puts_the_breakpoint_on_the_first_block() -> None:
+    blocks = build_system_blocks([_span("Led the platform team")], cache="instructions")
+    assert len(blocks) == 2
+    assert blocks[0]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in blocks[1]
 
 
 def test_output_schema_requires_every_field_and_forbids_extras() -> None:
