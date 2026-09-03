@@ -136,7 +136,9 @@ From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 - `packages/evals` needs `datasets` to rebuild the FEVER slice; it is deliberately not a
   permanent dependency, so use `uv run --with datasets` for `scripts/build_fever_dataset.py`.
 - Nothing writes to `span_embeddings`; retrieval is unused in v1 by decision.
-- **`uv run jfl ...` does not work** -- the console script declared in
-  `packages/cli/pyproject.toml` is not installed by `uv sync`, so every documented
-  invocation in CLAUDE.md and this file fails with "Failed to spawn: jfl". Workaround:
-  `uv run python -m jfl_cli.main <command>`. Worth fixing before anyone else uses this.
+- **If `uv run jfl ...` fails with "Failed to spawn: jfl", the venv is stale, not the
+  config.** `packages/cli/pyproject.toml` declares the console script correctly and the
+  installed `jfl_cli-0.1.0.dist-info/entry_points.txt` carries it, but `.venv/bin/jfl`
+  can be missing -- a plain `uv sync` does not regenerate it. Fix with
+  `uv sync --reinstall-package jfl-cli`. `uv run python -m jfl_cli.main <command>` also
+  works and needs no reinstall.
