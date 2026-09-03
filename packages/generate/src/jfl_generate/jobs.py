@@ -121,7 +121,7 @@ def run_coverage(
             trace_id=ctx.trace_id,
             status=item.status,
             cited_span_ids=item.cited_span_ids,
-            reason=item.reason,
+            evidence_note=item.evidence_note,
         )
         job_repo.record_coverage(coverage)
         coverage_rows.append(coverage)

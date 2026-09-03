@@ -116,7 +116,7 @@ class RequirementCoverage(BaseModel):
     trace_id: uuid.UUID  # groups every requirement checked in one coverage run
     status: CoverageStatus
     cited_span_ids: list[uuid.UUID]
-    reason: str
+    evidence_note: str
 
 
 class GapQuestion(BaseModel):

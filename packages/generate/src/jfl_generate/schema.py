@@ -49,7 +49,7 @@ CoverageStatus = Literal["evidenced", "partial", "absent", "contradicted"]
 class RequirementCoverageResult(BaseModel):
     status: CoverageStatus
     cited_span_ids: list[uuid.UUID]
-    reason: str
+    evidence_note: str
     # Non-empty only when status is "absent" or "partial" -- see prompts.py.
     question: str | None = None
 

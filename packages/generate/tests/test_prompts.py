@@ -148,7 +148,12 @@ def test_coverage_system_blocks_cache_placement() -> None:
 
 def test_coverage_output_schema_requires_every_field_and_forbids_extras() -> None:
     item_schema = _COVERAGE_SCHEMA["properties"]["results"]["items"]
-    assert set(item_schema["required"]) == {"status", "cited_span_ids", "reason", "question"}
+    assert set(item_schema["required"]) == {
+        "status",
+        "cited_span_ids",
+        "evidence_note",
+        "question",
+    }
     assert item_schema["additionalProperties"] is False
 
 
@@ -198,7 +203,7 @@ def _coverage(
         trace_id=uuid.uuid4(),
         status=status,  # type: ignore[arg-type]
         cited_span_ids=[],
-        reason=reason,
+        evidence_note=reason,
     )
 
 

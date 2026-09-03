@@ -332,7 +332,7 @@ requirement_coverage = Table(
     Column("trace_id", UUID(as_uuid=True), nullable=False),  # groups one coverage run
     Column("status", Text, nullable=False),
     Column("cited_span_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
-    Column("reason", Text, nullable=False),
+    Column("evidence_note", Text, nullable=False),
     _ts("created_at", nullable=False, server_default=func.now()),
     CheckConstraint("status in ('evidenced','partial','absent','contradicted')", name="status"),
     Index(

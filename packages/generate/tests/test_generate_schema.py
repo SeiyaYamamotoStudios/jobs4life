@@ -78,7 +78,7 @@ class TestCoverageOutput:
             {
                 "status": "evidenced",
                 "cited_span_ids": [SPAN_ID],
-                "reason": "Corpus documents this directly.",
+                "evidence_note": "Corpus documents this directly.",
                 "question": "",
             }
         )
@@ -91,7 +91,7 @@ class TestCoverageOutput:
             {
                 "status": "contradicted",
                 "cited_span_ids": [],
-                "reason": "Corpus states the opposite.",
+                "evidence_note": "Corpus states the opposite.",
                 "question": "",
             }
         )
@@ -102,7 +102,7 @@ class TestCoverageOutput:
             {
                 "status": "absent",
                 "cited_span_ids": [],
-                "reason": "Corpus is silent on this.",
+                "evidence_note": "Corpus is silent on this.",
                 "question": "Have you worked with Kubernetes?",
             }
         )
@@ -114,7 +114,7 @@ class TestCoverageOutput:
                 {
                     "status": "met",  # not evidenced/partial/absent/contradicted
                     "cited_span_ids": [],
-                    "reason": "x",
+                    "evidence_note": "x",
                     "question": "",
                 }
             )
@@ -125,7 +125,7 @@ class TestCoverageOutput:
                 {
                     "status": "evidenced",
                     "cited_span_ids": ["not-a-uuid"],
-                    "reason": "x",
+                    "evidence_note": "x",
                     "question": "",
                 }
             )
@@ -136,7 +136,7 @@ class TestCoverageOutput:
                 {
                     "status": "evidenced",
                     "cited_span_ids": [],
-                    # "reason" missing
+                    # "evidence_note" missing
                     "question": "",
                 }
             )
@@ -144,8 +144,18 @@ class TestCoverageOutput:
     def test_multiple_results_preserve_order(self) -> None:
         data = {
             "results": [
-                {"status": "evidenced", "cited_span_ids": [], "reason": "r1", "question": ""},
-                {"status": "absent", "cited_span_ids": [], "reason": "r2", "question": "q2"},
+                {
+                    "status": "evidenced",
+                    "cited_span_ids": [],
+                    "evidence_note": "r1",
+                    "question": "",
+                },
+                {
+                    "status": "absent",
+                    "cited_span_ids": [],
+                    "evidence_note": "r2",
+                    "question": "q2",
+                },
             ]
         }
         result = CoverageOutput.model_validate(data)

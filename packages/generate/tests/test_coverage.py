@@ -99,7 +99,7 @@ def _ctx(api_key: str | None = "test-key") -> RequestContext:
 _EVIDENCED_RESULT = {
     "status": "evidenced",
     "cited_span_ids": [],
-    "reason": "Matches the corpus.",
+    "evidence_note": "Matches the corpus.",
     "question": "",
 }
 

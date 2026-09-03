@@ -306,12 +306,12 @@ def test_run_coverage_records_one_row_per_requirement_in_order(
     output = CoverageOutput(
         results=[
             RequirementCoverageResult(
-                status="evidenced", cited_span_ids=[], reason="documented", question=None
+                status="evidenced", cited_span_ids=[], evidence_note="documented", question=None
             ),
             RequirementCoverageResult(
                 status="absent",
                 cited_span_ids=[],
-                reason="not mentioned",
+                evidence_note="not mentioned",
                 question="Have you used K8s?",
             ),
         ]
@@ -348,16 +348,16 @@ def test_run_coverage_creates_a_gap_question_only_for_absent_and_partial(
     output = CoverageOutput(
         results=[
             RequirementCoverageResult(
-                status="evidenced", cited_span_ids=[], reason="r", question=None
+                status="evidenced", cited_span_ids=[], evidence_note="r", question=None
             ),
             RequirementCoverageResult(
-                status="partial", cited_span_ids=[], reason="r", question="Tell me about B?"
+                status="partial", cited_span_ids=[], evidence_note="r", question="Tell me about B?"
             ),
             RequirementCoverageResult(
-                status="absent", cited_span_ids=[], reason="r", question="Tell me about C?"
+                status="absent", cited_span_ids=[], evidence_note="r", question="Tell me about C?"
             ),
             RequirementCoverageResult(
-                status="contradicted", cited_span_ids=[], reason="r", question=None
+                status="contradicted", cited_span_ids=[], evidence_note="r", question=None
             ),
         ]
     )

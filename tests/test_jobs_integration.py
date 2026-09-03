@@ -184,14 +184,14 @@ def test_requirement_coverage_round_trips(
         trace_id=uuid.uuid4(),
         status="evidenced",
         cited_span_ids=[uuid.uuid4(), uuid.uuid4()],
-        reason="Corpus documents 5 years of Python.",
+        evidence_note="Corpus documents 5 years of Python.",
     )
     job_repo.record_coverage(coverage)
 
     latest = job_repo.latest_coverage(user, job.id)
     assert len(latest) == 1
     assert latest[0].status == "evidenced"
-    assert latest[0].reason == coverage.reason
+    assert latest[0].evidence_note == coverage.evidence_note
     assert set(latest[0].cited_span_ids) == set(coverage.cited_span_ids)
 
 
@@ -246,7 +246,7 @@ def test_latest_coverage_returns_the_most_recent_row_per_requirement(
             trace_id=uuid.uuid4(),
             status="absent",
             cited_span_ids=[],
-            reason="No evidence yet.",
+            evidence_note="No evidence yet.",
             created_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1),
         )
     )
@@ -256,7 +256,7 @@ def test_latest_coverage_returns_the_most_recent_row_per_requirement(
         trace_id=uuid.uuid4(),
         status="evidenced",
         cited_span_ids=[uuid.uuid4()],
-        reason="Answered gap question now documents this.",
+        evidence_note="Answered gap question now documents this.",
     )
     job_repo.record_coverage(newer)
 
@@ -282,7 +282,7 @@ def test_latest_coverage_returns_one_row_per_requirement_not_per_job(
                 trace_id=uuid.uuid4(),
                 status="absent",
                 cited_span_ids=[],
-                reason="No evidence.",
+                evidence_note="No evidence.",
             )
         )
 
@@ -310,7 +310,7 @@ def test_coverage_history_is_append_only(
         trace_id=uuid.uuid4(),
         status="absent",
         cited_span_ids=[],
-        reason="run 1",
+        evidence_note="run 1",
     )
     second = RequirementCoverage(
         user_id=user,
@@ -318,7 +318,7 @@ def test_coverage_history_is_append_only(
         trace_id=uuid.uuid4(),
         status="evidenced",
         cited_span_ids=[],
-        reason="run 2",
+        evidence_note="run 2",
     )
     job_repo.record_coverage(first)
     job_repo.record_coverage(second)

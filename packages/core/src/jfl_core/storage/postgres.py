@@ -303,7 +303,7 @@ def _row_to_coverage(row: Any) -> RequirementCoverage:
         trace_id=row.trace_id,
         status=row.status,
         cited_span_ids=list(row.cited_span_ids),
-        reason=row.reason,
+        evidence_note=row.evidence_note,
     )
 
 
@@ -448,7 +448,7 @@ class PostgresJobRepository:
                 trace_id=coverage.trace_id,
                 status=coverage.status,
                 cited_span_ids=coverage.cited_span_ids,
-                reason=coverage.reason,
+                evidence_note=coverage.evidence_note,
             )
         )
 

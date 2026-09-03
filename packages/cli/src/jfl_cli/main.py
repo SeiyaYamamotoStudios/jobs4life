@@ -291,7 +291,7 @@ def job_coverage(
         if row.cited_span_ids:
             cited = ", ".join(str(span_id) for span_id in row.cited_span_ids)
             typer.echo(f"    cites: {cited}")
-        typer.echo(f"    reason: {row.reason}")
+        typer.echo(f"    reason: {row.evidence_note}")
         counts[row.status] += 1
 
     parts = [

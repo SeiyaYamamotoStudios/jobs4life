@@ -201,7 +201,7 @@ def _coverage_row(requirement: JobRequirement) -> RequirementCoverage:
         trace_id=uuid.uuid4(),
         status="evidenced",
         cited_span_ids=[],
-        reason="Corpus documents this.",
+        evidence_note="Corpus documents this.",
     )
 
 
