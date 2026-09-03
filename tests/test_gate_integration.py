@@ -65,7 +65,7 @@ def _fake_response() -> Message:
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": [],
-                "reason": "Matches the corpus.",
+                "evidence_note": "Matches the corpus.",
             }
         ]
     }

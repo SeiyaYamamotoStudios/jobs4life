@@ -194,7 +194,7 @@ def _print_sentence(sentence: SentenceResult) -> None:
     if sentence.cited_span_ids:
         cited = ", ".join(str(span_id) for span_id in sentence.cited_span_ids)
         typer.echo(f"    cites: {cited}")
-    typer.echo(f"    reason: {sentence.reason}")
+    typer.echo(f"    reason: {sentence.evidence_note}")
 
 
 @job_app.command("add")

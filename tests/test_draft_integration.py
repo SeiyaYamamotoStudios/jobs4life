@@ -100,7 +100,7 @@ def test_draft_round_trips_through_record_and_list(
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": [],
-                "reason": "Traces cleanly.",
+                "evidence_note": "Traces cleanly.",
                 "rule_flags": [],
                 "text": "Led the platform team.",
             }

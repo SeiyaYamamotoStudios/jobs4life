@@ -248,7 +248,7 @@ _SUPPORTED_GATE_OUTPUT = GateOutput(
             verdict="supported",
             drift_label="supported",
             cited_span_ids=[],
-            reason="Traces cleanly.",
+            evidence_note="Traces cleanly.",
         )
     ]
 )
@@ -511,7 +511,7 @@ def test_a_flagged_draft_is_still_returned_not_suppressed(monkeypatch: pytest.Mo
                 verdict="unsupported",
                 drift_label="invented_quantity",
                 cited_span_ids=[],
-                reason="No such number in the corpus.",
+                evidence_note="No such number in the corpus.",
             )
         ]
     )

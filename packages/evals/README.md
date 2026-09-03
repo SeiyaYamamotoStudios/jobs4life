@@ -103,7 +103,7 @@ rather than something read off `framing_rate` and `over_claim_rate` by hand. On
 this run: `framing_over_claim_count = 1`, `framing_over_claim_rate = 0.2` -- the
 one framing item observed was also the one item that over-claimed.
 
-The gate's `reason` for this call: *"A general statement about the world that
+The gate's `evidence_note` for this call: *"A general statement about the world that
 asserts nothing about the candidate's scope, ownership, or outcomes, so there is
 nothing to trace to the corpus."* That phrasing -- reasoning in terms of
 "candidate," "scope," "ownership" -- points at a **domain-fit mechanism**, not a

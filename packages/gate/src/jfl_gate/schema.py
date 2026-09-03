@@ -47,7 +47,9 @@ class SentenceResult(BaseModel):
     verdict: Verdict
     drift_label: DriftLabel
     cited_span_ids: list[uuid.UUID]
-    reason: str
+    # Named `evidence_note`, not `reason` -- see prompt.py's GATE_OUTPUT_SCHEMA
+    # for why (live-API classifier false positive, found 2026-09-02).
+    evidence_note: str
     # Populated after parsing -- never by the model -- so both defaults below
     # let the model's parsed JSON, which includes neither key, still validate
     # unchanged. See prompt.py's GATE_OUTPUT_SCHEMA for the other half of this

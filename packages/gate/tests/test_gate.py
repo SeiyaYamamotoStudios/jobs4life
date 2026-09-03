@@ -157,7 +157,7 @@ _SUPPORTED_ITEM = {
     "verdict": "supported",
     "drift_label": "supported",
     "cited_span_ids": [str(_SPAN_ID)],
-    "reason": "Matches the corpus.",
+    "evidence_note": "Matches the corpus.",
 }
 
 
@@ -546,7 +546,7 @@ def test_rule_tier_runs_after_parsing_and_records_escalations_on_the_same_run(
         "verdict": "supported",
         "drift_label": "supported",
         "cited_span_ids": [],
-        "reason": "Matches the corpus.",
+        "evidence_note": "Matches the corpus.",
     }
     client = _FakeAnthropicClient(response=_response([item]))
     _patch_client(monkeypatch, client)
@@ -582,14 +582,14 @@ class TestAlignment:
     _MULTI_TEXT = "First point. Second point. Third point."
 
     @staticmethod
-    def _item(index: int, text_for_reason: str = "ok") -> dict[str, Any]:
+    def _item(index: int, text_for_evidence_note: str = "ok") -> dict[str, Any]:
         return {
             "index": index,
             "kind": "claim",
             "verdict": "supported",
             "drift_label": "supported",
             "cited_span_ids": [],
-            "reason": text_for_reason,
+            "evidence_note": text_for_evidence_note,
         }
 
     def test_correct_indices_populate_text_from_the_input_list_in_order(

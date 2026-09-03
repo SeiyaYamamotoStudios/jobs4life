@@ -29,8 +29,8 @@ from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_blocks, build_user_
 from jfl_gate.rules import apply_rules
 from jfl_gate.schema import GateOutput, SentenceResult
 
-# One result object per input sentence, each with a drift label, cited span IDs and a
-# reason, so output still scales with document length even without echoed sentence
+# One result object per input sentence, each with a drift label, cited span IDs and an
+# evidence note, so output still scales with document length even without echoed sentence
 # text: a whole CV runs to ~150 sentences and blew through 16000, truncating the JSON
 # mid-string. That surfaced as a parse error, which named the wrong cause entirely --
 # hence the explicit max_tokens check below.

@@ -43,7 +43,7 @@ def _sentence(
         verdict=verdict,  # type: ignore[arg-type]
         drift_label=drift_label,  # type: ignore[arg-type]
         cited_span_ids=cited if cited is not None else [],
-        reason="Traces to the corpus.",
+        evidence_note="Traces to the corpus.",
     )
 
 
@@ -76,7 +76,7 @@ class TestUncitedSupport:
         got = result.sentences[0]
         assert got.verdict == "review"
         assert got.rule_flags == ["uncited-support"]
-        assert "cites no corpus span" in got.reason
+        assert "cites no corpus span" in got.evidence_note
 
     def test_the_drift_label_is_not_changed(self) -> None:
         """The taxonomy is the model's classification. A heuristic does not relabel."""
@@ -115,7 +115,7 @@ class TestUnknownCitation:
         got = result.sentences[0]
         assert got.verdict == "review"
         assert got.rule_flags == [f"unknown-citation:{ghost}"]
-        assert str(ghost) in got.reason
+        assert str(ghost) in got.evidence_note
 
     def test_a_fabricated_id_is_flagged_on_a_review_sentence_without_moving_it(self) -> None:
         """A fabricated citation is worth recording wherever it appears, but the

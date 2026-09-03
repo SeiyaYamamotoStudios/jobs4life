@@ -117,7 +117,7 @@ def apply_rules(output: GateOutput, spans: Sequence[Span]) -> GateOutput:
 
         update: dict[str, object] = {
             "rule_flags": [*sentence.rule_flags, *flags],
-            "reason": f"{sentence.reason} {_reason_clause(flags)}".strip(),
+            "evidence_note": f"{sentence.evidence_note} {_reason_clause(flags)}".strip(),
         }
         if sentence.verdict == "supported":
             update["verdict"] = "review"

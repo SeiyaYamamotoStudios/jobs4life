@@ -20,7 +20,7 @@ def test_valid_payload_parses() -> None:
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": [SPAN_ID],
-                "reason": "Corpus documents leading a 12-person team.",
+                "evidence_note": "Corpus documents leading a 12-person team.",
             }
         ]
     }
@@ -41,7 +41,7 @@ def test_text_defaults_empty_since_the_model_is_never_asked_for_it() -> None:
             "verdict": "supported",
             "drift_label": "framing",
             "cited_span_ids": [],
-            "reason": "Motivation is ungroundable framing.",
+            "evidence_note": "Motivation is ungroundable framing.",
         }
     )
     assert result.text == ""
@@ -55,7 +55,7 @@ def test_empty_cited_span_ids_is_allowed() -> None:
             "verdict": "supported",
             "drift_label": "framing",
             "cited_span_ids": [],
-            "reason": "Motivation is ungroundable framing.",
+            "evidence_note": "Motivation is ungroundable framing.",
         }
     )
     assert result.cited_span_ids == []
@@ -70,7 +70,7 @@ def test_unknown_verdict_is_rejected() -> None:
                 "verdict": "maybe",  # not one of supported/review/unsupported
                 "drift_label": "supported",
                 "cited_span_ids": [],
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -84,7 +84,7 @@ def test_unknown_drift_label_is_rejected() -> None:
                 "verdict": "supported",
                 "drift_label": "temporal_compression",  # rejected taxonomy category
                 "cited_span_ids": [],
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -98,7 +98,7 @@ def test_unknown_kind_is_rejected() -> None:
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": [],
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -112,7 +112,7 @@ def test_non_uuid_cited_span_id_is_rejected() -> None:
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": ["not-a-uuid"],
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -126,7 +126,7 @@ def test_missing_required_field_is_rejected() -> None:
                 "verdict": "supported",
                 "drift_label": "supported",
                 # "cited_span_ids" missing
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -143,7 +143,7 @@ def test_missing_index_is_rejected() -> None:
                 "verdict": "supported",
                 "drift_label": "supported",
                 "cited_span_ids": [],
-                "reason": "x",
+                "evidence_note": "x",
             }
         )
 
@@ -157,7 +157,7 @@ def test_multiple_sentences_preserve_order() -> None:
                 "verdict": "supported",
                 "drift_label": "framing",
                 "cited_span_ids": [],
-                "reason": "r1",
+                "evidence_note": "r1",
             },
             {
                 "index": 2,
@@ -165,7 +165,7 @@ def test_multiple_sentences_preserve_order() -> None:
                 "verdict": "unsupported",
                 "drift_label": "invented_quantity",
                 "cited_span_ids": [],
-                "reason": "r2",
+                "evidence_note": "r2",
             },
         ]
     }

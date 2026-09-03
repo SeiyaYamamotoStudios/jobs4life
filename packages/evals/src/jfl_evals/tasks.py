@@ -249,7 +249,7 @@ def gate_grounding_scorer() -> Scorer:
         return Score(
             value={"expected": expected, "actual": actual, "kind": kind, "outcome": outcome},
             answer=actual,
-            explanation=sentence.get("reason"),
+            explanation=sentence.get("evidence_note"),
             metadata={
                 "expected": expected,
                 "actual": actual,

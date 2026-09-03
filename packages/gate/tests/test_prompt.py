@@ -144,7 +144,7 @@ def test_output_schema_requires_every_field_and_forbids_extras() -> None:
         "verdict",
         "drift_label",
         "cited_span_ids",
-        "reason",
+        "evidence_note",
     }
     assert item_schema["additionalProperties"] is False
 
