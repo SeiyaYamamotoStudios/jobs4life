@@ -56,6 +56,26 @@ slice 2a automates.
 
 ## Measurements worth not re-deriving
 
+- **The `reason` field name was tripping a safety classifier, and is now `evidence_note`.**
+  Every gate call refused (`stop_reason: "refusal"`, category `reasoning_extraction`)
+  as apparent reverse-engineering, on prompts that had worked the day before. Bisected
+  against the live API 2026-09-02: system prompt alone fine, schema alone fine, together
+  refuse; drop or rename the `reason` property and it clears. Independent of `effort` and
+  `max_tokens`. Fixed in the gate (f87bf78) and coverage (f0fd4ec). **Do not rename it
+  back**, and be wary of adding a `reason`-shaped property to any new schema.
+- **The instructions block caches across every gate call, including between workloads.**
+  Measured: eval item 1 wrote 2,245 tokens, items 2 and 3 read 2,245 with zero writes --
+  and a later `jfl check` on a real CV also read the same 2,245-token entry. Per-eval-item
+  cost $0.02116 -> $0.01795 measured over 3 items.
+- **Output tokens vary far more than any of the per-call estimates assumed.** A full-CV
+  gate run cost **$0.64**, not the ~$0.27 the earlier measurement implied: 21,143 output
+  tokens against 9,546 on the earlier run of a comparable 86-sentence document. Eval items
+  ranged 190 to 975 output tokens across three samples. Treat every projected total in
+  PLAN.md as a lower bound with roughly 2x spread, and meter runs rather than trusting a
+  budget computed from one sample.
+- **The classifier is not scale-sensitive.** 84 sentences against the 236-span real corpus
+  returned real verdicts (29 supported, 41 review, 3 unsupported, 11 framing), no refusal.
+
 From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 
 - **Output tokens are ~92% of a check's cost.** Corpus caching had already optimised the
@@ -116,3 +136,7 @@ From one real CV (86 sentences, 68 claims, 18 framing) and a 32-CV sweep:
 - `packages/evals` needs `datasets` to rebuild the FEVER slice; it is deliberately not a
   permanent dependency, so use `uv run --with datasets` for `scripts/build_fever_dataset.py`.
 - Nothing writes to `span_embeddings`; retrieval is unused in v1 by decision.
+- **`uv run jfl ...` does not work** -- the console script declared in
+  `packages/cli/pyproject.toml` is not installed by `uv sync`, so every documented
+  invocation in CLAUDE.md and this file fails with "Failed to spawn: jfl". Workaround:
+  `uv run python -m jfl_cli.main <command>`. Worth fixing before anyone else uses this.
