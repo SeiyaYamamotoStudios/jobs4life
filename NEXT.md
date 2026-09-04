@@ -41,18 +41,30 @@ fixtures. Every defect that mattered was found that way and none by review.
 
 ## Next
 
-**Follow `PLAN.md`** -- the full sequencing to the September deliverable (hosted
-pre-computed demo + measured eval numbers), written 2026-09-01, with fences, budgets and
-acceptance criteria per workstream. Order: W0 gap-answers-to-markdown, W1 slice 2b-core
-drafting behind the claim gate, W2 demo fiction (parallel), W3 demo results generation
-(needs ~$15 credit top-up), W4 the demo page, W5 the full eval run. W6 (local web UI +
-job queue) is stretch only. The decisions behind it -- demo/product split, the corpus
-never leaving this machine in v1, the 2b split, answers landing in markdown -- are in
-CLAUDE.md's decisions log under 2026-09-01.
+**Tomorrow starts here: run C1.** `uv run python demo/generate_results.py --limit 1` --
+one candidate x job combination through the real pipeline, ~$0.15-0.40, affordable on the
+~$0.59 remaining. It replaces the guessed cost of the other eight with a measured one. The
+script meters and resumes, so this is safe to run and stop.
 
-The sent-document store moved into 2b-full (deferred). Filling gaps in the author's own
-corpus remains deliberately off the list: it produces no code and does by hand what
-slice 2a automates.
+Then, in order (costs carry the ~2x output-token spread, so treat them as ranges):
+
+| # | Step | Cost | Blocked on |
+|---|---|---|---|
+| C1 | One demo combination, measured | ~$0.15-0.40 | nothing |
+| C2 | Eval, 50 items on Opus, metered | ~$0.70-1.00 | top-up |
+| C3 | Eval, remaining 160 on Opus | ~$2.30-3.00 | C2's per-item mean |
+| C4 | Eval, 210 on Sonnet 5 (`JFL_MODEL=claude-sonnet-5`) | ~$0.80-1.20 | C3 |
+| C5 | Choose the product model from the numbers; log the decision | -- | C4 |
+| D1 | Remaining 8 demo combinations | ~$1.20-2.50 | C5, C1 |
+| D2 | Build the static page from the result JSON (Jinja2 only, no `jfl_*` imports) | -- | D1 |
+| D3 | Deploy to `job4life.hiltonlabs.org` via Cloudflare Pages | -- | D2 |
+
+After that, `PLAN.md`'s W6 and the local-tool work: interactive gaps-first mode, span
+validity periods, then the job queue and localhost web UI.
+
+Deferred deliberately: the corpus-first prompt reorder (it changes prompt text, so it
+needs an eval baseline to compare against -- do it after C3, then re-run to confirm the
+number did not move).
 
 ## Measurements worth not re-deriving
 

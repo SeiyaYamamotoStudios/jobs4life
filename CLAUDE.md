@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-**job4life** — a career system, eventually at `hiltonlabs.org/job4life`. It finds roles
+**job4life** — a career system, eventually at `job4life.hiltonlabs.org`. It finds roles
 worth considering, says honestly how well the author fits them, plans the work to close
 the gap, and stops them overstating that fit when they apply.
 
@@ -156,7 +156,7 @@ embedding interface stay in place but nothing writes to them. Revisit if the cor
 outgrows the context window.
 
 **2026-09-01 — Demo and product split; the corpus never leaves the owner's machine in
-v1.** The public page at `hiltonlabs.org/job4life` is a pre-computed demo over fictional
+v1.** The public page at `job4life.hiltonlabs.org` is a pre-computed demo over fictional
 material: a small matrix of fictional candidates × job ads, results produced by the real
 pipeline and committed as fixtures. The live tool stays local — CLI now, a localhost web
 UI later. Three reasons. The verification record is a liability document by design (its
@@ -169,6 +169,33 @@ they are not golden-set items, so the synthetic-data prohibition does not apply 
 but every result the demo shows **must be produced by the real pipeline, never
 hand-written**: the page claims "this is what the tool outputs," and that claim must be
 true.
+
+**2026-09-04 — The demo is a subdomain on Cloudflare Pages, not a path.** Supersedes
+`hiltonlabs.org/job4life` throughout. `www.hiltonlabs.org` is Ghost Pro, and Ghost Pro
+breaks behind a Cloudflare proxy — a custom domain cannot even be activated with the
+orange cloud on, and proxied sites fail at certificate renewal — so no Worker route can
+intercept a path on that host. Ghost's own subdirectory feature is the inverse (Ghost at
+`/blog`, static at the root) and is a paid Business add-on. The apex `178.128.137.126` is
+**Ghost's shared apex-redirect server**, not ours; leave that A record alone. GitHub Pages
+is out because it serves private repos only on paid plans. So: `job4life.hiltonlabs.org`
+on Cloudflare Pages (free, DNS already in this account), connected to the private GitHub
+repo, build output directory `demo/site` — **only the output directory is published, never
+the repo**, and `corpus/` and `analysis/` are gitignored so real career data cannot reach
+the build container at all. Results are embedded in the HTML at build time, so the page
+stays self-contained and works from `file://`.
+
+**2026-09-02 — Never name a structured-output property `reason`.** Every gate call began
+returning `stop_reason: "refusal"`, category `reasoning_extraction`, blocked as apparent
+reverse engineering or duplication of model outputs — on prompts that had worked the day
+before. Bisected against the live API: the system prompt alone is fine, the schema alone
+is fine, together they refuse; dropping or renaming the `reason` property clears it.
+Independent of `effort` and `max_tokens`, and not scale-sensitive. Renamed to
+`evidence_note` in the gate (f87bf78) and coverage (f0fd4ec). The name was always wrong —
+the field holds a note about what the corpus supports, not the model's reasoning — but the
+lesson generalises: **a long labelling prompt plus a schema demanding a label and a reason
+per item reads as a distillation harvest.** Check any new schema against this. The failure
+is quiet: HTTP 200, empty content, and a downstream JSON parse error naming the wrong
+cause, while the cache write still bills.
 
 **2026-09-01 — A gap answer lands in corpus markdown, not the database.** `jfl answer`
 appends the user's words to `corpus/answered-questions.md` and re-ingests; the resulting

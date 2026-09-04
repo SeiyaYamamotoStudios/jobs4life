@@ -1,4 +1,4 @@
-# PLAN — to a working demo at hiltonlabs.org/job4life
+# PLAN — to a working demo at job4life.hiltonlabs.org
 
 Written 2026-09-01 (Fable planning session). Executed by an Opus orchestrating session
 delegating to Sonnet implementation agents, per CLAUDE.md's delegation convention.
@@ -19,16 +19,15 @@ decisions log for why the corpus never leaves it in v1.
 - Gap answers append to `corpus/answered-questions.md` and re-ingest.
 - 2b-core only for September; 2b-full deferred.
 
-## Open questions — needed by W4 (week 3), not before
+## Open questions — resolved 2026-09-04
 
-1. **Where does `hiltonlabs.org` serve from today?** If the zone is on Cloudflare and
-   the owner controls it, `/job4life` can route to Cloudflare Pages with a route rule.
-   If the root site lives elsewhere, path-routing one prefix to a different origin
-   needs a Workers route or the existing origin must proxy the path.
-2. **VPS or Pages?** The demo is static, so Cloudflare Pages (free, no box to harden)
-   is the default recommendation; a VPS is only needed when the live tool is hosted.
-3. **Credit top-up:** ~$15 before W3 (demo generation ~$3–6 + full eval $4.44 + slack).
-   Remaining balance at plan time ≈ $1.50.
+1. **Where does `hiltonlabs.org` serve from?** Answered: `www` is Ghost Pro (via Fastly),
+   the apex A record is Ghost's own shared redirect server, and the zone is on Cloudflare.
+2. **VPS or Pages?** Answered: Cloudflare Pages, on the subdomain `job4life.hiltonlabs.org`,
+   connected to the private GitHub repo. See CLAUDE.md's 2026-09-04 decision for why the
+   path-based URL is not available and why GitHub Pages is not an option.
+3. **Credit top-up:** still outstanding. ~$0.59 remains. Revised ask is ~$15, not the $10
+   estimated earlier — see the cost-variance finding in NEXT.md.
 
 ---
 
