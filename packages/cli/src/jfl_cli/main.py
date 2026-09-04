@@ -6,6 +6,7 @@ every other package; nothing depends on it.
 
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from collections import Counter
@@ -99,10 +100,25 @@ def _read_text_or_file(text: str | None, file: Path | None) -> str:
 
 
 @app.callback()
-def _callback() -> None:
+def _callback(
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Anthropic model id for every call this command makes "
+        "(default: $JFL_MODEL, else claude-opus-5).",
+    ),
+) -> None:
     """job-for-life: the grounding gate and coverage report for AI-generated job
     application text.
     """
+    # Written into the environment rather than threaded through all seven
+    # commands' signatures. This is the CLI boundary, which is exactly where
+    # CLAUDE.md sanctions touching the environment, and it keeps
+    # `RequestContext.from_env()` the single place that *reads* it -- the
+    # constraint that matters. An explicit --model beats $JFL_MODEL, which
+    # beats the default in RequestContext.
+    if model is not None:
+        os.environ["JFL_MODEL"] = model
 
 
 @app.command()

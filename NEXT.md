@@ -1,6 +1,6 @@
 # Where this got to
 
-State at the end of the session on 2026-09-01. Design decisions live in CLAUDE.md;
+State at the end of the session on 2026-09-05. Design decisions live in CLAUDE.md;
 this file is only "what is done, what is next, what is known to be wrong".
 
 ## Working, verified against real data
@@ -15,7 +15,7 @@ this file is only "what is done, what is next, what is known to be wrong".
 - **Inspect eval harness.** `packages/evals`, with a 210-item FEVER tier-1 golden set
   (balanced 70/70/70). Reports over-claim and over-flag as separate numbers, never one.
 - **Instrumentation.** One `runs` row per model call: tokens, cache hits, cost, latency.
-- 291 unit + 26 integration tests. `uv run mypy packages` is clean.
+- 371 unit + 31 integration tests. `uv run mypy packages` is clean across 63 files.
 
 Everything above was exercised against the author's real corpus and real CVs, not only
 fixtures. Every defect that mattered was found that way and none by review.
@@ -25,12 +25,14 @@ fixtures. Every defect that mattered was found that way and none by review.
 - `docker compose up -d` first; Postgres is on **5433**.
 - `set -a; source .env; set +a` -- holds `JFL_DATABASE_URL` and `ANTHROPIC_API_KEY`.
   Never export the key globally: it silently shadows any `ant auth login` profile.
-- API credit is separate from a Claude subscription and is **nearly exhausted** -- of the
-  $5 added, roughly $3.50 is spent, so ~$1.50 remains. A gate run over a whole CV is
-  ~$0.27 at steady state. Check with:
+- API credit is separate from a Claude subscription. $10 was topped up on 2026-09-05 and
+  **$5.01 of it was spent that day** on C1-C4, leaving roughly $5.58 -- enough for D1
+  (~$2.82) with room over. A gate run over a whole CV is ~$0.35-0.64; a full 210-item
+  eval is ~$2.07. Check with:
   `select component, stage, count(*), sum(cost_usd) from runs group by 1,2;`
-  That query returns ~$1.18, which is a **lower bound**: measurement scripts and the eval
-  harness use in-memory repositories and spend invisibly (see "known to be wrong").
+  That query is a **lower bound**: the eval harness uses in-memory repositories and
+  spends invisibly (see "known to be wrong"). Read the real total from the Anthropic
+  console, never from Postgres.
 - `corpus/` and `analysis/` are gitignored and hold real career detail. Back `corpus/` up
   somewhere private: the database is a rebuildable index over it, so losing the markdown
   loses the source.
@@ -41,30 +43,49 @@ fixtures. Every defect that mattered was found that way and none by review.
 
 ## Next
 
-**Tomorrow starts here: run C1.** `uv run python demo/generate_results.py --limit 1` --
-one candidate x job combination through the real pipeline, ~$0.15-0.40, affordable on the
-~$0.59 remaining. It replaces the guessed cost of the other eight with a measured one. The
-script meters and resumes, so this is safe to run and stop.
+**C0-C5 are done (2026-09-05). Tomorrow starts at D1.**
 
-Then, in order (costs carry the ~2x output-token spread, so treat them as ranges):
+```bash
+docker compose up -d && set -a && source .env && set +a
+uv run python demo/generate_results.py        # the remaining 8 combinations, ~$2.82
+```
 
-| # | Step | Cost | Blocked on |
+| # | Step | Cost | State |
 |---|---|---|---|
-| C1 | One demo combination, measured | ~$0.15-0.40 | nothing |
-| C2 | Eval, 50 items on Opus, metered | ~$0.70-1.00 | top-up |
-| C3 | Eval, remaining 160 on Opus | ~$2.30-3.00 | C2's per-item mean |
-| C4 | Eval, 210 on Sonnet 5 (`JFL_MODEL=claude-sonnet-5`) | ~$0.80-1.20 | C3 |
-| C5 | Choose the product model from the numbers; log the decision | -- | C4 |
-| D1 | Remaining 8 demo combinations | ~$1.20-2.50 | C5, C1 |
-| D2 | Build the static page from the result JSON (Jinja2 only, no `jfl_*` imports) | -- | D1 |
-| D3 | Deploy to `job4life.hiltonlabs.org` via Cloudflare Pages | -- | D2 |
+| D1 | Remaining 8 demo combinations | ~$2.82 measured | next |
+| D2 | Static page from the result JSON (Jinja2 only, no `jfl_*` imports) | -- | after D1 |
+| D3 | Deploy to `job4life.hiltonlabs.org` via Cloudflare Pages, output dir `demo/site` | -- | after D2 |
 
-After that, `PLAN.md`'s W6 and the local-tool work: interactive gaps-first mode, span
+D3 needs one thing that is not mine to do: authorising the Cloudflare GitHub app on
+the private repo. Free, five minutes, no dependency on anything above it.
+
+**The headline numbers, from the full 210-item tier-1 run:**
+
+| | Opus 5 | Sonnet 5 |
+|---|---|---|
+| over-claim rate | **0.7%** (1/140), CI 0.1-3.9% | **0.7%** (1/140), CI 0.1-3.9% |
+| over-flag rate | **2.9%** (2/69), CI 0.8-10.0% | **2.9%** (2/69), CI 0.8-10.0% |
+| silence read as contradiction | 22.9% (16/70) | **71.4%** (50/70) |
+| framing | 0/209 | 0/209 |
+| cost | $2.0715 | $1.8451 |
+
+Both models over-claim and over-flag on the *same items* -- zero discordant pairs,
+McNemar p = 1.000. They differ 34-0 on silence-as-contradiction, p < 0.001. Opus is
+the default; see CLAUDE.md's 2026-09-05 entry for why, and note the reason is cost
+and temperament, not accuracy.
+
+**Caveat to state whenever the number is quoted:** framing was 0/209, so tier 1 did
+not exercise the gate's one unguarded path at all. FEVER items are factual assertions
+by construction, so this is the dataset's shape, not a clean bill of health. The
+framing hole remains unmeasured until tier 2 exists.
+
+After D3: `PLAN.md`'s W6 and the local-tool work -- interactive gaps-first mode, span
 validity periods, then the job queue and localhost web UI.
 
-Deferred deliberately: the corpus-first prompt reorder (it changes prompt text, so it
-needs an eval baseline to compare against -- do it after C3, then re-run to confirm the
-number did not move).
+Deferred deliberately: the corpus-first prompt reorder. It changes prompt text, and
+there is now a real baseline to compare against (the 2026-09-05 Opus log), so this is
+finally cheap to evaluate honestly -- re-run and confirm the number did not move,
+~$2.07.
 
 ## Measurements worth not re-deriving
 
@@ -85,6 +106,24 @@ number did not move).
   ranged 190 to 975 output tokens across three samples. Treat every projected total in
   PLAN.md as a lower bound with roughly 2x spread, and meter runs rather than trusting a
   budget computed from one sample.
+- **The model re-splits its own input, and it used to abort the whole eval.** On
+  `fever-13515`, "Petyr Baelish is created by an American author George R.R. Martin."
+  came back as *two* claims -- "...George R.R." and a fragment "Martin.". `split_blocks`
+  is not at fault: it returns one block for that text, verified locally. The model split
+  at the initials inside its own structured output. Any name with initials, or a
+  "Ph.D.", can do this, so it will happen on real CVs too. The eval scorer used to raise
+  on it, which killed a 50-item run at sample 45; it now scores as a harness error,
+  excluded from both headline rates rather than folded into either. **The underlying gate
+  behaviour is unfixed** -- fixing it means a prompt change, which invalidates the
+  2026-09-05 baseline, so it waits.
+- **A 5-item eval sample overstates the per-item cost by ~2x.** The smoke test measured
+  $0.02116/item; the full 210-item run came in at $0.00986. The small sample pays a cache
+  write for the shared instructions block that the remaining items then read for free.
+  Extrapolate from a full run or not at all.
+- **Sonnet 5 is 11% cheaper than Opus 5 here, not 60%.** Measured over the same 210
+  items: $1.8451 vs $2.0715, because Sonnet emitted **157,162 output tokens against
+  Opus's 68,420** (2.3x) and output is ~92% of the cost. The rate card is not a guide to
+  this workload's cost.
 - **The classifier is not scale-sensitive.** 84 sentences against the 236-span real corpus
   returned real verdicts (29 supported, 41 review, 3 unsupported, 11 framing), no refusal.
 

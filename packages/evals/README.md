@@ -52,6 +52,36 @@ logs stay as Inspect's own files on disk, never in Postgres"). Open with
 
 ## Measured cost
 
+**Superseded by two full 210-item runs on 2026-09-05.** Read those numbers first;
+the 5-item smoke test below is kept because its per-item figure was 2.1x too high
+and the reason is worth knowing.
+
+| | Opus 5 | Sonnet 5 |
+|---|---|---|
+| Items | 210 | 210 |
+| Total cost | **$2.0715** | **$1.8451** |
+| Mean cost / item | **$0.00986** | **$0.00879** |
+| tokens in / out | 25,053 / **68,420** | 25,053 / **157,162** |
+| cache read / write | 471,450 / 0 | 415,325 / 56,125 |
+| wall clock | 0:55 | 1:50 |
+
+Two things to take from that. **A full run costs about $2, not the ~$4.44 the
+smoke test extrapolated to** -- the 5-item sample paid a cache write for the
+shared instructions block that the other 205 items then read for free, so a tiny
+sample necessarily overstates the per-item rate. And **Sonnet is only 11% cheaper
+than Opus here, not the 60% the rate card implies**: it emitted 2.3x the output
+tokens, and output is ~92% of a check's cost, so the verbosity nearly cancels the
+price difference. Do not price this workload off the rate card.
+
+Comparing two runs, including the paired per-item test that the headline rates are
+too underpowered to substitute for:
+
+```bash
+uv run python packages/evals/scripts/compare_eval_runs.py logs/A.eval logs/B.eval
+```
+
+### The original 5-item smoke test (2026-09-01)
+
 Ran the default 5-item smoke test for real on 2026-09-01, against
 `claude-opus-5`, and read the actual `RunRecord`s each sample's solver collected
 back out of the resulting `.eval` log (`state.metadata["runs"]`):
@@ -64,9 +94,9 @@ back out of the resulting `.eval` log (`state.metadata["runs"]`):
 | tokens in / out (total) | 198 / 1,530 |
 | cache read / write tokens (total) | 0 / 10,649 |
 
-**Extrapolated full run (210 items, at the same per-item rate): ~$4.44.** Cheap
-enough to run in full when there's a reason to; still not something to run on every
-`--limit`-less invocation by accident, which is the whole point of the small default.
+That extrapolated to ~$4.44 for a full run. **The real figure was $2.07** -- see
+the table above. Still not something to run on every `--limit`-less invocation by
+accident, which is the whole point of the small default.
 
 One caveat worth being explicit about: **cache_read_tokens was 0 across all 5
 samples.** Each golden item gets its own tiny synthetic corpus (its FEVER evidence

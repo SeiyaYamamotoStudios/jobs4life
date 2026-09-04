@@ -1,0 +1,909 @@
+{
+  "candidate": {
+    "slug": "ingrid-solberg",
+    "source_file": "ingrid-solberg.md",
+    "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+  },
+  "cost_usd_total": "0.35299125",
+  "coverage": [
+    {
+      "cited_span_ids": [
+        "b1e270d0-8718-540a-9f76-f16aba7ff2db",
+        "953e70c6-4bed-586e-b428-b30ef62309ae"
+      ],
+      "evidence_note": "The corpus states the candidate has never worked with backend web services in a production capacity, and that production code has been Python and C++ only (no Go/Java). C++ is statically typed, but no backend-service work is documented.",
+      "requirement_id": "bd94577f-b7c5-554a-98a9-6e40d49db04d",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "b1e270d0-8718-540a-9f76-f16aba7ff2db"
+      ],
+      "evidence_note": "Explicitly stated: has never worked with Kafka, message queues, or backend web services in a production capacity.",
+      "requirement_id": "fad57a1c-2aff-5172-b397-6654e360b305",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "fe387b7c-eda8-523d-a277-371b841c85a3"
+      ],
+      "evidence_note": "Explicitly stated: has not worked with payments-industry compliance standards such as PCI-DSS.",
+      "requirement_id": "7d099101-2335-5b03-bd9c-5317941d55bc",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "e112add3-34a3-53ea-95d1-93b68b3a9227",
+        "ca0fa401-cf91-5e22-b327-df48bf0ae9a0"
+      ],
+      "evidence_note": "Corpus documents on-call support for the perception service during fleet pilot deployments, but no on-call work on financially critical systems; it states no payment or settlement systems have been built or operated.",
+      "requirement_id": "f25f30c9-ca92-5ffc-bfe8-ca86652f10e2",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "671564e3-6a01-5a05-b72a-c6c1b774c192",
+        "695359ec-f0e6-57dd-a018-35d19ff7bbc9"
+      ],
+      "evidence_note": "Mentors two junior applied scientists informally at Northcairn; trained two new hires on the model evaluation process at Fenwick.",
+      "requirement_id": "8ad87ee6-b54b-52c7-97f7-5c30b58c92d7",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "c3257993-21b2-5577-ab37-f4e54df0f5fd",
+        "28401e8a-3fb7-5d85-885b-27aee6708f39",
+        "97dcbe48-f332-5af5-9098-7765836fe648",
+        "93e6243f-d6c0-5405-9c22-827be2bea328"
+      ],
+      "evidence_note": "Co-authored an internal report on perception failure modes that the hardware team used to prioritize camera placement; wrote model cards and evaluation reports used by the QA team to sign off releases; presented at an internal research seminar.",
+      "requirement_id": "919458ec-7756-53ca-8739-72bcac44c4df",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "ca0fa401-cf91-5e22-b327-df48bf0ae9a0",
+        "fe387b7c-eda8-523d-a277-371b841c85a3"
+      ],
+      "evidence_note": "Listed employers are robotics, machine-vision, and applied-AI research organizations; the corpus explicitly states no payment/financial settlement system work and no payments-industry compliance exposure.",
+      "requirement_id": "8e62f82a-ad92-5543-9a65-45a18d3eddef",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "953e70c6-4bed-586e-b428-b30ef62309ae"
+      ],
+      "evidence_note": "Explicitly stated: no experience with Rust; production model code has been Python and C++ only.",
+      "requirement_id": "221e17ea-1102-5213-bcc7-1664f6aebbbc",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "83231b43-a076-5919-aecb-312dfde04b9c",
+        "671564e3-6a01-5a05-b72a-c6c1b774c192"
+      ],
+      "evidence_note": "Explicitly stated: has not held a role with hiring or budget authority; the Northcairn role carries no budget.",
+      "requirement_id": "94e36aaa-6b56-5340-ab46-b2b60839c242",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "abbe2df2-9a4d-523d-93f7-8398b031e2f9",
+        "97dcbe48-f332-5af5-9098-7765836fe648"
+      ],
+      "evidence_note": "Presented a poster at a workshop of roughly forty attendees and presented active-learning results at an internal company seminar; no external conference talk is documented.",
+      "requirement_id": "67f7d9e2-baa3-5cb2-8665-b40c667f27be",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "The corpus does not state the size of any employer's engineering organization.",
+      "requirement_id": "c6c6d22d-5f75-5d78-8234-0d7ad01d0bfd",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "ca0fa401-cf91-5e22-b327-df48bf0ae9a0"
+      ],
+      "evidence_note": "Explicitly stated: has not built or operated a payment processing or financial settlement system of any kind.",
+      "requirement_id": "ba996f78-9c40-5deb-9c89-010641733170",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "2891068c-00b1-597b-be0b-3fdd073b3af6",
+        "e112add3-34a3-53ea-95d1-93b68b3a9227",
+        "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab"
+      ],
+      "evidence_note": "Owns the warehouse-robot object-detection model from data collection through production deployment, provided on-call support for the perception service, and deployed a defect-detection model to factory inspection stations.",
+      "requirement_id": "ee125010-05a8-5582-97f7-954ba8ee4087",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "e112add3-34a3-53ea-95d1-93b68b3a9227",
+        "ca0fa401-cf91-5e22-b327-df48bf0ae9a0"
+      ],
+      "evidence_note": "On-call support is documented for the perception service during fleet pilots, but the corpus states no payment or settlement system experience.",
+      "requirement_id": "d9570d2e-6252-5838-ae6a-fa091233af33",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "dc9f3f8c-c1f3-5b50-a090-f993b88a94bf",
+        "28401e8a-3fb7-5d85-885b-27aee6708f39",
+        "fe387b7c-eda8-523d-a277-371b841c85a3"
+      ],
+      "evidence_note": "Documents release governance work with QA (model cards, evaluation reports, model-release sign-off reviews), but no work with risk or compliance functions or on sensitive-data handling; the corpus states no payments-compliance exposure.",
+      "requirement_id": "87f96f09-2036-5264-8127-fb00c0df2128",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "671564e3-6a01-5a05-b72a-c6c1b774c192",
+        "695359ec-f0e6-57dd-a018-35d19ff7bbc9"
+      ],
+      "evidence_note": "Informally mentors two junior applied scientists and previously trained two new hires on the model evaluation process.",
+      "requirement_id": "eaf70ab6-7a86-5637-aaa6-405445b75d22",
+      "status": "evidenced"
+    }
+  ],
+  "draft": {
+    "id": "c1f7fe1e-ecff-4fcf-8d32-ff05c7cf45ba",
+    "kind": "cv_bullets",
+    "text": "Ingrid Solberg \u2014 CV bullets (Senior Backend Engineer, Payments Platform \u2014 Ledgerbridge Financial)\n\nSenior Applied Scientist, Perception Team \u2014 Northcairn Robotics (Mar 2021 - Present)\n- Own the object-detection model running on the company's warehouse robot fleet end to end, from data collection through production deployment \u2014 sole technical owner of a system the fleet depends on daily.\n- Led migration of the production perception stack from a two-stage to a single-stage detector architecture in PyTorch, cutting inference time on the robots' onboard hardware.\n- Review and sign off model-release documents ahead of every quarterly firmware update, acting as the release gate for changes shipping to production hardware.\n- Contributed to the team's active-learning pipeline for prioritising which warehouse images get labelled next, and presented the results at the company's internal research seminar.\n- Filed a patent with two co-inventors on detecting reflective surfaces in warehouse aisles.\n- Mentor two junior applied scientists on the perception team on an ongoing, informal basis (no formal reporting line or budget authority).\n\nApplied Scientist, Perception Team \u2014 Northcairn Robotics (Sep 2018 - Mar 2021)\n- Carried on-call for the perception service through fleet pilot deployments, diagnosing and resolving live production issues on customer sites.\n- Cut false-positive detections on reflective packaging by building a targeted hard-negative dataset and retraining the production model.\n- Co-authored the internal technical report on perception failure modes that the hardware team used to reprioritise camera placement \u2014 translating a subtle software failure mode into decisions made outside my own team.\n- Built the first version of the label-review tool used day-to-day by external data annotation contractors.\n- Worked on multi-camera calibration across the warehouse robot fleet.\n\nMachine Learning Engineer \u2014 Fenwick Vision Systems (Jul 2014 - Sep 2018)\n- Built and maintained the quarterly retraining pipeline for the company's production defect-detection model.\n- Deployed the defect-detection model to inspection stations on the factory floor, and ported inference code from a GPU server to a lower-power embedded board for a pilot deployment.\n- Authored the model card and evaluation report that the QA team used to sign off each model release \u2014 the formal handover artefact between engineering and a non-engineering review function.\n- Root-caused a production accuracy regression to an undocumented change in the camera lighting rig, and communicated the finding back to the hardware owners.\n- Trained two new hires on the team's model evaluation process.\n\nResearch Engineer \u2014 Aldermoor Institute for Applied AI (Sep 2010 - Jun 2014)\n- Published two peer-reviewed workshop papers on convolutional feature extraction for small-object detection; presented a poster at a workshop of roughly forty attendees.\n- Built the lab's shared dataset-loading library, adopted by three other research projects in the group.\n- Collaborated with the robotics group on real-time inference under hard compute constraints.\n- Wrote the lab's internal guide to reproducible experiment tracking.\n\nTechnical profile\n- Production code in Python and C++; PyTorch for model development.\n- Production deployment experience is to on-premise robots and factory hardware rather than cloud-facing services; no Go, Java backend service, Kafka, Rust, or payments/PCI-DSS experience to date.",
+    "trace_id": "cc293872-c12c-43c5-9128-f6c37264fcaa"
+  },
+  "gate": {
+    "sentences": [
+      {
+        "cited_span_ids": [
+          "31bac6a3-8aca-525e-91d2-95ec84200241",
+          "ca0fa401-cf91-5e22-b327-df48bf0ae9a0",
+          "fe387b7c-eda8-523d-a277-371b841c85a3"
+        ],
+        "drift_label": "adjacency_substitution",
+        "evidence_note": "Corpus shows an applied scientist/ML engineer in perception, never a payments-platform backend role at Ledgerbridge Financial; boundaries explicitly exclude payment systems.",
+        "index": 1,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Ingrid Solberg \u2014 CV bullets (Senior Backend Engineer, Payments Platform \u2014 Ledgerbridge Financial)",
+        "verdict": "unsupported"
+      },
+      {
+        "cited_span_ids": [
+          "9e820334-b95b-5803-98ed-3bd741a5b5aa",
+          "94db6597-9856-5e1c-ace1-207bcfe0acf3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, team, employer and dates match the corpus exactly.",
+        "index": 2,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Senior Applied Scientist, Perception Team \u2014 Northcairn Robotics (Mar 2021 - Present)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "2891068c-00b1-597b-be0b-3fdd073b3af6"
+        ],
+        "drift_label": "ownership_inflation",
+        "evidence_note": "End-to-end ownership of the detection model is documented, but 'sole technical owner' and daily fleet dependence are not backed.",
+        "index": 3,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Own the object-detection model running on the company's warehouse robot fleet end to end, from data collection through production deployment \u2014 sole technical owner of a system the fleet depends on daily.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Matches the documented led migration to a single-stage PyTorch detector cutting onboard inference time.",
+        "index": 4,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Led migration of the production perception stack from a two-stage to a single-stage detector architecture in PyTorch, cutting inference time on the robots' onboard hardware.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "dc9f3f8c-c1f3-5b50-a090-f993b88a94bf"
+        ],
+        "drift_label": "ownership_inflation",
+        "evidence_note": "Corpus documents reviewing sign-off documents before quarterly firmware updates, but not acting as the release gate.",
+        "index": 5,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Review and sign off model-release documents ahead of every quarterly firmware update, acting as the release gate for changes shipping to production hardware.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "a54a0423-2b32-5004-9e96-1beb1f26943d",
+          "97dcbe48-f332-5af5-9098-7765836fe648"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Contribution to the active-learning pipeline and internal seminar presentation both appear in the corpus.",
+        "index": 6,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Contributed to the team's active-learning pipeline for prioritising which warehouse images get labelled next, and presented the results at the company's internal research seminar.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e22ae9de-28bc-55a3-b368-070f9256f42b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Patent with two co-inventors on reflective-surface detection is documented.",
+        "index": 7,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Filed a patent with two co-inventors on detecting reflective surfaces in warehouse aisles.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "671564e3-6a01-5a05-b72a-c6c1b774c192",
+          "83231b43-a076-5919-aecb-312dfde04b9c"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Informal mentoring of two junior scientists without budget or hiring authority is stated explicitly.",
+        "index": 8,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Mentor two junior applied scientists on the perception team on an ongoing, informal basis (no formal reporting line or budget authority).",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "cf041c0f-3438-52e9-8ba1-8035f1d71c87"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, team and dates match the corpus.",
+        "index": 9,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Applied Scientist, Perception Team \u2014 Northcairn Robotics (Sep 2018 - Mar 2021)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e112add3-34a3-53ea-95d1-93b68b3a9227"
+        ],
+        "drift_label": "scope_inflation",
+        "evidence_note": "On-call support during fleet pilots is documented; diagnosing and resolving live issues on customer sites is not.",
+        "index": 10,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Carried on-call for the perception service through fleet pilot deployments, diagnosing and resolving live production issues on customer sites.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "6842f1bf-ae1a-5b9f-8ed3-99207eabc400"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Matches the documented false-positive reduction via targeted hard-negative retraining.",
+        "index": 11,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Cut false-positive detections on reflective packaging by building a targeted hard-negative dataset and retraining the production model.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c3257993-21b2-5577-ab37-f4e54df0f5fd"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Co-authored report used by the hardware team to prioritize camera placement is documented.",
+        "index": 12,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Co-authored the internal technical report on perception failure modes that the hardware team used to reprioritise camera placement \u2014 translating a subtle software failure mode into decisions made outside my own team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "99c502f9-fd3c-50ec-95fa-a7255890d4de"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Built first version of label-review tool used by annotation contractors is documented.",
+        "index": 13,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built the first version of the label-review tool used day-to-day by external data annotation contractors.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a3fe0a16-c1c9-52a6-8de2-fb6a0a7d7b55"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Multi-camera calibration for the warehouse robot fleet is documented.",
+        "index": 14,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked on multi-camera calibration across the warehouse robot fleet.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "cc20799c-0bb9-5754-b609-4a5c4eec9e97",
+          "20be2201-d1e7-587c-b73e-9bf11b94bd13"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Role, employer and dates match the corpus.",
+        "index": 15,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Machine Learning Engineer \u2014 Fenwick Vision Systems (Jul 2014 - Sep 2018)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4b52809a-7324-51a2-90dc-212a92acbdd3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Built the quarterly retraining pipeline for the defect-detection model is documented.",
+        "index": 16,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built and maintained the quarterly retraining pipeline for the company's production defect-detection model.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab",
+          "c4e16c7a-c28a-5377-96a5-1ca54ad6802b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the factory-floor deployment and the embedded-board port for a pilot are documented.",
+        "index": 17,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Deployed the defect-detection model to inspection stations on the factory floor, and ported inference code from a GPU server to a lower-power embedded board for a pilot deployment.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "28401e8a-3fb7-5d85-885b-27aee6708f39"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Model card and evaluation report used by QA for release sign-off is documented.",
+        "index": 18,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Authored the model card and evaluation report that the QA team used to sign off each model release \u2014 the formal handover artefact between engineering and a non-engineering review function.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "93e6243f-d6c0-5405-9c22-827be2bea328"
+        ],
+        "drift_label": "causality",
+        "evidence_note": "Corpus says the accuracy drop was investigated and traced to a lighting rig change; 'undocumented' and communicating back to hardware owners are not backed.",
+        "index": 19,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Root-caused a production accuracy regression to an undocumented change in the camera lighting rig, and communicated the finding back to the hardware owners.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "695359ec-f0e6-57dd-a018-35d19ff7bbc9"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Training two new hires on model evaluation is documented.",
+        "index": 20,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Trained two new hires on the team's model evaluation process.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a7adb75d-3737-596f-bac3-49fef8e81439",
+          "16e8963b-7894-5545-8eb3-65358ebd5df9"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Role, institute and dates match the corpus.",
+        "index": 21,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Research Engineer \u2014 Aldermoor Institute for Applied AI (Sep 2010 - Jun 2014)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1bf5bec8-577e-5d20-b631-ff3ccafee417",
+          "abbe2df2-9a4d-523d-93f7-8398b031e2f9"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Two peer-reviewed workshop papers and the ~forty-attendee poster session are both documented.",
+        "index": 22,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Published two peer-reviewed workshop papers on convolutional feature extraction for small-object detection; presented a poster at a workshop of roughly forty attendees.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "3d326872-0d29-58eb-8377-ed0565b6d962"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Shared dataset-loading library used by three other projects is documented.",
+        "index": 23,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built the lab's shared dataset-loading library, adopted by three other research projects in the group.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Joint project with the robotics group on real-time inference under compute constraints is documented.",
+        "index": 24,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Collaborated with the robotics group on real-time inference under hard compute constraints.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1185da76-0131-5146-8e32-c74fbae49575"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Internal guide to reproducible experiment tracking is documented.",
+        "index": 25,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote the lab's internal guide to reproducible experiment tracking.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Section heading with no factual content to check.",
+        "index": 26,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Technical profile",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "953e70c6-4bed-586e-b428-b30ef62309ae",
+          "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states production model code has been Python and C++ only, and PyTorch was used for the detector migration.",
+        "index": 27,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Production code in Python and C++; PyTorch for model development.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "9e10a545-086c-5584-90db-eec383195211",
+          "b1e270d0-8718-540a-9f76-f16aba7ff2db",
+          "953e70c6-4bed-586e-b428-b30ef62309ae",
+          "fe387b7c-eda8-523d-a277-371b841c85a3",
+          "ca0fa401-cf91-5e22-b327-df48bf0ae9a0"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "All stated exclusions match the corpus boundary statements on deployments, backend/Kafka, Rust, and payments/PCI-DSS.",
+        "index": 28,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Production deployment experience is to on-premise robots and factory hardware rather than cloud-facing services; no Go, Java backend service, Kafka, Rust, or payments/PCI-DSS experience to date.",
+        "verdict": "supported"
+      }
+    ]
+  },
+  "generated_at": "2026-09-04T21:22:06.135450+00:00",
+  "job": {
+    "employer": "Ledgerbridge Financial",
+    "id": "191ae544-d3af-515b-b6a6-8df84b762a68",
+    "location": "Remote (UK/EU)",
+    "raw_text": "Senior Backend Engineer, Payments Platform\nLedgerbridge Financial - Remote (UK/EU)\n\nAbout Ledgerbridge\n\nLedgerbridge Financial builds settlement infrastructure for mid-sized merchants across\nEurope. We process a lot of money on behalf of businesses who need to trust that it\nmoves correctly, every time. Our platform team owns everything from card-network\nintegration to nightly settlement, and we're growing it.\n\nThe role\n\nWe're looking for a Senior Backend Engineer to join our Payments Platform team. You'll\nwork on the systems that move money between merchants, card networks, and banks, and\nyou'll be one of the people the rest of engineering leans on when a payment doesn't\nreconcile. This is a hands-on engineering role, not a management track.\n\nWhat you'll do\n\n- Design and build services in the core settlement and reconciliation path\n- Take ownership of at least one production service end to end\n- Be part of the on-call rotation for payment-critical systems\n- Work closely with the risk and compliance teams on how we handle sensitive data\n- Help less experienced engineers on the team grow\n\nWhat you'll need\n\n- 5+ years building backend services in Go, Java, or a similar statically typed language\n- Experience with Kafka or a comparable message broker in production\n- Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the\n  one formally responsible for it\n- On-call experience for production systems where money is on the line\n- Experience mentoring other engineers\n- A strong communicator who can explain a tricky bug to someone outside the team\n\nNice to have\n\n- Prior experience at a fintech, payments, or banking company\n- Rust experience\n- Experience managing a team's infrastructure or cloud budget\n- Conference speaking experience\n- Comfortable working in a company with 200+ engineers\n\nBenefits & perks\n\nCompetitive salary and equity, private health cover, 28 days holiday plus bank\nholidays, a home office stipend, and a genuinely flexible remote-first culture.\nLedgerbridge Financial is an equal opportunity employer and welcomes applicants\nregardless of background.\n",
+    "slug": "ledgerbridge-senior-backend-engineer",
+    "source_file": "ledgerbridge-senior-backend-engineer.txt",
+    "title": "Senior Backend Engineer, Payments Platform"
+  },
+  "requirements": [
+    {
+      "id": "bd94577f-b7c5-554a-98a9-6e40d49db04d",
+      "necessity": "essential",
+      "ordinal": 0,
+      "text": "5+ years building backend services in Go, Java, or a similar statically typed language"
+    },
+    {
+      "id": "fad57a1c-2aff-5172-b397-6654e360b305",
+      "necessity": "essential",
+      "ordinal": 1,
+      "text": "Experience with Kafka or a comparable message broker in production"
+    },
+    {
+      "id": "7d099101-2335-5b03-bd9c-5317941d55bc",
+      "necessity": "essential",
+      "ordinal": 2,
+      "text": "Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the one formally responsible for it"
+    },
+    {
+      "id": "f25f30c9-ca92-5ffc-bfe8-ca86652f10e2",
+      "necessity": "essential",
+      "ordinal": 3,
+      "text": "On-call experience for production systems where money is on the line"
+    },
+    {
+      "id": "8ad87ee6-b54b-52c7-97f7-5c30b58c92d7",
+      "necessity": "essential",
+      "ordinal": 4,
+      "text": "Experience mentoring other engineers"
+    },
+    {
+      "id": "919458ec-7756-53ca-8739-72bcac44c4df",
+      "necessity": "essential",
+      "ordinal": 5,
+      "text": "A strong communicator who can explain a tricky bug to someone outside the team"
+    },
+    {
+      "id": "8e62f82a-ad92-5543-9a65-45a18d3eddef",
+      "necessity": "desirable",
+      "ordinal": 6,
+      "text": "Prior experience at a fintech, payments, or banking company"
+    },
+    {
+      "id": "221e17ea-1102-5213-bcc7-1664f6aebbbc",
+      "necessity": "desirable",
+      "ordinal": 7,
+      "text": "Rust experience"
+    },
+    {
+      "id": "94e36aaa-6b56-5340-ab46-b2b60839c242",
+      "necessity": "desirable",
+      "ordinal": 8,
+      "text": "Experience managing a team's infrastructure or cloud budget"
+    },
+    {
+      "id": "67f7d9e2-baa3-5cb2-8665-b40c667f27be",
+      "necessity": "desirable",
+      "ordinal": 9,
+      "text": "Conference speaking experience"
+    },
+    {
+      "id": "c6c6d22d-5f75-5d78-8234-0d7ad01d0bfd",
+      "necessity": "desirable",
+      "ordinal": 10,
+      "text": "Comfortable working in a company with 200+ engineers"
+    },
+    {
+      "id": "ba996f78-9c40-5deb-9c89-010641733170",
+      "necessity": "unstated",
+      "ordinal": 11,
+      "text": "Design and build services in the core settlement and reconciliation path"
+    },
+    {
+      "id": "ee125010-05a8-5582-97f7-954ba8ee4087",
+      "necessity": "unstated",
+      "ordinal": 12,
+      "text": "Take ownership of at least one production service end to end"
+    },
+    {
+      "id": "d9570d2e-6252-5838-ae6a-fa091233af33",
+      "necessity": "unstated",
+      "ordinal": 13,
+      "text": "Be part of the on-call rotation for payment-critical systems"
+    },
+    {
+      "id": "87f96f09-2036-5264-8127-fb00c0df2128",
+      "necessity": "unstated",
+      "ordinal": 14,
+      "text": "Work closely with the risk and compliance teams on how we handle sensitive data"
+    },
+    {
+      "id": "eaf70ab6-7a86-5637-aaa6-405445b75d22",
+      "necessity": "unstated",
+      "ordinal": 15,
+      "text": "Help less experienced engineers on the team grow"
+    }
+  ],
+  "runs": [
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.03838",
+      "error": null,
+      "id": "64279180-a808-4812-a0bc-77235873d556",
+      "latency_ms": 14619,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "extract_requirements",
+      "started_at": "2026-09-04T21:19:52.367176Z",
+      "tokens_in": 1376,
+      "tokens_out": 1260,
+      "trace_id": "2c654e50-0c1b-4926-8df4-590ab39d9468",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 4630,
+      "component": "generate",
+      "cost_usd": "0.1186675",
+      "error": null,
+      "id": "178f9bd5-c5e0-43db-bc31-7c68d940249a",
+      "latency_ms": 46386,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "coverage",
+      "started_at": "2026-09-04T21:20:07.058623Z",
+      "tokens_in": 361,
+      "tokens_out": 3517,
+      "trace_id": "69b0a173-3525-4b31-97a0-d47b523c95d1",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 4184,
+      "component": "generate",
+      "cost_usd": "0.06945",
+      "error": null,
+      "id": "c7fd04b6-b38d-4868-8013-c291a3bcdb4b",
+      "latency_ms": 20243,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "draft",
+      "started_at": "2026-09-04T21:20:53.564354Z",
+      "tokens_in": 2090,
+      "tokens_out": 1314,
+      "trace_id": "cc293872-c12c-43c5-9128-f6c37264fcaa",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": {
+        "rule_escalations": 0
+      },
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 6055,
+      "component": "gate",
+      "cost_usd": "0.12649375",
+      "error": null,
+      "id": "4511a3eb-a02e-4b15-8591-b61f44307c8b",
+      "latency_ms": 52295,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "baseline",
+      "started_at": "2026-09-04T21:21:13.815706Z",
+      "tokens_in": 1185,
+      "tokens_out": 3309,
+      "trace_id": "cc293872-c12c-43c5-9128-f6c37264fcaa",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    }
+  ],
+  "spans": {
+    "1185da76-0131-5146-8e32-c74fbae49575": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Wrote the lab's internal guide to reproducible experiment tracking."
+    },
+    "16e8963b-7894-5545-8eb3-65358ebd5df9": {
+      "kind": "heading",
+      "section_path": "Aldermoor Institute for Applied AI",
+      "text": "Aldermoor Institute for Applied AI"
+    },
+    "1bf5bec8-577e-5d20-b631-ff3ccafee417": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Published two papers on convolutional feature extraction for small-object detection, both accepted at peer-reviewed workshops."
+    },
+    "20be2201-d1e7-587c-b73e-9bf11b94bd13": {
+      "kind": "heading",
+      "section_path": "Fenwick Vision Systems",
+      "text": "Fenwick Vision Systems"
+    },
+    "28401e8a-3fb7-5d85-885b-27aee6708f39": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Wrote the model card and evaluation report used by the QA team to sign off on each model release."
+    },
+    "2891068c-00b1-597b-be0b-3fdd073b3af6": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Owns the object-detection model that runs on the company's warehouse robots, from data collection through production deployment."
+    },
+    "2e71048e-9bc7-53b8-83c3-27ad9286df21": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Led the migration of the perception stack from a two-stage detector to a single-stage architecture built in PyTorch, cutting inference time on the robot's onboard hardware."
+    },
+    "31bac6a3-8aca-525e-91d2-95ec84200241": {
+      "kind": "heading",
+      "section_path": "",
+      "text": "Ingrid Solberg"
+    },
+    "39ae1ea8-44de-5005-8e2e-9b9c0373b3e2": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not supervised a PhD student or postdoc."
+    },
+    "3d326872-0d29-58eb-8377-ed0565b6d962": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Built the lab's shared dataset-loading library, used by three other research projects in the group."
+    },
+    "4b52809a-7324-51a2-90dc-212a92acbdd3": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Built the training pipeline used to retrain the company's defect-detection model each quarter."
+    },
+    "671564e3-6a01-5a05-b72a-c6c1b774c192": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Mentors two junior applied scientists on the perception team informally; the role carries no budget or hiring authority."
+    },
+    "6842f1bf-ae1a-5b9f-8ed3-99207eabc400": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Reduced false-positive detections on reflective packaging by retraining the model with a targeted hard-negative dataset."
+    },
+    "695359ec-f0e6-57dd-a018-35d19ff7bbc9": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Trained two new hires on the team's model evaluation process."
+    },
+    "83231b43-a076-5919-aecb-312dfde04b9c": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not held a formal people-management role with hiring or budget authority; mentoring at Northcairn is informal."
+    },
+    "93e6243f-d6c0-5405-9c22-827be2bea328": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Investigated a drop in model accuracy traced to a change in the camera's lighting rig."
+    },
+    "94db6597-9856-5e1c-ace1-207bcfe0acf3": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics",
+      "text": "Northcairn Robotics"
+    },
+    "953e70c6-4bed-586e-b428-b30ef62309ae": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has no experience with Rust; production model code has been Python and C++ only."
+    },
+    "97dcbe48-f332-5af5-9098-7765836fe648": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Presented the team's active-learning results at the company's internal research seminar."
+    },
+    "99c502f9-fd3c-50ec-95fa-a7255890d4de": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Built the first version of the label-review tool used by the data annotation contractors."
+    },
+    "9e10a545-086c-5584-90db-eec383195211": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not deployed a model to a cloud-facing consumer product; all deployments have been to on-premise robots or factory hardware."
+    },
+    "9e820334-b95b-5803-98ed-3bd741a5b5aa": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Senior Applied Scientist, Perception Team (Mar 2021 - Present)"
+    },
+    "9eff5e58-1eb3-548a-88e5-d9f5776a8f1a": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not led a cross-functional team larger than the four-person perception pod at Northcairn."
+    },
+    "a3fe0a16-c1c9-52a6-8de2-fb6a0a7d7b55": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Worked on multi-camera calibration for the warehouse robot fleet."
+    },
+    "a54a0423-2b32-5004-9e96-1beb1f26943d": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Worked on the team's active-learning pipeline for selecting which warehouse images to label next."
+    },
+    "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Worked on a joint project with the robotics group on real-time inference under compute constraints."
+    },
+    "a7adb75d-3737-596f-bac3-49fef8e81439": {
+      "kind": "heading",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Research Engineer (Sep 2010 - Jun 2014)"
+    },
+    "abbe2df2-9a4d-523d-93f7-8398b031e2f9": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Presented a poster at a workshop attracting roughly forty attendees."
+    },
+    "b1e270d0-8718-540a-9f76-f16aba7ff2db": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never worked with Kafka, message queues, or backend web services in a production capacity."
+    },
+    "bf7d571d-cf5f-56f1-81f9-5d7e2fe6a594": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not set a company-wide research agenda; research direction at Northcairn is set jointly with the team lead."
+    },
+    "c3257993-21b2-5577-ab37-f4e54df0f5fd": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Co-authored an internal technical report on the perception stack's failure modes, used by the hardware team to prioritize camera placement changes."
+    },
+    "c421328c-f313-54b5-aa72-bd4d7809d1f8": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Worked on the labeling tool used by the QA team to annotate defect images."
+    },
+    "c4e16c7a-c28a-5377-96a5-1ca54ad6802b": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Ported the inference code from a GPU server to a lower-power embedded board for a pilot deployment."
+    },
+    "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Deployed the defect-detection model to the factory floor's inspection stations."
+    },
+    "ca0fa401-cf91-5e22-b327-df48bf0ae9a0": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not built or operated a payment processing or financial settlement system of any kind."
+    },
+    "cc20799c-0bb9-5754-b609-4a5c4eec9e97": {
+      "kind": "heading",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Machine Learning Engineer (Jul 2014 - Sep 2018)"
+    },
+    "cf041c0f-3438-52e9-8ba1-8035f1d71c87": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Applied Scientist, Perception Team (Sep 2018 - Mar 2021)"
+    },
+    "dc9f3f8c-c1f3-5b50-a090-f993b88a94bf": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Reviews model-release sign-off documents before each quarterly firmware update."
+    },
+    "e112add3-34a3-53ea-95d1-93b68b3a9227": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Provided on-call support for the perception service during fleet pilot deployments."
+    },
+    "e22ae9de-28bc-55a3-b368-070f9256f42b": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Filed one patent, with two co-inventors, on a technique for detecting reflective surfaces in warehouse aisles."
+    },
+    "f61f7109-eb7f-588b-83e7-ed9fef93ec1b": {
+      "kind": "heading",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Things Stated Explicitly as NOT True, or Boundaries to Hold"
+    },
+    "fe387b7c-eda8-523d-a277-371b841c85a3": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with payments-industry compliance standards such as PCI-DSS."
+    }
+  }
+}

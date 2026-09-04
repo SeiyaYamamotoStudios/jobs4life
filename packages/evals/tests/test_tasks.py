@@ -7,8 +7,10 @@ the eval itself, run manually -- see README.md -- never by the default test suit
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
 from inspect_ai.scorer import Metric, MetricProtocol, SampleScore, Score, Value
 from jfl_evals.dataset import GoldenItem
@@ -160,3 +162,58 @@ class TestClaimGateFeverTask:
     def test_model_is_none_none_since_the_solver_never_calls_generate(self) -> None:
         task = claim_gate_fever()
         assert str(task.model) == "none/none"
+
+
+class TestScorerOnResplitItems:
+    """The gate occasionally returns more than one SentenceResult for a
+    single-sentence golden item -- the model re-splits the input, observed on
+    `fever-13515` ("...George R.R. Martin.") on 2026-09-04. That must be scored as
+    a harness error, never raised: raising aborted a 50-item run at sample 45.
+    """
+
+    @staticmethod
+    def _score_with(sentences: list[dict[str, object]]) -> Score:
+        from inspect_ai.scorer import Target
+        from jfl_evals.tasks import gate_grounding_scorer
+
+        state = cast(
+            Any,
+            SimpleNamespace(
+                metadata={"gate_result": {"sentences": sentences}, "gate_error": None},
+                sample_id="fever-13515",
+            ),
+        )
+        return cast(Score, asyncio.run(gate_grounding_scorer()(state, Target("supported"))))
+
+    def test_two_sentences_score_as_an_error_not_a_raise(self) -> None:
+        score = self._score_with(
+            [
+                {"verdict": "supported", "kind": "claim", "text": "A claim ending in R.R."},
+                {"verdict": "supported", "kind": "claim", "text": "Martin."},
+            ]
+        )
+
+        value = cast(dict[str, str], score.value)
+        assert value["actual"] == "error"
+        assert value["kind"] == "error"
+        assert score.metadata is not None
+        assert score.metadata["actual"] is None
+
+    def test_the_error_text_names_the_fragments_so_the_defect_stays_visible(self) -> None:
+        score = self._score_with(
+            [
+                {"verdict": "supported", "kind": "claim", "text": "A claim ending in R.R."},
+                {"verdict": "supported", "kind": "claim", "text": "Martin."},
+            ]
+        )
+
+        assert score.explanation is not None
+        assert "re-split" in score.explanation
+        assert "'Martin.'" in score.explanation
+
+    def test_the_normal_single_sentence_path_is_untouched(self) -> None:
+        score = self._score_with(
+            [{"verdict": "supported", "kind": "claim", "text": "A claim.", "evidence_note": "ok"}]
+        )
+
+        assert cast(dict[str, str], score.value)["outcome"] == "match"

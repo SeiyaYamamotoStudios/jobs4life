@@ -225,13 +225,31 @@ def gate_grounding_scorer() -> Scorer:
 
         sentences = gate_result["sentences"]
         # Every golden item is exactly one FEVER claim, so `check_text` (given
-        # exactly one sentence) returns exactly one SentenceResult. If that is
-        # ever not true it is a data problem worth seeing loudly, not a case to
-        # silently pick sentences[0] for.
+        # exactly one sentence) should return exactly one SentenceResult. When it
+        # does not, the model has re-split the input: observed on 2026-09-04 with
+        # `fever-13515`, where "Petyr Baelish is created by an American author
+        # George R.R. Martin." came back as two claims, "...George R.R." and a
+        # fragment "Martin.". The splitter is not at fault -- `split_blocks`
+        # returns one block for that text; the model split at the initials inside
+        # its own output. Any name with initials, or a "Ph.D.", can do this.
+        #
+        # This used to raise, which was right to notice it and wrong in blast
+        # radius: one such item aborted a 50-item run at sample 45 and would abort
+        # a 210-item one just as readily. It is scored as a harness error instead
+        # -- excluded from both headline rates rather than folded into either,
+        # exactly as a GateError is, because a re-split item carries no clean
+        # grounding judgement to attribute. `_item_results` counts errors
+        # separately, so this stays visible rather than becoming a silent pass.
         if len(sentences) != 1:
-            raise ValueError(
-                f"sample {state.sample_id}: expected exactly one sentence result, "
-                f"got {len(sentences)}"
+            detail = (
+                f"gate returned {len(sentences)} sentence results for a "
+                f"single-sentence item (model re-split the input): "
+                + " | ".join(repr(x.get("text")) for x in sentences)
+            )
+            return Score(
+                value={"expected": expected, "actual": "error", "kind": "error"},
+                explanation=detail,
+                metadata={"expected": expected, "actual": None, "kind": None, "error": detail},
             )
         sentence = sentences[0]
         actual = sentence["verdict"]

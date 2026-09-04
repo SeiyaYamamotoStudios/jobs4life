@@ -67,6 +67,33 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
+**2026-09-05 — The product model is Opus 5, and the reason is not accuracy.** Both
+models were run over the whole 210-item tier-1 set and compared **paired**, item by
+item (`packages/evals/scripts/compare_eval_runs.py`). On the headline numbers they are
+indistinguishable: over-claim 0.7% (1/140) and over-flag 2.9% (2/69) on both, and the
+paired test shows **zero discordant items** on either — the same single item over-claims
+under both models, the same two over-flag. Compared as independent proportions this
+would have been an underpowered draw; paired, it is a clean "no difference".
+
+They differ sharply on a third number, which is why that number now exists. **Corpus
+silence read as contradiction** — ground truth `review`, gate said `unsupported` — is
+22.9% (16/70) on Opus and **71.4% (50/70)** on Sonnet, discordant 34–0 in one direction,
+McNemar exact p < 0.001. Neither headline rate sees this, because it is neither an
+over-claim nor an over-flag. It matters more here than the raw figure suggests: a gap in
+the corpus is supposed to become a gap question and then a new span — that is the
+flywheel — and a model that calls silence "contradicted" converts a fixable gap into an
+accusation. For a tool whose whole claim is measuring distance honestly, telling someone
+the corpus contradicts them when it is merely silent is the worst-tempered error
+available.
+
+**And Sonnet is not meaningfully cheaper.** The price sheet says 40% of Opus; the
+measured full run was $1.8451 against $2.0715, **11% less**. Sonnet emitted **157,162
+output tokens against Opus's 68,420** — 2.3x — and output is ~92% of a check's cost, so
+the verbosity almost exactly cancels the price advantage. Do not infer cost from the rate
+card for this workload; measure it. Sonnet stays selectable (`--model`, `$JFL_MODEL`) and
+its numbers get published beside Opus's, because model choice is a product option, not a
+hidden default.
+
 **2026-09-01 — Repository is private.** Flipping private to public later preserves the
 whole commit history, so nothing is lost by waiting; public to private does not retract
 what has been cloned or indexed. Revisit when there is something worth showing.
