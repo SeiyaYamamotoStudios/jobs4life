@@ -1,0 +1,852 @@
+{
+  "candidate": {
+    "slug": "ingrid-solberg",
+    "source_file": "ingrid-solberg.md",
+    "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+  },
+  "cost_usd_total": "0.2493495",
+  "coverage": [
+    {
+      "cited_span_ids": [
+        "2891068c-00b1-597b-be0b-3fdd073b3af6",
+        "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab",
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+      ],
+      "evidence_note": "Owns the object-detection model on warehouse robots from data collection through production deployment; also deployed a defect-detection model to factory-floor inspection stations at Fenwick.",
+      "requirement_id": "373f307b-0446-5f21-82a2-380de031d472",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "953e70c6-4bed-586e-b428-b30ef62309ae",
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+      ],
+      "evidence_note": "Corpus states production model code has been Python and C++ only; perception stack migration was built in PyTorch.",
+      "requirement_id": "dd95c22f-def6-51b5-a8d0-205fa035b4c2",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "953e70c6-4bed-586e-b428-b30ef62309ae",
+        "c4e16c7a-c28a-5377-96a5-1ca54ad6802b"
+      ],
+      "evidence_note": "C++ is named as one of two production model languages, and inference code was ported to a lower-power embedded board, but the corpus does not explicitly state that the embedded/porting work was done in C++.",
+      "requirement_id": "ef2f6f59-9c8a-513b-9af4-aedab769c564",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+      ],
+      "evidence_note": "Led migration of the perception stack to a single-stage detector architecture built in PyTorch.",
+      "requirement_id": "1442cf9e-5f99-5550-90c5-1b3cc9b2b7be",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "99c502f9-fd3c-50ec-95fa-a7255890d4de",
+        "c421328c-f313-54b5-aa72-bd4d7809d1f8",
+        "a54a0423-2b32-5004-9e96-1beb1f26943d"
+      ],
+      "evidence_note": "Built the first label-review tool for annotation contractors, worked on a QA labeling tool at Fenwick, and worked on the active-learning labeling-selection pipeline.",
+      "requirement_id": "cdb718f6-bbbf-5768-8c15-ab1b1efc5e1c",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "c4e16c7a-c28a-5377-96a5-1ca54ad6802b",
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21",
+        "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3"
+      ],
+      "evidence_note": "Ported inference code from GPU server to a lower-power embedded board, cut inference time on robot onboard hardware, and worked on real-time inference under compute constraints.",
+      "requirement_id": "85e29e30-a994-5c18-99cc-0180fdd6d98a",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "1bf5bec8-577e-5d20-b631-ff3ccafee417",
+        "e22ae9de-28bc-55a3-b368-070f9256f42b"
+      ],
+      "evidence_note": "Two peer-reviewed workshop papers on convolutional feature extraction for small-object detection, plus one filed patent on detecting reflective surfaces in warehouse aisles.",
+      "requirement_id": "90caf4f5-e07c-5d86-ade8-3cc5c3552f98",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "671564e3-6a01-5a05-b72a-c6c1b774c192",
+        "695359ec-f0e6-57dd-a018-35d19ff7bbc9"
+      ],
+      "evidence_note": "Informally mentors two junior applied scientists at Northcairn; trained two new hires on the model evaluation process at Fenwick.",
+      "requirement_id": "c8e435a8-ffcb-5bec-ae18-7b132079a644",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "94db6597-9856-5e1c-ace1-207bcfe0acf3",
+        "9e820334-b95b-5803-98ed-3bd741a5b5aa",
+        "2891068c-00b1-597b-be0b-3fdd073b3af6"
+      ],
+      "evidence_note": "Since 2018 on the perception team at Northcairn Robotics, working on warehouse robot fleets.",
+      "requirement_id": "91ea9b80-0a61-505e-95ce-18b6d769cbf9",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "bf7d571d-cf5f-56f1-81f9-5d7e2fe6a594",
+        "97dcbe48-f332-5af5-9098-7765836fe648"
+      ],
+      "evidence_note": "Corpus states research direction at Northcairn is set jointly with the team lead (and that no company-wide research agenda was set), but does not describe specific instances of shaping team research direction beyond execution.",
+      "requirement_id": "bfcecfac-8f75-58b2-873e-96d178cdf6c8",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "b1e270d0-8718-540a-9f76-f16aba7ff2db",
+        "9e10a545-086c-5584-90db-eec383195211"
+      ],
+      "evidence_note": "Corpus explicitly states no production work with Kafka, message queues, or backend web services, and no deployment to a cloud-facing product; all deployments were on-premise robots or factory hardware.",
+      "requirement_id": "4057ff1d-ae9f-5db5-965b-5354faa11ff4",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "2891068c-00b1-597b-be0b-3fdd073b3af6",
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21",
+        "6842f1bf-ae1a-5b9f-8ed3-99207eabc400"
+      ],
+      "evidence_note": "Owns the production object-detection model on warehouse robots, led an architecture migration, and reduced false positives via targeted hard-negative retraining.",
+      "requirement_id": "a4ee8c3a-32ef-590d-8a9f-2f1af238237b",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "a54a0423-2b32-5004-9e96-1beb1f26943d",
+        "97dcbe48-f332-5af5-9098-7765836fe648"
+      ],
+      "evidence_note": "Worked on the active-learning pipeline that selects which warehouse images to label next and presented its results internally.",
+      "requirement_id": "0a2856b8-5266-591d-b8e2-5644be842732",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "2e71048e-9bc7-53b8-83c3-27ad9286df21",
+        "c4e16c7a-c28a-5377-96a5-1ca54ad6802b",
+        "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3"
+      ],
+      "evidence_note": "Cut inference time on robot onboard hardware via architecture change, ported inference to a lower-power embedded board, and worked on real-time inference under compute constraints; memory limits specifically are not called out.",
+      "requirement_id": "e42817c1-7851-5414-98e5-4a92661b6847",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "93e6243f-d6c0-5405-9c22-827be2bea328",
+        "c3257993-21b2-5577-ab37-f4e54df0f5fd",
+        "6842f1bf-ae1a-5b9f-8ed3-99207eabc400",
+        "e112add3-34a3-53ea-95d1-93b68b3a9227"
+      ],
+      "evidence_note": "Traced an accuracy drop to a camera lighting rig change, co-authored a failure-modes report on the perception stack, fixed reflective-packaging false positives, and provided on-call support during fleet pilots.",
+      "requirement_id": "834d809a-ba29-57ab-b763-ff05611f8f13",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "a3fe0a16-c1c9-52a6-8de2-fb6a0a7d7b55",
+        "c3257993-21b2-5577-ab37-f4e54df0f5fd"
+      ],
+      "evidence_note": "Worked on multi-camera calibration for the robot fleet; co-authored a failure-modes report used by the hardware team to prioritize camera placement changes.",
+      "requirement_id": "19c30e49-639e-5e80-81ea-4320a1421365",
+      "status": "evidenced"
+    }
+  ],
+  "draft": {
+    "id": "c71ab411-042c-4e12-aa4d-04a802f652c4",
+    "kind": "cv_bullets",
+    "text": "Ingrid Solberg \u2014 CV bullets (Machine Learning Engineer, Perception \u2014 Solstice Vision Labs)\n\nOwn the object-detection model running on Northcairn Robotics' warehouse robots end to end, from data collection through production deployment on the fleet.\nLed the migration of the perception stack from a two-stage detector to a single-stage architecture built in PyTorch, cutting inference time on the robot's onboard hardware.\nReduced false-positive detections on reflective packaging by retraining the production model with a targeted hard-negative dataset.\nWorked on the perception team's active-learning pipeline that selects which warehouse images to label next, and presented the results at the company's internal research seminar.\nBuilt the first version of the label-review tool used by the data annotation contractors supporting the perception team.\nFiled a patent (with two co-inventors) on a technique for detecting reflective surfaces in warehouse aisles.\nWorked on multi-camera calibration for the warehouse robot fleet.\nCo-authored an internal technical report on the perception stack's failure modes, which the hardware team used to prioritise camera placement changes.\nProvided on-call support for the perception service during fleet pilot deployments.\nReview model-release sign-off documents ahead of each quarterly firmware update.\nMentor two junior applied scientists on the perception team (informal mentoring; the role carries no hiring or budget authority).\nContribute to the team's research direction at Northcairn, set jointly with the team lead.\nWrite production model code in Python and C++.\nPorted inference code from a GPU server to a lower-power embedded board for a pilot deployment at Fenwick Vision Systems.\nDeployed the defect-detection model to the factory floor's inspection stations at Fenwick Vision Systems.\nBuilt the training pipeline used to retrain Fenwick's defect-detection model each quarter, and worked on the labeling tool used by the QA team to annotate defect images.\nInvestigated a drop in model accuracy and traced the root cause to a change in the camera's lighting rig.\nWrote the model card and evaluation report used by the QA team to sign off on each model release; trained two new hires on the team's model evaluation process.\nPublished two peer-reviewed workshop papers on convolutional feature extraction for small-object detection during four years as a Research Engineer at the Aldermoor Institute for Applied AI.\nWorked with the institute's robotics group on real-time inference under compute constraints, and built the lab's shared dataset-loading library used by three other research projects.\nWrote the lab's internal guide to reproducible experiment tracking.\n\nNote on scope: all model deployments to date have been to on-premise robots or factory hardware rather than cloud-facing consumer products; no production experience with backend web services or message queues.",
+    "trace_id": "e67ef89f-a682-423b-afd6-d809cbf58e48"
+  },
+  "gate": {
+    "sentences": [
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Document header labelling the CV bullets and target role; carries no checkable claim about past employment.",
+        "index": 1,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Ingrid Solberg \u2014 CV bullets (Machine Learning Engineer, Perception \u2014 Solstice Vision Labs)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "2891068c-00b1-597b-be0b-3fdd073b3af6"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus explicitly states she owns the object-detection model from data collection through production deployment.",
+        "index": 2,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Own the object-detection model running on Northcairn Robotics' warehouse robots end to end, from data collection through production deployment on the fleet.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "2e71048e-9bc7-53b8-83c3-27ad9286df21"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Matches the corpus bullet on leading the two-stage to single-stage PyTorch migration and cutting inference time.",
+        "index": 3,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Led the migration of the perception stack from a two-stage detector to a single-stage architecture built in PyTorch, cutting inference time on the robot's onboard hardware.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "6842f1bf-ae1a-5b9f-8ed3-99207eabc400"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus records reducing false positives on reflective packaging via hard-negative retraining.",
+        "index": 4,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Reduced false-positive detections on reflective packaging by retraining the production model with a targeted hard-negative dataset.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a54a0423-2b32-5004-9e96-1beb1f26943d",
+          "97dcbe48-f332-5af5-9098-7765836fe648"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the active-learning pipeline work and the internal seminar presentation are documented.",
+        "index": 5,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked on the perception team's active-learning pipeline that selects which warehouse images to label next, and presented the results at the company's internal research seminar.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "99c502f9-fd3c-50ec-95fa-a7255890d4de"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states she built the first version of the label-review tool used by annotation contractors.",
+        "index": 6,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built the first version of the label-review tool used by the data annotation contractors supporting the perception team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e22ae9de-28bc-55a3-b368-070f9256f42b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Patent with two co-inventors on reflective-surface detection is recorded verbatim.",
+        "index": 7,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Filed a patent (with two co-inventors) on a technique for detecting reflective surfaces in warehouse aisles.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a3fe0a16-c1c9-52a6-8de2-fb6a0a7d7b55"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Multi-camera calibration for the warehouse robot fleet appears in the corpus.",
+        "index": 8,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked on multi-camera calibration for the warehouse robot fleet.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c3257993-21b2-5577-ab37-f4e54df0f5fd"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Co-authorship and downstream hardware-team use are both documented.",
+        "index": 9,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Co-authored an internal technical report on the perception stack's failure modes, which the hardware team used to prioritise camera placement changes.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e112add3-34a3-53ea-95d1-93b68b3a9227"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "On-call support during fleet pilot deployments matches the corpus bullet.",
+        "index": 10,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Provided on-call support for the perception service during fleet pilot deployments.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "dc9f3f8c-c1f3-5b50-a090-f993b88a94bf"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states she reviews model-release sign-off documents before quarterly firmware updates.",
+        "index": 11,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Review model-release sign-off documents ahead of each quarterly firmware update.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "671564e3-6a01-5a05-b72a-c6c1b774c192",
+          "83231b43-a076-5919-aecb-312dfde04b9c"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Mentoring of two juniors is documented and the stated absence of hiring/budget authority matches the boundary note.",
+        "index": 12,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Mentor two junior applied scientists on the perception team (informal mentoring; the role carries no hiring or budget authority).",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "bf7d571d-cf5f-56f1-81f9-5d7e2fe6a594"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Framed within the boundary that research direction is set jointly with the team lead, not company-wide.",
+        "index": 13,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Contribute to the team's research direction at Northcairn, set jointly with the team lead.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "953e70c6-4bed-586e-b428-b30ef62309ae"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states production model code has been Python and C++ only.",
+        "index": 14,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Write production model code in Python and C++.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c4e16c7a-c28a-5377-96a5-1ca54ad6802b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Porting inference code to a lower-power embedded board for a pilot is in the Fenwick section.",
+        "index": 15,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Ported inference code from a GPU server to a lower-power embedded board for a pilot deployment at Fenwick Vision Systems.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Deployment of the defect-detection model to factory inspection stations is documented.",
+        "index": 16,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Deployed the defect-detection model to the factory floor's inspection stations at Fenwick Vision Systems.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4b52809a-7324-51a2-90dc-212a92acbdd3",
+          "c421328c-f313-54b5-aa72-bd4d7809d1f8"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the quarterly retraining pipeline and the QA labeling tool work trace to corpus bullets.",
+        "index": 17,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built the training pipeline used to retrain Fenwick's defect-detection model each quarter, and worked on the labeling tool used by the QA team to annotate defect images.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "93e6243f-d6c0-5405-9c22-827be2bea328"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus records investigating an accuracy drop traced to a lighting rig change.",
+        "index": 18,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Investigated a drop in model accuracy and traced the root cause to a change in the camera's lighting rig.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "28401e8a-3fb7-5d85-885b-27aee6708f39",
+          "695359ec-f0e6-57dd-a018-35d19ff7bbc9"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Model card/evaluation report and training two new hires are both documented at Fenwick.",
+        "index": 19,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote the model card and evaluation report used by the QA team to sign off on each model release; trained two new hires on the team's model evaluation process.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1bf5bec8-577e-5d20-b631-ff3ccafee417",
+          "a7adb75d-3737-596f-bac3-49fef8e81439"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Two peer-reviewed workshop papers and the Sep 2010-Jun 2014 Research Engineer tenure match the corpus.",
+        "index": 20,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Published two peer-reviewed workshop papers on convolutional feature extraction for small-object detection during four years as a Research Engineer at the Aldermoor Institute for Applied AI.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3",
+          "3d326872-0d29-58eb-8377-ed0565b6d962"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Joint robotics-group project and the shared dataset-loading library used by three projects are both documented.",
+        "index": 21,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked with the institute's robotics group on real-time inference under compute constraints, and built the lab's shared dataset-loading library used by three other research projects.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1185da76-0131-5146-8e32-c74fbae49575"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states she wrote the lab's internal guide to reproducible experiment tracking.",
+        "index": 22,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote the lab's internal guide to reproducible experiment tracking.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "9e10a545-086c-5584-90db-eec383195211",
+          "b1e270d0-8718-540a-9f76-f16aba7ff2db"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Scope note restates the corpus boundaries on on-premise-only deployments and no production backend/message-queue experience.",
+        "index": 23,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Note on scope: all model deployments to date have been to on-premise robots or factory hardware rather than cloud-facing consumer products; no production experience with backend web services or message queues.",
+        "verdict": "supported"
+      }
+    ]
+  },
+  "generated_at": "2026-09-04T21:48:57.895293+00:00",
+  "job": {
+    "employer": "Solstice Vision Labs",
+    "id": "4dfc6a9f-253f-578b-9341-c0ea92720102",
+    "location": "Onsite (Toronto) preferred, remote considered for senior candidates",
+    "raw_text": "Machine Learning Engineer - Perception\nSolstice Vision Labs - Onsite (Toronto) preferred, remote considered for senior candidates\n\nAbout us\n\nSolstice Vision Labs builds computer vision systems for autonomous inspection robots\nused in warehouses and light manufacturing. Our perception stack has to work on\nreal, messy hardware in the field, not just in a notebook.\n\nThe role\n\nWe're looking for a Machine Learning Engineer to join our Perception team. You'll work\nacross the full lifecycle of our vision models: collecting and labeling data, training,\nand getting models running reliably on the robot's onboard compute. This is a\nproduction-focused role - we care more about a model that runs correctly on the robot\nthan one that looks good on a benchmark.\n\nResponsibilities\n\n- Build and improve computer vision models used in production on our robots\n- Work with our data annotation pipeline to decide what gets labeled next\n- Get models running within the memory and latency limits of embedded hardware\n- Debug production failures back to a root cause, whether that's data, model, or camera\n- Collaborate with hardware engineers on camera placement and calibration\n\nWhat you'll need\n\n- Hands-on experience building and deploying computer vision models to a production\n  system, not only research or coursework\n- Strong Python skills; C++ experience is a plus for the embedded-deployment side\n- Experience with PyTorch or a comparable deep learning framework\n- Experience working with a data annotation or labeling pipeline\n- Comfortable working within hardware constraints such as edge or embedded deployment\n\nNice to have\n\n- Peer-reviewed publications or patents related to computer vision or robotics\n- Experience mentoring junior scientists or engineers\n- Prior robotics industry experience\n- Experience helping set technical research direction for a team, not just executing it\n- Familiarity with backend or cloud infrastructure, for teams that also ship a\n  cloud-connected fleet dashboard\n\nCompensation & benefits\n\nSalary band posted per local pay transparency requirements, equity, health benefits,\nand relocation assistance for candidates moving to Toronto. Solstice Vision Labs is\nan equal opportunity employer.\n",
+    "slug": "solstice-ml-engineer",
+    "source_file": "solstice-ml-engineer.txt",
+    "title": "Machine Learning Engineer - Perception"
+  },
+  "requirements": [
+    {
+      "id": "373f307b-0446-5f21-82a2-380de031d472",
+      "necessity": "essential",
+      "ordinal": 0,
+      "text": "Hands-on experience building and deploying computer vision models to a production system, not only research or coursework"
+    },
+    {
+      "id": "dd95c22f-def6-51b5-a8d0-205fa035b4c2",
+      "necessity": "essential",
+      "ordinal": 1,
+      "text": "Strong Python skills"
+    },
+    {
+      "id": "ef2f6f59-9c8a-513b-9af4-aedab769c564",
+      "necessity": "desirable",
+      "ordinal": 2,
+      "text": "C++ experience for the embedded-deployment side"
+    },
+    {
+      "id": "1442cf9e-5f99-5550-90c5-1b3cc9b2b7be",
+      "necessity": "essential",
+      "ordinal": 3,
+      "text": "Experience with PyTorch or a comparable deep learning framework"
+    },
+    {
+      "id": "cdb718f6-bbbf-5768-8c15-ab1b1efc5e1c",
+      "necessity": "essential",
+      "ordinal": 4,
+      "text": "Experience working with a data annotation or labeling pipeline"
+    },
+    {
+      "id": "85e29e30-a994-5c18-99cc-0180fdd6d98a",
+      "necessity": "essential",
+      "ordinal": 5,
+      "text": "Comfortable working within hardware constraints such as edge or embedded deployment"
+    },
+    {
+      "id": "90caf4f5-e07c-5d86-ade8-3cc5c3552f98",
+      "necessity": "desirable",
+      "ordinal": 6,
+      "text": "Peer-reviewed publications or patents related to computer vision or robotics"
+    },
+    {
+      "id": "c8e435a8-ffcb-5bec-ae18-7b132079a644",
+      "necessity": "desirable",
+      "ordinal": 7,
+      "text": "Experience mentoring junior scientists or engineers"
+    },
+    {
+      "id": "91ea9b80-0a61-505e-95ce-18b6d769cbf9",
+      "necessity": "desirable",
+      "ordinal": 8,
+      "text": "Prior robotics industry experience"
+    },
+    {
+      "id": "bfcecfac-8f75-58b2-873e-96d178cdf6c8",
+      "necessity": "desirable",
+      "ordinal": 9,
+      "text": "Experience helping set technical research direction for a team, not just executing it"
+    },
+    {
+      "id": "4057ff1d-ae9f-5db5-965b-5354faa11ff4",
+      "necessity": "desirable",
+      "ordinal": 10,
+      "text": "Familiarity with backend or cloud infrastructure"
+    },
+    {
+      "id": "a4ee8c3a-32ef-590d-8a9f-2f1af238237b",
+      "necessity": "unstated",
+      "ordinal": 11,
+      "text": "Build and improve computer vision models used in production on our robots"
+    },
+    {
+      "id": "0a2856b8-5266-591d-b8e2-5644be842732",
+      "necessity": "unstated",
+      "ordinal": 12,
+      "text": "Work with our data annotation pipeline to decide what gets labeled next"
+    },
+    {
+      "id": "e42817c1-7851-5414-98e5-4a92661b6847",
+      "necessity": "unstated",
+      "ordinal": 13,
+      "text": "Get models running within the memory and latency limits of embedded hardware"
+    },
+    {
+      "id": "834d809a-ba29-57ab-b763-ff05611f8f13",
+      "necessity": "unstated",
+      "ordinal": 14,
+      "text": "Debug production failures back to a root cause, whether that's data, model, or camera"
+    },
+    {
+      "id": "19c30e49-639e-5e80-81ea-4320a1421365",
+      "necessity": "unstated",
+      "ordinal": 15,
+      "text": "Collaborate with hardware engineers on camera placement and calibration"
+    }
+  ],
+  "runs": [
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.02258",
+      "error": null,
+      "id": "38afa723-576c-452b-a05b-a08fce7941a7",
+      "latency_ms": 6422,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "extract_requirements",
+      "started_at": "2026-09-04T21:47:05.303013Z",
+      "tokens_in": 1386,
+      "tokens_out": 626,
+      "trace_id": "3b758676-0141-40d3-a269-10ae4ebd7c5e",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 4630,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.095155",
+      "error": null,
+      "id": "222af570-20c8-4b00-b4d0-c22b037c3cbd",
+      "latency_ms": 47667,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "coverage",
+      "started_at": "2026-09-04T21:47:11.763368Z",
+      "tokens_in": 378,
+      "tokens_out": 3638,
+      "trace_id": "23188278-398e-41c6-92cb-37cb0578f0d3",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 4184,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.038867",
+      "error": null,
+      "id": "369c83a3-2898-439d-beec-009fe4379db2",
+      "latency_ms": 13050,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "draft",
+      "started_at": "2026-09-04T21:47:59.462689Z",
+      "tokens_in": 2210,
+      "tokens_out": 1029,
+      "trace_id": "e67ef89f-a682-423b-afd6-d809cbf58e48",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    },
+    {
+      "attributes": {
+        "rule_escalations": 0
+      },
+      "cache_read_tokens": 6055,
+      "cache_write_tokens": 0,
+      "component": "gate",
+      "cost_usd": "0.0927475",
+      "error": null,
+      "id": "787d7590-fcbf-4c48-a7af-17155ab859e0",
+      "latency_ms": 45356,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "baseline",
+      "started_at": "2026-09-04T21:48:12.516267Z",
+      "tokens_in": 974,
+      "tokens_out": 3394,
+      "trace_id": "e67ef89f-a682-423b-afd6-d809cbf58e48",
+      "user_id": "147ee5e0-4942-505c-b4d6-dc3b84868087"
+    }
+  ],
+  "spans": {
+    "1185da76-0131-5146-8e32-c74fbae49575": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Wrote the lab's internal guide to reproducible experiment tracking."
+    },
+    "16e8963b-7894-5545-8eb3-65358ebd5df9": {
+      "kind": "heading",
+      "section_path": "Aldermoor Institute for Applied AI",
+      "text": "Aldermoor Institute for Applied AI"
+    },
+    "1bf5bec8-577e-5d20-b631-ff3ccafee417": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Published two papers on convolutional feature extraction for small-object detection, both accepted at peer-reviewed workshops."
+    },
+    "20be2201-d1e7-587c-b73e-9bf11b94bd13": {
+      "kind": "heading",
+      "section_path": "Fenwick Vision Systems",
+      "text": "Fenwick Vision Systems"
+    },
+    "28401e8a-3fb7-5d85-885b-27aee6708f39": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Wrote the model card and evaluation report used by the QA team to sign off on each model release."
+    },
+    "2891068c-00b1-597b-be0b-3fdd073b3af6": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Owns the object-detection model that runs on the company's warehouse robots, from data collection through production deployment."
+    },
+    "2e71048e-9bc7-53b8-83c3-27ad9286df21": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Led the migration of the perception stack from a two-stage detector to a single-stage architecture built in PyTorch, cutting inference time on the robot's onboard hardware."
+    },
+    "31bac6a3-8aca-525e-91d2-95ec84200241": {
+      "kind": "heading",
+      "section_path": "",
+      "text": "Ingrid Solberg"
+    },
+    "39ae1ea8-44de-5005-8e2e-9b9c0373b3e2": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not supervised a PhD student or postdoc."
+    },
+    "3d326872-0d29-58eb-8377-ed0565b6d962": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Built the lab's shared dataset-loading library, used by three other research projects in the group."
+    },
+    "4b52809a-7324-51a2-90dc-212a92acbdd3": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Built the training pipeline used to retrain the company's defect-detection model each quarter."
+    },
+    "671564e3-6a01-5a05-b72a-c6c1b774c192": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Mentors two junior applied scientists on the perception team informally; the role carries no budget or hiring authority."
+    },
+    "6842f1bf-ae1a-5b9f-8ed3-99207eabc400": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Reduced false-positive detections on reflective packaging by retraining the model with a targeted hard-negative dataset."
+    },
+    "695359ec-f0e6-57dd-a018-35d19ff7bbc9": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Trained two new hires on the team's model evaluation process."
+    },
+    "83231b43-a076-5919-aecb-312dfde04b9c": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not held a formal people-management role with hiring or budget authority; mentoring at Northcairn is informal."
+    },
+    "93e6243f-d6c0-5405-9c22-827be2bea328": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Investigated a drop in model accuracy traced to a change in the camera's lighting rig."
+    },
+    "94db6597-9856-5e1c-ace1-207bcfe0acf3": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics",
+      "text": "Northcairn Robotics"
+    },
+    "953e70c6-4bed-586e-b428-b30ef62309ae": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has no experience with Rust; production model code has been Python and C++ only."
+    },
+    "97dcbe48-f332-5af5-9098-7765836fe648": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Presented the team's active-learning results at the company's internal research seminar."
+    },
+    "99c502f9-fd3c-50ec-95fa-a7255890d4de": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Built the first version of the label-review tool used by the data annotation contractors."
+    },
+    "9e10a545-086c-5584-90db-eec383195211": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not deployed a model to a cloud-facing consumer product; all deployments have been to on-premise robots or factory hardware."
+    },
+    "9e820334-b95b-5803-98ed-3bd741a5b5aa": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Senior Applied Scientist, Perception Team (Mar 2021 - Present)"
+    },
+    "9eff5e58-1eb3-548a-88e5-d9f5776a8f1a": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not led a cross-functional team larger than the four-person perception pod at Northcairn."
+    },
+    "a3fe0a16-c1c9-52a6-8de2-fb6a0a7d7b55": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Worked on multi-camera calibration for the warehouse robot fleet."
+    },
+    "a54a0423-2b32-5004-9e96-1beb1f26943d": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Worked on the team's active-learning pipeline for selecting which warehouse images to label next."
+    },
+    "a7a11aed-56ca-5d87-b4f6-6e7adf4e4fe3": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Worked on a joint project with the robotics group on real-time inference under compute constraints."
+    },
+    "a7adb75d-3737-596f-bac3-49fef8e81439": {
+      "kind": "heading",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Research Engineer (Sep 2010 - Jun 2014)"
+    },
+    "abbe2df2-9a4d-523d-93f7-8398b031e2f9": {
+      "kind": "bullet",
+      "section_path": "Aldermoor Institute for Applied AI > Research Engineer (Sep 2010 - Jun 2014)",
+      "text": "Presented a poster at a workshop attracting roughly forty attendees."
+    },
+    "b1e270d0-8718-540a-9f76-f16aba7ff2db": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never worked with Kafka, message queues, or backend web services in a production capacity."
+    },
+    "bf7d571d-cf5f-56f1-81f9-5d7e2fe6a594": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not set a company-wide research agenda; research direction at Northcairn is set jointly with the team lead."
+    },
+    "c3257993-21b2-5577-ab37-f4e54df0f5fd": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Co-authored an internal technical report on the perception stack's failure modes, used by the hardware team to prioritize camera placement changes."
+    },
+    "c421328c-f313-54b5-aa72-bd4d7809d1f8": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Worked on the labeling tool used by the QA team to annotate defect images."
+    },
+    "c4e16c7a-c28a-5377-96a5-1ca54ad6802b": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Ported the inference code from a GPU server to a lower-power embedded board for a pilot deployment."
+    },
+    "c7dacdfa-3b37-5e8a-ba95-f7fa22c2baab": {
+      "kind": "bullet",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Deployed the defect-detection model to the factory floor's inspection stations."
+    },
+    "ca0fa401-cf91-5e22-b327-df48bf0ae9a0": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not built or operated a payment processing or financial settlement system of any kind."
+    },
+    "cc20799c-0bb9-5754-b609-4a5c4eec9e97": {
+      "kind": "heading",
+      "section_path": "Fenwick Vision Systems > Machine Learning Engineer (Jul 2014 - Sep 2018)",
+      "text": "Machine Learning Engineer (Jul 2014 - Sep 2018)"
+    },
+    "cf041c0f-3438-52e9-8ba1-8035f1d71c87": {
+      "kind": "heading",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Applied Scientist, Perception Team (Sep 2018 - Mar 2021)"
+    },
+    "dc9f3f8c-c1f3-5b50-a090-f993b88a94bf": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Reviews model-release sign-off documents before each quarterly firmware update."
+    },
+    "e112add3-34a3-53ea-95d1-93b68b3a9227": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Applied Scientist, Perception Team (Sep 2018 - Mar 2021)",
+      "text": "Provided on-call support for the perception service during fleet pilot deployments."
+    },
+    "e22ae9de-28bc-55a3-b368-070f9256f42b": {
+      "kind": "bullet",
+      "section_path": "Northcairn Robotics > Senior Applied Scientist, Perception Team (Mar 2021 - Present)",
+      "text": "Filed one patent, with two co-inventors, on a technique for detecting reflective surfaces in warehouse aisles."
+    },
+    "f61f7109-eb7f-588b-83e7-ed9fef93ec1b": {
+      "kind": "heading",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Things Stated Explicitly as NOT True, or Boundaries to Hold"
+    },
+    "fe387b7c-eda8-523d-a277-371b841c85a3": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with payments-industry compliance standards such as PCI-DSS."
+    }
+  }
+}

@@ -100,9 +100,15 @@ neither ever gets a cache read.
 
 ## W4 — the demo page (~5 h) — needs W3
 
-Static site: a build script renders `demo/site/` from the fixtures (Jinja at build
-time, results embedded as JSON, small vanilla JS for the candidate × job picker — no
-framework, no server). The page's centrepiece is the thesis: what was claimed, what the
+Static site: a build script renders `demo/site/` from the fixtures (results embedded
+as JSON, small vanilla JS for the candidate × job picker — no framework, no server).
+
+**Amended 2026-09-05: no template engine.** This said "Jinja at build time", which does
+not survive contact with the rest of the sentence: if every dynamic element is rendered
+client-side from the embedded JSON, the server side has exactly one substitution to make
+— the JSON blob itself. Jinja would be a dependency with no work to do, and the build
+container then needs it too. `demo/build_site.py` is stdlib-only and swaps a placeholder
+in `demo/template/index.html`, which stays editable as real HTML. The page's centrepiece is the thesis: what was claimed, what the
 corpus supports, the distance, per-sentence. Verdict colours as in the CLI; framing
 rendered as NOT CHECKED — the page must never assert a verification that didn't happen.
 A visible note that the material is fictional and the results are unedited real

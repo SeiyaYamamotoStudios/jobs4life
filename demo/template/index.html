@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>job4life — demo</title>
+<style>
+  :root {
+    --ink: #1a1d21;
+    --ink-soft: #4b5157;
+    --ink-faint: #767c84;
+    --line: #dcdfe3;
+    --line-soft: #eceef1;
+    --bg: #fafafa;
+    --panel: #ffffff;
+    --panel-alt: #f4f5f6;
+
+    --green: #16794f;
+    --green-bg: #e6f4ec;
+    --amber: #8a5a00;
+    --amber-bg: #fbf0dc;
+    --red: #a3221f;
+    --red-bg: #fbe8e7;
+    --blue: #1c5faa;
+    --blue-bg: #e7f0fb;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+      sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  body { max-width: 100%; }
+
+  a { color: var(--blue); }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* ---------- header ---------- */
+
+  header.site {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 28px 0 24px;
+  }
+
+  header.site h1 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+  }
+
+  header.site .thesis {
+    margin: 0 0 16px;
+    color: var(--ink-soft);
+    max-width: 62ch;
+  }
+
+  .notice {
+    background: var(--blue-bg);
+    border: 1px solid #bcd6f0;
+    color: #123a63;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    max-width: 72ch;
+  }
+
+  .notice strong { color: #0c2a49; }
+
+  /* ---------- picker ---------- */
+
+  section.picker {
+    padding: 22px 0 4px;
+  }
+
+  section.picker h2, section.headline h2, .col-head {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+
+  .matrix-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+  }
+
+  table.matrix {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 460px;
+  }
+
+  table.matrix th, table.matrix td {
+    border: 1px solid var(--line-soft);
+    padding: 0;
+    text-align: left;
+  }
+
+  table.matrix thead th {
+    background: var(--panel-alt);
+    padding: 8px 10px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    font-weight: 600;
+    /* Deliberately wrapping, not nowrap: with the employer appended these
+       headers run to ~60 characters, and three of them on one line clipped the
+       third job column off the right even at 1280px. */
+    vertical-align: bottom;
+  }
+
+  table.matrix thead th .job-title { color: var(--ink); }
+
+  table.matrix thead th .job-employer {
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+
+  table.matrix thead th:first-child { background: var(--panel); border: none; }
+
+  table.matrix tbody th {
+    background: var(--panel-alt);
+    padding: 8px 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: top;
+  }
+
+  .cell-btn {
+    display: block;
+    width: 100%;
+    min-width: 120px;
+    height: 100%;
+    background: var(--panel);
+    border: none;
+    text-align: left;
+    padding: 8px 10px;
+    cursor: pointer;
+    font: inherit;
+    color: var(--ink);
+  }
+
+  .cell-btn:hover { background: var(--panel-alt); }
+
+  .cell-btn.selected {
+    background: #eaf2fd;
+    box-shadow: inset 0 0 0 2px var(--blue);
+  }
+
+  .cell-btn .cell-metric {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .cell-btn .cell-sub {
+    display: block;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  .cell-empty {
+    padding: 8px 10px;
+    color: var(--ink-faint);
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  /* ---------- headline strip ---------- */
+
+  section.headline {
+    padding: 20px 0 4px;
+  }
+
+  .headline-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+
+  .headline-card .who {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 2px;
+  }
+
+  .headline-card .what {
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+    font-size: 14px;
+  }
+
+  .counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .count-chip {
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .count-chip .n { font-size: 16px; margin-right: 4px; }
+  .count-chip.supported { background: var(--green-bg); color: var(--green); }
+  .count-chip.review { background: var(--amber-bg); color: var(--amber); }
+  .count-chip.unsupported { background: var(--red-bg); color: var(--red); }
+  .count-chip.framing { background: var(--blue-bg); color: var(--blue); }
+
+  /* ---------- main panels ---------- */
+
+  section.panels {
+    padding: 22px 0 30px;
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) {
+    section.panels { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .panel > .panel-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-alt);
+  }
+
+  .panel > .panel-body {
+    padding: 6px 16px 14px;
+  }
+
+  /* sentence rows */
+
+  .sentence {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .sentence:last-child { border-bottom: none; }
+
+  .sentence .stext {
+    margin: 0 0 6px;
+  }
+
+  .pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+
+  .pill.supported { background: var(--green-bg); color: var(--green); }
+  .pill.review { background: var(--amber-bg); color: var(--amber); }
+  .pill.unsupported { background: var(--red-bg); color: var(--red); }
+  .pill.framing { background: var(--blue-bg); color: var(--blue); }
+  .pill.evidenced { background: var(--green-bg); color: var(--green); }
+  .pill.partial { background: var(--amber-bg); color: var(--amber); }
+  .pill.absent { background: var(--amber-bg); color: var(--amber); }
+  .pill.contradicted { background: var(--red-bg); color: var(--red); }
+
+  .drift-label {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .evidence-note {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  details.citations {
+    margin-top: 6px;
+    font-size: 12.5px;
+  }
+
+  details.citations summary {
+    cursor: pointer;
+    color: var(--blue);
+  }
+
+  .citation {
+    margin: 6px 0 0 2px;
+    padding: 6px 10px;
+    background: var(--panel-alt);
+    border-left: 3px solid var(--line);
+    border-radius: 3px;
+    overflow-x: auto;
+  }
+
+  .citation .cpath {
+    display: block;
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-bottom: 2px;
+  }
+
+  /* coverage table */
+
+  table.coverage {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+
+  table.coverage th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    padding: 6px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  table.coverage td {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  table.coverage .necessity {
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  table.coverage .req-note {
+    display: block;
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    margin-top: 3px;
+  }
+
+  .coverage-scroll { overflow-x: auto; }
+
+  /* ---------- footer strip ---------- */
+
+  footer.site {
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    padding: 14px 0 26px;
+  }
+
+  .footer-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+
+  .footer-strip b { color: var(--ink-soft); }
+
+  .empty-state {
+    padding: 30px 0;
+    color: var(--ink-faint);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <h1>job4life</h1>
+    <p class="thesis">
+      Most tools in this space help candidates look better than they are. This one
+      measures the distance between what is true and what is being claimed, and shows
+      the number.
+    </p>
+    <div class="notice">
+      <strong>This is a demo, not a real record.</strong> The three candidates and three
+      job ads below are entirely fictional — nothing here describes a real person,
+      including the author. What you see is unedited output of the real pipeline run
+      against that fictional material: nothing on this page has been hand-written or
+      hand-edited after the fact.
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="picker">
+    <h2>Choose a candidate &times; job pairing</h2>
+    <div id="matrix-container"></div>
+  </section>
+
+  <section class="headline">
+    <div id="headline-container"></div>
+  </section>
+
+  <section class="panels" id="panels-container"></section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div id="footer-container" class="footer-strip"></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var RESULTS = /*__RESULTS_JSON__*/null;
+
+  var VERDICT_LABEL = {
+    supported: "SUPPORTED",
+    review: "REVIEW",
+    unsupported: "UNSUPPORTED"
+  };
+
+  var COVERAGE_LABEL = {
+    evidenced: "EVIDENCED",
+    partial: "PARTIAL",
+    absent: "ABSENT",
+    contradicted: "CONTRADICTED"
+  };
+
+  // "ingrid-solberg" -> "Ingrid Solberg". Fixture results carry no explicit
+  // display name for a candidate, only the source-file slug (see
+  // demo/fixtures/README.md -- slugs are the candidate's own name in
+  // kebab-case), so the name shown here is derived, not stored data.
+  function slugToName(slug) {
+    return String(slug)
+      .split("-")
+      .map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); })
+      .join(" ");
+  }
+
+  function claimSentences(result) {
+    return result.gate.sentences.filter(function (s) { return s.kind !== "framing"; });
+  }
+
+  function framingSentences(result) {
+    return result.gate.sentences.filter(function (s) { return s.kind === "framing"; });
+  }
+
+  function counts(result) {
+    var claims = claimSentences(result);
+    var framing = framingSentences(result);
+    var supported = claims.filter(function (s) { return s.verdict === "supported"; }).length;
+    var review = claims.filter(function (s) { return s.verdict === "review"; }).length;
+    var unsupported = claims.filter(function (s) { return s.verdict === "unsupported"; }).length;
+    return {
+      supported: supported,
+      review: review,
+      unsupported: unsupported,
+      framing: framing.length,
+      totalClaims: claims.length
+    };
+  }
+
+  // ---------- matrix ----------
+
+  function uniqueSorted(items, keyFn) {
+    var seen = {};
+    var out = [];
+    items.forEach(function (item) {
+      var k = keyFn(item);
+      if (!seen[k]) { seen[k] = true; out.push(item); }
+    });
+    out.sort(function (a, b) { return keyFn(a) < keyFn(b) ? -1 : keyFn(a) > keyFn(b) ? 1 : 0; });
+    return out;
+  }
+
+  function buildMatrix(results, selected, onSelect) {
+    var container = document.createElement("div");
+    container.className = "matrix-scroll";
+
+    if (results.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No results yet.";
+      container.appendChild(empty);
+      return container;
+    }
+
+    var candidates = uniqueSorted(
+      results.map(function (r) { return r.candidate; }),
+      function (c) { return c.slug; }
+    );
+    var jobs = uniqueSorted(
+      results.map(function (r) { return r.job; }),
+      function (j) { return j.slug; }
+    );
+
+    var byKey = {};
+    results.forEach(function (r) {
+      byKey[r.candidate.slug + "::" + r.job.slug] = r;
+    });
+
+    var table = document.createElement("table");
+    table.className = "matrix";
+
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    headRow.appendChild(document.createElement("th"));
+    jobs.forEach(function (j) {
+      var th = document.createElement("th");
+      var jt = document.createElement("div");
+      jt.className = "job-title";
+      jt.textContent = j.title;
+      th.appendChild(jt);
+      if (j.employer) {
+        var je = document.createElement("div");
+        je.className = "job-employer";
+        je.textContent = j.employer;
+        th.appendChild(je);
+      }
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    candidates.forEach(function (c) {
+      var row = document.createElement("tr");
+      var rowHead = document.createElement("th");
+      rowHead.textContent = slugToName(c.slug);
+      row.appendChild(rowHead);
+
+      jobs.forEach(function (j) {
+        var td = document.createElement("td");
+        var key = c.slug + "::" + j.slug;
+        var result = byKey[key];
+        if (!result) {
+          var pending = document.createElement("div");
+          pending.className = "cell-empty";
+          pending.textContent = "not yet generated";
+          td.appendChild(pending);
+        } else {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "cell-btn" + (selected === key ? " selected" : "");
+          btn.setAttribute("data-key", key);
+          var c1 = counts(result);
+          var metric = document.createElement("span");
+          metric.className = "cell-metric";
+          metric.textContent = c1.supported + "/" + c1.totalClaims + " traced";
+          var sub = document.createElement("span");
+          sub.className = "cell-sub";
+          sub.textContent = c1.review + " review · " + c1.unsupported + " unsupported";
+          btn.appendChild(metric);
+          btn.appendChild(sub);
+          btn.addEventListener("click", function () { onSelect(key); });
+          td.appendChild(btn);
+        }
+        row.appendChild(td);
+      });
+
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+    return container;
+  }
+
+  // ---------- headline ----------
+
+  function buildHeadline(result) {
+    var card = document.createElement("div");
+    card.className = "headline-card";
+
+    var who = document.createElement("p");
+    who.className = "who";
+    who.textContent = slugToName(result.candidate.slug);
+    card.appendChild(who);
+
+    var what = document.createElement("p");
+    what.className = "what";
+    what.textContent = result.job.title + " — " + result.job.employer;
+    if (result.job.location) what.textContent += " (" + result.job.location + ")";
+    card.appendChild(what);
+
+    var c = counts(result);
+    var row = document.createElement("div");
+    row.className = "counts";
+    row.appendChild(countChip("supported", c.supported, "traced to the corpus"));
+    row.appendChild(countChip("review", c.review, "need review"));
+    row.appendChild(countChip("unsupported", c.unsupported, "unsupported"));
+    row.appendChild(countChip("framing", c.framing, "not checked (framing)"));
+    card.appendChild(row);
+
+    return card;
+  }
+
+  function countChip(cls, n, label) {
+    var chip = document.createElement("span");
+    chip.className = "count-chip " + cls;
+    var num = document.createElement("span");
+    num.className = "n";
+    num.textContent = String(n);
+    chip.appendChild(num);
+    chip.appendChild(document.createTextNode(label));
+    return chip;
+  }
+
+  // ---------- draft panel ----------
+
+  function buildCitations(sentence, spans) {
+    var ids = sentence.cited_span_ids || [];
+    if (ids.length === 0) return null;
+    var details = document.createElement("details");
+    details.className = "citations";
+    var summary = document.createElement("summary");
+    summary.textContent = ids.length + (ids.length === 1 ? " citation" : " citations");
+    details.appendChild(summary);
+    ids.forEach(function (id) {
+      var span = spans[id];
+      if (!span) return;
+      var div = document.createElement("div");
+      div.className = "citation";
+      var path = document.createElement("span");
+      path.className = "cpath";
+      path.textContent = span.section_path;
+      var text = document.createElement("span");
+      text.textContent = span.text;
+      div.appendChild(path);
+      div.appendChild(text);
+      details.appendChild(div);
+    });
+    return details;
+  }
+
+  function buildDraftPanel(result) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+
+    var head = document.createElement("div");
+    head.className = "panel-head col-head";
+    head.textContent = "Draft, sentence by sentence";
+    panel.appendChild(head);
+
+    var body = document.createElement("div");
+    body.className = "panel-body";
+
+    var sentences = result.gate.sentences.slice().sort(function (a, b) {
+      return a.index - b.index;
+    });
+
+    sentences.forEach(function (s) {
+      var row = document.createElement("div");
+      row.className = "sentence";
+
+      var text = document.createElement("p");
+      text.className = "stext";
+      text.textContent = s.text;
+      row.appendChild(text);
+
+      var isFraming = s.kind === "framing";
+      var pill = document.createElement("span");
+      pill.className = "pill " + (isFraming ? "framing" : s.verdict);
+      pill.textContent = isFraming ? "NOT CHECKED" : (VERDICT_LABEL[s.verdict] || s.verdict);
+      row.appendChild(pill);
+
+      if (!isFraming && s.drift_label && s.drift_label !== "supported") {
+        var drift = document.createElement("span");
+        drift.className = "drift-label";
+        drift.textContent = s.drift_label;
+        row.appendChild(drift);
+      }
+
+      if (s.evidence_note) {
+        var note = document.createElement("p");
+        note.className = "evidence-note";
+        note.textContent = s.evidence_note;
+        row.appendChild(note);
+      }
+
+      var citations = buildCitations(s, result.spans);
+      if (citations) row.appendChild(citations);
+
+      body.appendChild(row);
+    });
+
+    panel.appendChild(body);
+    return panel;
+  }
+
+  // ---------- coverage panel ----------
+
+  function buildCoveragePanel(result) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+
+    var head = document.createElement("div");
+    head.className = "panel-head col-head";
+    head.textContent = "Requirement coverage";
+    panel.appendChild(head);
+
+    var body = document.createElement("div");
+    body.className = "panel-body coverage-scroll";
+
+    var covByReq = {};
+    result.coverage.forEach(function (c) { covByReq[c.requirement_id] = c; });
+
+    var requirements = result.requirements.slice().sort(function (a, b) {
+      return a.ordinal - b.ordinal;
+    });
+
+    var table = document.createElement("table");
+    table.className = "coverage";
+    var thead = document.createElement("thead");
+    thead.innerHTML =
+      "<tr><th>Requirement</th><th>Necessity</th><th>Status</th></tr>";
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    requirements.forEach(function (req) {
+      var cov = covByReq[req.id];
+      var tr = document.createElement("tr");
+
+      var tdReq = document.createElement("td");
+      var reqText = document.createElement("span");
+      reqText.textContent = req.text;
+      tdReq.appendChild(reqText);
+      if (cov && cov.evidence_note) {
+        var note = document.createElement("span");
+        note.className = "req-note";
+        note.textContent = cov.evidence_note;
+        tdReq.appendChild(note);
+      }
+      tr.appendChild(tdReq);
+
+      var tdNecessity = document.createElement("td");
+      tdNecessity.className = "necessity";
+      tdNecessity.textContent = req.necessity;
+      tr.appendChild(tdNecessity);
+
+      var tdStatus = document.createElement("td");
+      if (cov) {
+        var pill = document.createElement("span");
+        pill.className = "pill " + cov.status;
+        pill.textContent = COVERAGE_LABEL[cov.status] || cov.status;
+        tdStatus.appendChild(pill);
+      } else {
+        tdStatus.textContent = "—";
+      }
+      tr.appendChild(tdStatus);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+    panel.appendChild(body);
+    return panel;
+  }
+
+  // ---------- footer ----------
+
+  function formatCost(costStr) {
+    var n = parseFloat(costStr);
+    if (isNaN(n)) return "$0.0000";
+    return "$" + n.toFixed(4);
+  }
+
+  function buildFooter(result) {
+    var runs = result.runs || [];
+    var models = uniqueSorted(
+      runs.map(function (r) { return r.model; }).filter(function (m) { return !!m; }),
+      function (m) { return m; }
+    );
+    var totalLatencyMs = runs.reduce(function (sum, r) {
+      return sum + (r.latency_ms || 0);
+    }, 0);
+
+    var parts = [];
+    parts.push(fragment("Model", models.join(", ") || "—"));
+    parts.push(fragment("Cost", formatCost(result.cost_usd_total)));
+    parts.push(fragment("Latency", (totalLatencyMs / 1000).toFixed(1) + "s"));
+    parts.push(fragment("Model calls", String(runs.length)));
+    parts.push(fragment("Generated", result.generated_at));
+
+    var container = document.createDocumentFragment();
+    parts.forEach(function (p) { container.appendChild(p); });
+    return container;
+  }
+
+  function fragment(label, value) {
+    var span = document.createElement("span");
+    var b = document.createElement("b");
+    b.textContent = label + ": ";
+    span.appendChild(b);
+    span.appendChild(document.createTextNode(value));
+    return span;
+  }
+
+  // ---------- wiring ----------
+
+  var state = { selected: null };
+
+  function keyOf(result) { return result.candidate.slug + "::" + result.job.slug; }
+
+  function render() {
+    var matrixContainer = document.getElementById("matrix-container");
+    var headlineContainer = document.getElementById("headline-container");
+    var panelsContainer = document.getElementById("panels-container");
+    var footerContainer = document.getElementById("footer-container");
+
+    matrixContainer.innerHTML = "";
+    headlineContainer.innerHTML = "";
+    panelsContainer.innerHTML = "";
+    footerContainer.innerHTML = "";
+
+    if (!RESULTS || RESULTS.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No demo results have been generated yet.";
+      panelsContainer.appendChild(empty);
+      matrixContainer.appendChild(buildMatrix([], null, function () {}));
+      return;
+    }
+
+    if (!state.selected) state.selected = keyOf(RESULTS[0]);
+
+    matrixContainer.appendChild(
+      buildMatrix(RESULTS, state.selected, function (key) {
+        state.selected = key;
+        render();
+      })
+    );
+
+    var selectedResult = null;
+    for (var i = 0; i < RESULTS.length; i++) {
+      if (keyOf(RESULTS[i]) === state.selected) { selectedResult = RESULTS[i]; break; }
+    }
+    if (!selectedResult) selectedResult = RESULTS[0];
+
+    headlineContainer.appendChild(buildHeadline(selectedResult));
+    panelsContainer.appendChild(buildDraftPanel(selectedResult));
+    panelsContainer.appendChild(buildCoveragePanel(selectedResult));
+    footerContainer.appendChild(buildFooter(selectedResult));
+  }
+
+  render();
+})();
+</script>
+
+</body>
+</html>

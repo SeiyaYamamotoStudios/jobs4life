@@ -1,0 +1,856 @@
+{
+  "candidate": {
+    "slug": "tobias-reyes",
+    "source_file": "tobias-reyes.md",
+    "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+  },
+  "cost_usd_total": "0.33821375",
+  "coverage": [
+    {
+      "cited_span_ids": [
+        "c4e059ab-8083-5af6-8a07-489990e85b5d",
+        "34bc559d-0571-596d-8105-ecd74a89b9d4"
+      ],
+      "evidence_note": "The corpus explicitly states no payment processing system of any kind has been built or operated, and that billing work at Amberlake used a third-party processor with no custom settlement logic. This rules out settlement/reconciliation path work.",
+      "requirement_id": "dba767da-cd39-5d28-ad00-1eee3b85ecd7",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+        "52cf4e32-62ae-53c2-bda4-f52421fd72f9",
+        "c484c9cf-4747-533d-8f1e-d8c9c11957fe"
+      ],
+      "evidence_note": "Corpus documents leading the design of an internal deployment tool and managing the team that owns the internal deployment platform, plus building internal provisioning tooling. It does not explicitly describe individual end-to-end ownership of a named production service.",
+      "requirement_id": "f8717454-a7b9-53d6-8e0e-50535fbf48f3",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "7c485f55-440a-50a7-8ce8-ed6b633a42ff",
+        "e4ec4ad5-05ff-5315-9c97-4da97dfa0676",
+        "89310a69-2857-5a14-a283-e25adcf95a7b",
+        "c4e059ab-8083-5af6-8a07-489990e85b5d"
+      ],
+      "evidence_note": "On-call participation (internal tooling) and running platform incident postmortems are documented, and on-call rotation tooling was built. However, the corpus states no payment processing system has been built or operated, so on-call for payment-critical systems specifically is not supported.",
+      "requirement_id": "5b48a9a7-37a3-5cc1-b292-dddd2669378d",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "0702e0f6-cd78-54ee-a521-83d53a746014"
+      ],
+      "evidence_note": "The corpus documents representing the platform team in quarterly planning with the infrastructure and security orgs. There is no mention of working with risk or compliance teams or of handling sensitive data.",
+      "requirement_id": "384c360c-33b5-562d-837d-a68b8ce262bd",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "9975b96c-510d-51cc-88d9-28bbc14c7b76",
+        "4b3b9ab6-3113-5e62-909d-309f6c4d3436"
+      ],
+      "evidence_note": "Mentored two junior engineers during their first year, and rewrote setup documentation to reduce onboarding time for new engineers.",
+      "requirement_id": "5af2385b-f546-595d-a801-320bde84922d",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "3bda6a1c-e56c-575f-9c47-741953d752ff"
+      ],
+      "evidence_note": "The corpus states there is no experience with Rust or Go, and that production work has been in TypeScript and Python only.",
+      "requirement_id": "eaa7bb69-799a-5ce4-9e5b-2b489bb2a2a3",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "c585e678-becd-5d7b-a0da-aadc43f59a6e"
+      ],
+      "evidence_note": "The corpus states no work with Kafka or any self-managed message broker; all messaging work used managed cloud queue services.",
+      "requirement_id": "70d71154-42b4-5002-bab0-1d4d3c07c6eb",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "d68cc6a6-d1e3-5980-b072-cf06f7accd88"
+      ],
+      "evidence_note": "The corpus does not mention PCI-DSS, SOC 2, or any compliance framework, and states no work in a regulated industry such as healthcare. No record either way on payments-related compliance exposure.",
+      "requirement_id": "8b35d864-d9d2-51b7-8bd6-291fc45e4920",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "7c485f55-440a-50a7-8ce8-ed6b633a42ff",
+        "f445a854-5f0b-5e0f-afa6-470716bdf1bc",
+        "89310a69-2857-5a14-a283-e25adcf95a7b",
+        "c4e059ab-8083-5af6-8a07-489990e85b5d"
+      ],
+      "evidence_note": "On-call rotation participation for internal tooling, shadowing an on-call engineer during a production incident, and running platform incident postmortems are documented. The corpus explicitly rules out operating any payment processing system, so on-call for money-critical systems is not supported.",
+      "requirement_id": "b689e0e7-2e86-54d8-9f9b-0c5ce99e661a",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "9975b96c-510d-51cc-88d9-28bbc14c7b76",
+        "d86ecd24-5823-53cd-81aa-938564d082f9"
+      ],
+      "evidence_note": "Explicitly mentored two junior engineers; also manages a team of six backend engineers and ran technical interview loops for three hires.",
+      "requirement_id": "d67fa979-2f4c-5adb-9915-4ed823bb0f73",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "18b48ac4-156a-594b-8c4a-c2ad36f6c4de",
+        "4b3b9ab6-3113-5e62-909d-309f6c4d3436",
+        "0702e0f6-cd78-54ee-a521-83d53a746014"
+      ],
+      "evidence_note": "Corpus documents an internal talk on testing practices, rewriting onboarding documentation, and representing the team in cross-org quarterly planning. It does not describe explaining a technical/bug issue to a non-team or non-technical audience specifically.",
+      "requirement_id": "3177954d-d90e-5ae4-935c-56866c24f9d7",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "34bc559d-0571-596d-8105-ecd74a89b9d4",
+        "c4e059ab-8083-5af6-8a07-489990e85b5d",
+        "d68cc6a6-d1e3-5980-b072-cf06f7accd88"
+      ],
+      "evidence_note": "Worked on a backend services team supporting a billing system at Amberlake Systems, but the corpus clarifies that used a third-party payment processor with no custom settlement logic, and none of the listed employers is described as a fintech, payments, or banking company.",
+      "requirement_id": "e27dcb2b-86f0-53a0-bee5-54d4032924dd",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "3bda6a1c-e56c-575f-9c47-741953d752ff"
+      ],
+      "evidence_note": "The corpus states there is no experience with Rust; production work has been in TypeScript and Python only.",
+      "requirement_id": "8fd429c5-c4f1-5b5e-87e6-ccf360ff09b8",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "f8ff899c-1198-55c5-9f0b-82e4da1af08a",
+        "3a2adf5e-bb2a-512b-9108-5ae51da8520d"
+      ],
+      "evidence_note": "Owns the team's quarterly budget for cloud infrastructure spend; the corpus also notes budget authority does not extend beyond that cloud spend line.",
+      "requirement_id": "ebea080d-0a33-578e-91b6-467db0bf300e",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "18b48ac4-156a-594b-8c4a-c2ad36f6c4de"
+      ],
+      "evidence_note": "The corpus documents a short internal talk on the team's testing practices, but no external conference speaking.",
+      "requirement_id": "fa5c1b8d-6da2-50d6-b0cd-5b3cba93ba77",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "The corpus does not state the engineering headcount of any employer, so company size context is not documented.",
+      "requirement_id": "20f6df8c-b3bd-5325-9fd1-87060f97e778",
+      "status": "absent"
+    }
+  ],
+  "draft": {
+    "id": "ff5b6c76-c086-45ad-9798-d9424ce05f5b",
+    "kind": "cv_bullets",
+    "text": "Tobias Reyes \u2014 CV bullets (Senior Backend Engineer, Payments Platform \u2014 Ledgerbridge Financial)\n\nNorthfield Cloud \u2014 Engineering Manager, Platform Team (Jan 2023 \u2013 Present)\n- Lead a team of six backend engineers owning Northfield's internal deployment platform, with day-to-day accountability for its reliability and roadmap.\n- Own the platform team's quarterly cloud infrastructure budget, tracking and directing spend against team priorities.\n- Set the team's roadmap for migrating internal services onto the company's new Kubernetes platform.\n- Run the team's incident postmortem process for platform outages, turning production failures into documented follow-up work.\n- Hired three engineers onto the team, designing and running the technical interview loop for each.\n- Represent the platform team in quarterly planning with the infrastructure and security orgs, translating platform constraints for stakeholders outside the team.\n\nNorthfield Cloud \u2014 Senior Software Engineer, Platform Team (Jun 2021 \u2013 Jan 2023)\n- Led the design of the internal deployment tool now used by engineering teams across the company.\n- Built and maintained on-call rotation tooling used by three engineering teams; proposed the team's move to a standard on-call rotation tool, which was adopted.\n- Mentored two junior engineers through their first year on the team.\n- Cut onboarding time for engineers new to the platform by rewriting the setup documentation.\n\nAmberlake Systems \u2014 Software Engineer (Aug 2019 \u2013 Jun 2021)\n- Worked on the backend services team supporting the company's billing system (integrated with a third-party payment processor).\n- Built internal tooling for provisioning developer environments, and diagnosed and fixed a recurring race condition in the environment-provisioning queue.\n- Helped migrate the team's services from a monolith to several smaller services.\n- Wrote integration tests for the notification service and gave an internal talk on the team's testing practices.\n- Participated in the on-call rotation for internal tooling.\n\nRidgeline Analytics \u2014 Junior Software Engineer (Jul 2018 \u2013 Aug 2019)\n- Set up the team's first shared staging environment; built data-processing scripts for the analytics team and fixed bugs in the internal reporting tool.\n- Wrote unit tests for a new API endpoint; shadowed the on-call engineer through a production incident.\n\nTechnical profile\n- Production experience in TypeScript and Python; asynchronous messaging built on managed cloud queue services.\n- Platform, deployment, and developer-tooling engineering; Kubernetes migration planning; incident response and postmortems.",
+    "trace_id": "a8bc7a89-9491-4c3a-9fb8-8997a08530ba"
+  },
+  "gate": {
+    "sentences": [
+      {
+        "cited_span_ids": [
+          "c4e059ab-8083-5af6-8a07-489990e85b5d",
+          "d700ca6a-2851-55ab-b1c2-6e2b8cbe9104",
+          "4adaa641-4108-5a79-890b-048f117511c6"
+        ],
+        "drift_label": "adjacency_substitution",
+        "evidence_note": "Corpus documents no Ledgerbridge Financial role and explicitly states the candidate has never built or operated a payments platform.",
+        "index": 1,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Tobias Reyes \u2014 CV bullets (Senior Backend Engineer, Payments Platform \u2014 Ledgerbridge Financial)",
+        "verdict": "unsupported"
+      },
+      {
+        "cited_span_ids": [
+          "d700ca6a-2851-55ab-b1c2-6e2b8cbe9104",
+          "4adaa641-4108-5a79-890b-048f117511c6"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, employer, and dates match the corpus exactly.",
+        "index": 2,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Northfield Cloud \u2014 Engineering Manager, Platform Team (Jan 2023 \u2013 Present)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+          "77296d90-d628-519f-a08a-c84b47a7db55",
+          "89310a69-2857-5a14-a283-e25adcf95a7b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Team of six backend engineers on the internal deployment platform, plus roadmap ownership and postmortem process, are all documented.",
+        "index": 3,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Lead a team of six backend engineers owning Northfield's internal deployment platform, with day-to-day accountability for its reliability and roadmap.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "f8ff899c-1198-55c5-9f0b-82e4da1af08a",
+          "3a2adf5e-bb2a-512b-9108-5ae51da8520d"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus confirms ownership of the team's quarterly cloud infrastructure budget and the claim stays within that boundary.",
+        "index": 4,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Own the platform team's quarterly cloud infrastructure budget, tracking and directing spend against team priorities.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "77296d90-d628-519f-a08a-c84b47a7db55"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Directly matches the documented Kubernetes migration roadmap responsibility.",
+        "index": 5,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Set the team's roadmap for migrating internal services onto the company's new Kubernetes platform.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "89310a69-2857-5a14-a283-e25adcf95a7b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Running the incident postmortem process for platform outages is documented.",
+        "index": 6,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Run the team's incident postmortem process for platform outages, turning production failures into documented follow-up work.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "d86ecd24-5823-53cd-81aa-938564d082f9"
+        ],
+        "drift_label": "ownership_inflation",
+        "evidence_note": "Corpus confirms hiring three engineers and running the interview loop, but not designing the loop itself.",
+        "index": 7,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Hired three engineers onto the team, designing and running the technical interview loop for each.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "0702e0f6-cd78-54ee-a521-83d53a746014",
+          "e26fc82a-7c23-51d5-9b0e-4ec9f6cdcfc4"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Representational quarterly planning role is documented and the sentence does not claim strategy ownership.",
+        "index": 8,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Represent the platform team in quarterly planning with the infrastructure and security orgs, translating platform constraints for stakeholders outside the team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "884eeea9-e660-5fa1-9beb-cc511869d237"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title and dates match the corpus.",
+        "index": 9,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Northfield Cloud \u2014 Senior Software Engineer, Platform Team (Jun 2021 \u2013 Jan 2023)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "52cf4e32-62ae-53c2-bda4-f52421fd72f9"
+        ],
+        "drift_label": "scope_inflation",
+        "evidence_note": "Corpus says the tool was used by other engineering teams, not by teams across the whole company.",
+        "index": 10,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Led the design of the internal deployment tool now used by engineering teams across the company.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "e4ec4ad5-05ff-5315-9c97-4da97dfa0676",
+          "4c30942d-c6ab-5892-b6e0-1457f2125078"
+        ],
+        "drift_label": "adjacency_substitution",
+        "evidence_note": "Corpus says he 'worked on' the on-call rotation tooling, which contradicts the stronger 'built and maintained'.",
+        "index": 11,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built and maintained on-call rotation tooling used by three engineering teams; proposed the team's move to a standard on-call rotation tool, which was adopted.",
+        "verdict": "unsupported"
+      },
+      {
+        "cited_span_ids": [
+          "9975b96c-510d-51cc-88d9-28bbc14c7b76"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Mentoring two junior engineers during their first year is documented.",
+        "index": 12,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Mentored two junior engineers through their first year on the team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4b3b9ab6-3113-5e62-909d-309f6c4d3436"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Matches the documented reduction in onboarding time via rewritten setup documentation, with no invented metric.",
+        "index": 13,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Cut onboarding time for engineers new to the platform by rewriting the setup documentation.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "269d628a-c321-5de4-b3e1-f13f2f7be3db",
+          "aae7697c-c56f-5b34-89a9-9af611ed3330"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title, and dates match the corpus.",
+        "index": 14,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Amberlake Systems \u2014 Software Engineer (Aug 2019 \u2013 Jun 2021)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "34bc559d-0571-596d-8105-ecd74a89b9d4",
+          "c4e059ab-8083-5af6-8a07-489990e85b5d"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Billing-system backend work and the third-party payment processor framing both match the corpus and its stated boundary.",
+        "index": 15,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked on the backend services team supporting the company's billing system (integrated with a third-party payment processor).",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c484c9cf-4747-533d-8f1e-d8c9c11957fe",
+          "4434c4d7-c257-5f19-b000-e2ebe74b62bc"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the provisioning tooling and the race-condition fix are documented.",
+        "index": 16,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built internal tooling for provisioning developer environments, and diagnosed and fixed a recurring race condition in the environment-provisioning queue.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1f36e79a-e617-539c-8e06-85d6fe9b64e2"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Wording matches the documented 'helped migrate' contribution.",
+        "index": 17,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Helped migrate the team's services from a monolith to several smaller services.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "0a13f4d9-7127-510a-aa86-747a1674ef16",
+          "18b48ac4-156a-594b-8c4a-c2ad36f6c4de"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Integration tests for the notification service and the internal testing-practices talk are both documented.",
+        "index": 18,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote integration tests for the notification service and gave an internal talk on the team's testing practices.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "7c485f55-440a-50a7-8ce8-ed6b633a42ff"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Participation in the internal tooling on-call rotation is documented.",
+        "index": 19,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Participated in the on-call rotation for internal tooling.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "bf7a639b-3e8a-587d-a155-46fd209e96d2",
+          "7f788983-90f8-50c5-b871-7d817d14b969"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title, and dates match the corpus.",
+        "index": 20,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Ridgeline Analytics \u2014 Junior Software Engineer (Jul 2018 \u2013 Aug 2019)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "b327a6ff-30da-5e39-81c8-8a5039cf7f9e",
+          "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72",
+          "0d69562b-e084-51cc-b4e1-677b97dc2a8f"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Staging environment setup, data-processing scripts, and reporting-tool bug fixes are all documented.",
+        "index": 21,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Set up the team's first shared staging environment; built data-processing scripts for the analytics team and fixed bugs in the internal reporting tool.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "b0e3159a-467e-5071-9d51-73a37454c8b4",
+          "f445a854-5f0b-5e0f-afa6-470716bdf1bc"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Unit tests for a new API endpoint and shadowing the on-call engineer are both documented.",
+        "index": 22,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote unit tests for a new API endpoint; shadowed the on-call engineer through a production incident.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Section label with no factual content to check.",
+        "index": 23,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Technical profile",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "3bda6a1c-e56c-575f-9c47-741953d752ff",
+          "c585e678-becd-5d7b-a0da-aadc43f59a6e"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "TypeScript/Python production work and managed cloud queue messaging match the stated boundaries exactly.",
+        "index": 24,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Production experience in TypeScript and Python; asynchronous messaging built on managed cloud queue services.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+          "77296d90-d628-519f-a08a-c84b47a7db55",
+          "89310a69-2857-5a14-a283-e25adcf95a7b",
+          "c484c9cf-4747-533d-8f1e-d8c9c11957fe"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Each listed area maps to documented platform, deployment-tooling, Kubernetes roadmap, and postmortem work.",
+        "index": 25,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Platform, deployment, and developer-tooling engineering; Kubernetes migration planning; incident response and postmortems.",
+        "verdict": "supported"
+      }
+    ]
+  },
+  "generated_at": "2026-09-04T21:58:46.276299+00:00",
+  "job": {
+    "employer": "Ledgerbridge Financial",
+    "id": "69856374-356a-51ea-be7a-a0772a00e132",
+    "location": "Remote (UK/EU)",
+    "raw_text": "Senior Backend Engineer, Payments Platform\nLedgerbridge Financial - Remote (UK/EU)\n\nAbout Ledgerbridge\n\nLedgerbridge Financial builds settlement infrastructure for mid-sized merchants across\nEurope. We process a lot of money on behalf of businesses who need to trust that it\nmoves correctly, every time. Our platform team owns everything from card-network\nintegration to nightly settlement, and we're growing it.\n\nThe role\n\nWe're looking for a Senior Backend Engineer to join our Payments Platform team. You'll\nwork on the systems that move money between merchants, card networks, and banks, and\nyou'll be one of the people the rest of engineering leans on when a payment doesn't\nreconcile. This is a hands-on engineering role, not a management track.\n\nWhat you'll do\n\n- Design and build services in the core settlement and reconciliation path\n- Take ownership of at least one production service end to end\n- Be part of the on-call rotation for payment-critical systems\n- Work closely with the risk and compliance teams on how we handle sensitive data\n- Help less experienced engineers on the team grow\n\nWhat you'll need\n\n- 5+ years building backend services in Go, Java, or a similar statically typed language\n- Experience with Kafka or a comparable message broker in production\n- Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the\n  one formally responsible for it\n- On-call experience for production systems where money is on the line\n- Experience mentoring other engineers\n- A strong communicator who can explain a tricky bug to someone outside the team\n\nNice to have\n\n- Prior experience at a fintech, payments, or banking company\n- Rust experience\n- Experience managing a team's infrastructure or cloud budget\n- Conference speaking experience\n- Comfortable working in a company with 200+ engineers\n\nBenefits & perks\n\nCompetitive salary and equity, private health cover, 28 days holiday plus bank\nholidays, a home office stipend, and a genuinely flexible remote-first culture.\nLedgerbridge Financial is an equal opportunity employer and welcomes applicants\nregardless of background.\n",
+    "slug": "ledgerbridge-senior-backend-engineer",
+    "source_file": "ledgerbridge-senior-backend-engineer.txt",
+    "title": "Senior Backend Engineer, Payments Platform"
+  },
+  "requirements": [
+    {
+      "id": "dba767da-cd39-5d28-ad00-1eee3b85ecd7",
+      "necessity": "unstated",
+      "ordinal": 0,
+      "text": "Design and build services in the core settlement and reconciliation path"
+    },
+    {
+      "id": "f8717454-a7b9-53d6-8e0e-50535fbf48f3",
+      "necessity": "unstated",
+      "ordinal": 1,
+      "text": "Take ownership of at least one production service end to end"
+    },
+    {
+      "id": "5b48a9a7-37a3-5cc1-b292-dddd2669378d",
+      "necessity": "unstated",
+      "ordinal": 2,
+      "text": "Be part of the on-call rotation for payment-critical systems"
+    },
+    {
+      "id": "384c360c-33b5-562d-837d-a68b8ce262bd",
+      "necessity": "unstated",
+      "ordinal": 3,
+      "text": "Work closely with the risk and compliance teams on how we handle sensitive data"
+    },
+    {
+      "id": "5af2385b-f546-595d-a801-320bde84922d",
+      "necessity": "unstated",
+      "ordinal": 4,
+      "text": "Help less experienced engineers on the team grow"
+    },
+    {
+      "id": "eaa7bb69-799a-5ce4-9e5b-2b489bb2a2a3",
+      "necessity": "essential",
+      "ordinal": 5,
+      "text": "5+ years building backend services in Go, Java, or a similar statically typed language"
+    },
+    {
+      "id": "70d71154-42b4-5002-bab0-1d4d3c07c6eb",
+      "necessity": "essential",
+      "ordinal": 6,
+      "text": "Experience with Kafka or a comparable message broker in production"
+    },
+    {
+      "id": "8b35d864-d9d2-51b7-8bd6-291fc45e4920",
+      "necessity": "essential",
+      "ordinal": 7,
+      "text": "Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the one formally responsible for it"
+    },
+    {
+      "id": "b689e0e7-2e86-54d8-9f9b-0c5ce99e661a",
+      "necessity": "essential",
+      "ordinal": 8,
+      "text": "On-call experience for production systems where money is on the line"
+    },
+    {
+      "id": "d67fa979-2f4c-5adb-9915-4ed823bb0f73",
+      "necessity": "essential",
+      "ordinal": 9,
+      "text": "Experience mentoring other engineers"
+    },
+    {
+      "id": "3177954d-d90e-5ae4-935c-56866c24f9d7",
+      "necessity": "essential",
+      "ordinal": 10,
+      "text": "A strong communicator who can explain a tricky bug to someone outside the team"
+    },
+    {
+      "id": "e27dcb2b-86f0-53a0-bee5-54d4032924dd",
+      "necessity": "desirable",
+      "ordinal": 11,
+      "text": "Prior experience at a fintech, payments, or banking company"
+    },
+    {
+      "id": "8fd429c5-c4f1-5b5e-87e6-ccf360ff09b8",
+      "necessity": "desirable",
+      "ordinal": 12,
+      "text": "Rust experience"
+    },
+    {
+      "id": "ebea080d-0a33-578e-91b6-467db0bf300e",
+      "necessity": "desirable",
+      "ordinal": 13,
+      "text": "Experience managing a team's infrastructure or cloud budget"
+    },
+    {
+      "id": "fa5c1b8d-6da2-50d6-b0cd-5b3cba93ba77",
+      "necessity": "desirable",
+      "ordinal": 14,
+      "text": "Conference speaking experience"
+    },
+    {
+      "id": "20f6df8c-b3bd-5325-9fd1-87060f97e778",
+      "necessity": "desirable",
+      "ordinal": 15,
+      "text": "Comfortable working in a company with 200+ engineers"
+    }
+  ],
+  "runs": [
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 4216,
+      "component": "generate",
+      "cost_usd": "0.125155",
+      "error": null,
+      "id": "644d7ddf-9d9f-4f28-b6eb-91ad6c073d5b",
+      "latency_ms": 51047,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "coverage",
+      "started_at": "2026-09-04T21:56:41.007391Z",
+      "tokens_in": 361,
+      "tokens_out": 3880,
+      "trace_id": "c538dd88-a73c-4433-a5ce-d0df706b997d",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 3770,
+      "component": "generate",
+      "cost_usd": "0.0617925",
+      "error": null,
+      "id": "6010e2d0-0f50-4690-8ae6-30ab2be402d6",
+      "latency_ms": 14045,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "draft",
+      "started_at": "2026-09-04T21:57:32.081212Z",
+      "tokens_in": 2231,
+      "tokens_out": 1083,
+      "trace_id": "a8bc7a89-9491-4c3a-9fb8-8997a08530ba",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    },
+    {
+      "attributes": {
+        "rule_escalations": 0
+      },
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 5641,
+      "component": "gate",
+      "cost_usd": "0.15126625",
+      "error": null,
+      "id": "4209733c-eaf0-46ba-8722-a8b613d5182c",
+      "latency_ms": 60128,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "baseline",
+      "started_at": "2026-09-04T21:57:46.129753Z",
+      "tokens_in": 922,
+      "tokens_out": 4456,
+      "trace_id": "a8bc7a89-9491-4c3a-9fb8-8997a08530ba",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    }
+  ],
+  "spans": {
+    "01e18cec-84c7-521f-b9d1-0ddd45da5e55": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not published research or filed a patent."
+    },
+    "0702e0f6-cd78-54ee-a521-83d53a746014": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Represents the platform team in quarterly planning with the infrastructure and security orgs."
+    },
+    "0a13f4d9-7127-510a-aa86-747a1674ef16": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Wrote integration tests for the notification service."
+    },
+    "0d48fb40-a937-53be-8d90-469e30a58536": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never managed a team larger than six people."
+    },
+    "0d69562b-e084-51cc-b4e1-677b97dc2a8f": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Fixed bugs in the internal reporting tool."
+    },
+    "135b7a59-b0a9-56c8-956e-6fa492857595": {
+      "kind": "heading",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Things Stated Explicitly as NOT True, or Boundaries to Hold"
+    },
+    "18b48ac4-156a-594b-8c4a-c2ad36f6c4de": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Gave a short internal talk on the team's testing practices."
+    },
+    "1f36e79a-e617-539c-8e06-85d6fe9b64e2": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Helped migrate the team's services from a monolith to several smaller services."
+    },
+    "269d628a-c321-5de4-b3e1-f13f2f7be3db": {
+      "kind": "heading",
+      "section_path": "Amberlake Systems",
+      "text": "Amberlake Systems"
+    },
+    "3149b8f6-93ca-5ec7-9059-3194cf0d9559": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with computer vision, NLP, or any machine-learning system in production."
+    },
+    "34bc559d-0571-596d-8105-ecd74a89b9d4": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Worked on the backend services team supporting the company's billing system."
+    },
+    "3a2adf5e-bb2a-512b-9108-5ae51da8520d": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not held budget authority above the platform team's own cloud spend line."
+    },
+    "3bda6a1c-e56c-575f-9c47-741953d752ff": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has no experience with Rust or Go; production work has been in TypeScript and Python only."
+    },
+    "4434c4d7-c257-5f19-b000-e2ebe74b62bc": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Fixed a recurring race condition in the environment-provisioning queue."
+    },
+    "4adaa641-4108-5a79-890b-048f117511c6": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Engineering Manager, Platform Team (Jan 2023 - Present)"
+    },
+    "4b3b9ab6-3113-5e62-909d-309f6c4d3436": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Reduced platform onboarding time for new engineers by rewriting the setup documentation."
+    },
+    "4bb98449-ebdc-5f45-ab0a-ab3365a26079": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Manages a team of six backend engineers responsible for the internal deployment platform."
+    },
+    "4c30942d-c6ab-5892-b6e0-1457f2125078": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Proposed the team's move to a standard on-call rotation tool, which the team adopted."
+    },
+    "52cf4e32-62ae-53c2-bda4-f52421fd72f9": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Led the design of the platform team's internal deployment tool used by other engineering teams."
+    },
+    "591a393f-73f3-5687-9321-b50e53eb4078": {
+      "kind": "heading",
+      "section_path": "",
+      "text": "Tobias Reyes"
+    },
+    "77296d90-d628-519f-a08a-c84b47a7db55": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Set the team's roadmap for migrating internal services to the company's new Kubernetes platform."
+    },
+    "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Built small data-processing scripts for the analytics team."
+    },
+    "7c485f55-440a-50a7-8ce8-ed6b633a42ff": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Participated in the team's on-call rotation for internal tooling."
+    },
+    "7f788983-90f8-50c5-b871-7d817d14b969": {
+      "kind": "heading",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Junior Software Engineer (Jul 2018 - Aug 2019)"
+    },
+    "884eeea9-e660-5fa1-9beb-cc511869d237": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)"
+    },
+    "89310a69-2857-5a14-a283-e25adcf95a7b": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Runs the team's incident postmortem process for platform outages."
+    },
+    "9975b96c-510d-51cc-88d9-28bbc14c7b76": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Mentored two junior engineers during their first year."
+    },
+    "aae7697c-c56f-5b34-89a9-9af611ed3330": {
+      "kind": "heading",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Software Engineer (Aug 2019 - Jun 2021)"
+    },
+    "b0e3159a-467e-5071-9d51-73a37454c8b4": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Wrote unit tests for a new API endpoint."
+    },
+    "b327a6ff-30da-5e39-81c8-8a5039cf7f9e": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Set up the team's first shared staging environment."
+    },
+    "bf7a639b-3e8a-587d-a155-46fd209e96d2": {
+      "kind": "heading",
+      "section_path": "Ridgeline Analytics",
+      "text": "Ridgeline Analytics"
+    },
+    "c484c9cf-4747-533d-8f1e-d8c9c11957fe": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Built internal tooling for provisioning developer environments."
+    },
+    "c4e059ab-8083-5af6-8a07-489990e85b5d": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not built or operated a payment processing system of any kind; billing work at Amberlake used a third-party payment processor with no custom settlement logic."
+    },
+    "c585e678-becd-5d7b-a0da-aadc43f59a6e": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with Kafka or any self-managed message broker; all messaging work has used managed cloud queue services."
+    },
+    "d68cc6a6-d1e3-5980-b072-cf06f7accd88": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked in a regulated industry such as healthcare."
+    },
+    "d700ca6a-2851-55ab-b1c2-6e2b8cbe9104": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud",
+      "text": "Northfield Cloud"
+    },
+    "d86ecd24-5823-53cd-81aa-938564d082f9": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Hired three engineers onto the team, running the technical interview loop for each."
+    },
+    "e26fc82a-7c23-51d5-9b0e-4ec9f6cdcfc4": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not owned a company-wide technical strategy; the quarterly planning role at Northfield is representational, not a strategy-setting mandate."
+    },
+    "e4ec4ad5-05ff-5315-9c97-4da97dfa0676": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Worked on the on-call rotation tooling used across three engineering teams."
+    },
+    "f445a854-5f0b-5e0f-afa6-470716bdf1bc": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Shadowed the on-call engineer during a production incident."
+    },
+    "f8ff899c-1198-55c5-9f0b-82e4da1af08a": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Owns the team's quarterly budget for cloud infrastructure spend."
+    }
+  }
+}

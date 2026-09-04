@@ -1,0 +1,865 @@
+{
+  "candidate": {
+    "slug": "tobias-reyes",
+    "source_file": "tobias-reyes.md",
+    "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+  },
+  "cost_usd_total": "0.1883135",
+  "coverage": [
+    {
+      "cited_span_ids": [
+        "3149b8f6-93ca-5ec7-9059-3194cf0d9559"
+      ],
+      "evidence_note": "Corpus explicitly states no work with computer vision, NLP, or any machine-learning system in production.",
+      "requirement_id": "843b7e25-dd92-5b9c-ba2d-268bfeea1db9",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "3bda6a1c-e56c-575f-9c47-741953d752ff",
+        "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72"
+      ],
+      "evidence_note": "Corpus states production work has been in TypeScript and Python only, and mentions data-processing scripts, but no detail on depth of Python skill.",
+      "requirement_id": "c056f792-d06d-59b2-8943-43444c10da41",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "No mention of C++ or embedded deployment anywhere in the corpus.",
+      "requirement_id": "2e63097b-1b48-5716-a9c5-b6e7eb87937c",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "3149b8f6-93ca-5ec7-9059-3194cf0d9559"
+      ],
+      "evidence_note": "No mention of PyTorch or any deep learning framework; corpus notes no production ML work but is silent on framework exposure outside production.",
+      "requirement_id": "530e8352-8bc5-5dc9-839b-9ea1eb32538b",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "No mention of data annotation or labeling pipelines in the corpus.",
+      "requirement_id": "91fa615a-bb80-5c31-9e18-4ce7c105f29b",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "Corpus documents cloud/platform infrastructure work only; nothing on edge, embedded, or hardware-constrained environments.",
+      "requirement_id": "2c224e05-639c-5170-9b56-f31f0f9b1ebc",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "01e18cec-84c7-521f-b9d1-0ddd45da5e55"
+      ],
+      "evidence_note": "Corpus states the candidate has not published research or filed a patent.",
+      "requirement_id": "05c1c3fc-8a8c-5daa-8a10-149cbe176c45",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "9975b96c-510d-51cc-88d9-28bbc14c7b76",
+        "d86ecd24-5823-53cd-81aa-938564d082f9",
+        "4bb98449-ebdc-5f45-ab0a-ab3365a26079"
+      ],
+      "evidence_note": "Mentored two junior engineers as a senior engineer, and currently manages a team of six backend engineers.",
+      "requirement_id": "048f37a5-41f9-54b7-af52-d73e1296d558",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "Employment history covers cloud platform, analytics, and backend services; no robotics industry experience mentioned.",
+      "requirement_id": "2ded8e33-992f-5b2f-a44c-d5a7713502fe",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "77296d90-d628-519f-a08a-c84b47a7db55",
+        "52cf4e32-62ae-53c2-bda4-f52421fd72f9",
+        "4c30942d-c6ab-5892-b6e0-1457f2125078",
+        "e26fc82a-7c23-51d5-9b0e-4ec9f6cdcfc4"
+      ],
+      "evidence_note": "Set a team roadmap for Kubernetes migration, led a tool design, and proposed a tooling adoption; however, corpus states no ownership of company-wide technical strategy, and none of this is research direction.",
+      "requirement_id": "6688a219-508f-53a8-b765-bb2720f06131",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+        "77296d90-d628-519f-a08a-c84b47a7db55",
+        "f8ff899c-1198-55c5-9f0b-82e4da1af08a",
+        "52cf4e32-62ae-53c2-bda4-f52421fd72f9",
+        "c484c9cf-4747-533d-8f1e-d8c9c11957fe"
+      ],
+      "evidence_note": "Extensive backend/platform and cloud infrastructure work: internal deployment platform, Kubernetes migration, cloud spend ownership, dev environment provisioning.",
+      "requirement_id": "de641108-4e1b-5c33-adf1-5bfd35e9f2a8",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "3149b8f6-93ca-5ec7-9059-3194cf0d9559"
+      ],
+      "evidence_note": "Corpus explicitly rules out computer vision and production ML work; no robotics work documented.",
+      "requirement_id": "9576c2b2-7588-5b14-8bf3-1c377a75f712",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "Corpus is silent on annotation pipelines or labeling prioritization.",
+      "requirement_id": "a4357a25-e38c-56dd-a471-da484d63fd6d",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "No mention of embedded hardware, memory/latency budgets, or model optimization.",
+      "requirement_id": "57f8091c-c679-5b75-beb3-95019f45507b",
+      "status": "absent"
+    },
+    {
+      "cited_span_ids": [
+        "89310a69-2857-5a14-a283-e25adcf95a7b",
+        "4434c4d7-c257-5f19-b000-e2ebe74b62bc",
+        "f445a854-5f0b-5e0f-afa6-470716bdf1bc",
+        "7c485f55-440a-50a7-8ce8-ed6b633a42ff"
+      ],
+      "evidence_note": "Runs incident postmortems and fixed a recurring race condition in production tooling, showing root-cause debugging; but no evidence of debugging across data, model, or camera failure modes.",
+      "requirement_id": "4c2243c8-2e68-5bbc-8a50-2da7869d57e6",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [],
+      "evidence_note": "No mention of collaboration with hardware engineers, cameras, or calibration.",
+      "requirement_id": "f7a8c663-1e6f-58e4-bb45-2c961e811c60",
+      "status": "absent"
+    }
+  ],
+  "draft": {
+    "id": "56bfab51-0857-4eeb-9bdd-9a40ec809514",
+    "kind": "cv_bullets",
+    "text": "Engineering Manager, Platform Team \u2014 Northfield Cloud (Jan 2023 \u2013 Present)\n\u2022 Lead a team of six backend engineers who own and operate Northfield Cloud's internal deployment platform, used by engineering teams across the company.\n\u2022 Set the team's roadmap for migrating internal services onto the company's new Kubernetes platform, sequencing the work across quarters.\n\u2022 Own the platform team's quarterly cloud infrastructure budget, balancing spend against roadmap commitments.\n\u2022 Hired three engineers onto the team, designing and running the technical interview loop for each.\n\u2022 Run the team's incident postmortem process for platform outages, driving each incident to a documented root cause and follow-up actions.\n\u2022 Represent the platform team in quarterly planning with the infrastructure and security organisations.\n\nSenior Software Engineer, Platform Team \u2014 Northfield Cloud (Jun 2021 \u2013 Jan 2023)\n\u2022 Led the design of the internal deployment tool now used by other engineering teams across the company.\n\u2022 Built and maintained on-call rotation tooling adopted by three engineering teams; proposed the team's move to a standard on-call tool, which was adopted.\n\u2022 Mentored two junior engineers through their first year on the team.\n\u2022 Cut onboarding time for engineers new to the platform by rewriting the setup documentation.\n\nSoftware Engineer \u2014 Amberlake Systems (Aug 2019 \u2013 Jun 2021)\n\u2022 Built internal tooling for provisioning developer environments, including diagnosing and fixing a recurring race condition in the environment-provisioning queue.\n\u2022 Contributed to the backend services team supporting the company's billing system, integrated with a third-party payment processor.\n\u2022 Helped decompose the team's monolith into several smaller services.\n\u2022 Wrote integration tests for the notification service and presented the team's testing practices in an internal talk.\n\u2022 Participated in the on-call rotation for internal tooling.\n\nJunior Software Engineer \u2014 Ridgeline Analytics (Jul 2018 \u2013 Aug 2019)\n\u2022 Built small data-processing scripts for the analytics team and wrote unit tests for a new API endpoint.\n\u2022 Set up the team's first shared staging environment and fixed bugs in the internal reporting tool.\n\nSkills & context\n\u2022 Production experience in Python and TypeScript, across data-processing scripts, backend services and internal developer tooling.\n\u2022 Backend and cloud infrastructure: internal deployment platforms, Kubernetes migration, developer environment provisioning, on-call and incident tooling \u2014 relevant to a cloud-connected fleet dashboard.\n\u2022 People leadership and mentoring: managing six engineers, hiring, and mentoring junior engineers.\n\u2022 Note: my production work to date has been in backend and platform engineering; I have not built or deployed computer vision or machine-learning models in production, and have no C++ or embedded deployment experience. I am applying on the strength of production debugging, Python, infrastructure and team leadership, and would be moving into perception work from that base.",
+    "trace_id": "adc52e91-a59a-4cb7-9963-0cd5c5266b6a"
+  },
+  "gate": {
+    "sentences": [
+      {
+        "cited_span_ids": [
+          "4adaa641-4108-5a79-890b-048f117511c6",
+          "d700ca6a-2851-55ab-b1c2-6e2b8cbe9104"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, employer and dates match the corpus exactly.",
+        "index": 1,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Engineering Manager, Platform Team \u2014 Northfield Cloud (Jan 2023 \u2013 Present)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4bb98449-ebdc-5f45-ab0a-ab3365a26079"
+        ],
+        "drift_label": "scope_inflation",
+        "evidence_note": "Team of six backend engineers on the internal deployment platform is backed, but the added 'used by engineering teams across the company' company-wide reach is not documented for the platform itself.",
+        "index": 2,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Lead a team of six backend engineers who own and operate Northfield Cloud's internal deployment platform, used by engineering teams across the company.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "77296d90-d628-519f-a08a-c84b47a7db55"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states he set the team's roadmap for migrating internal services to the new Kubernetes platform.",
+        "index": 3,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Set the team's roadmap for migrating internal services onto the company's new Kubernetes platform, sequencing the work across quarters.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "f8ff899c-1198-55c5-9f0b-82e4da1af08a",
+          "3a2adf5e-bb2a-512b-9108-5ae51da8520d"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Owns the team's quarterly cloud infrastructure budget; scope stays within the documented platform cloud spend line.",
+        "index": 4,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Own the platform team's quarterly cloud infrastructure budget, balancing spend against roadmap commitments.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "d86ecd24-5823-53cd-81aa-938564d082f9"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus documents hiring three engineers and running the technical interview loop for each.",
+        "index": 5,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Hired three engineers onto the team, designing and running the technical interview loop for each.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "89310a69-2857-5a14-a283-e25adcf95a7b"
+        ],
+        "drift_label": "ownership_inflation",
+        "evidence_note": "Running the postmortem process is backed; 'driving each incident to a documented root cause and follow-up actions' adds process detail the corpus does not record.",
+        "index": 6,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Run the team's incident postmortem process for platform outages, driving each incident to a documented root cause and follow-up actions.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "0702e0f6-cd78-54ee-a521-83d53a746014",
+          "e26fc82a-7c23-51d5-9b0e-4ec9f6cdcfc4"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Representational quarterly planning role with infrastructure and security orgs is exactly what the corpus states.",
+        "index": 7,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Represent the platform team in quarterly planning with the infrastructure and security organisations.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "884eeea9-e660-5fa1-9beb-cc511869d237"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, employer and dates match the corpus.",
+        "index": 8,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Senior Software Engineer, Platform Team \u2014 Northfield Cloud (Jun 2021 \u2013 Jan 2023)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "52cf4e32-62ae-53c2-bda4-f52421fd72f9"
+        ],
+        "drift_label": "scope_inflation",
+        "evidence_note": "Leading the design of the deployment tool used by other engineering teams is backed; 'across the company' extends the documented reach.",
+        "index": 9,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Led the design of the internal deployment tool now used by other engineering teams across the company.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "e4ec4ad5-05ff-5315-9c97-4da97dfa0676",
+          "4c30942d-c6ab-5892-b6e0-1457f2125078"
+        ],
+        "drift_label": "adjacency_substitution",
+        "evidence_note": "Corpus says he 'worked on' on-call rotation tooling used across three teams, not that he built and maintained it; the proposal-and-adoption half is supported.",
+        "index": 10,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built and maintained on-call rotation tooling adopted by three engineering teams; proposed the team's move to a standard on-call tool, which was adopted.",
+        "verdict": "review"
+      },
+      {
+        "cited_span_ids": [
+          "9975b96c-510d-51cc-88d9-28bbc14c7b76"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Mentoring two junior engineers during their first year is documented.",
+        "index": 11,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Mentored two junior engineers through their first year on the team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4b3b9ab6-3113-5e62-909d-309f6c4d3436"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus credits him with reducing platform onboarding time by rewriting setup documentation; no invented metric added.",
+        "index": 12,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Cut onboarding time for engineers new to the platform by rewriting the setup documentation.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "aae7697c-c56f-5b34-89a9-9af611ed3330",
+          "269d628a-c321-5de4-b3e1-f13f2f7be3db"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, employer and dates match the corpus.",
+        "index": 13,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Software Engineer \u2014 Amberlake Systems (Aug 2019 \u2013 Jun 2021)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c484c9cf-4747-533d-8f1e-d8c9c11957fe",
+          "4434c4d7-c257-5f19-b000-e2ebe74b62bc"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the provisioning tooling and the race-condition fix are documented.",
+        "index": 14,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built internal tooling for provisioning developer environments, including diagnosing and fixing a recurring race condition in the environment-provisioning queue.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "34bc559d-0571-596d-8105-ecd74a89b9d4",
+          "c4e059ab-8083-5af6-8a07-489990e85b5d"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Contribution to the billing backend team and the third-party payment processor framing both match the corpus and respect the stated boundary.",
+        "index": 15,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Contributed to the backend services team supporting the company's billing system, integrated with a third-party payment processor.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1f36e79a-e617-539c-8e06-85d6fe9b64e2"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus records helping migrate the team's services from a monolith to smaller services.",
+        "index": 16,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Helped decompose the team's monolith into several smaller services.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "0a13f4d9-7127-510a-aa86-747a1674ef16",
+          "18b48ac4-156a-594b-8c4a-c2ad36f6c4de"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Integration tests for the notification service and the internal talk on testing practices are both documented.",
+        "index": 17,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote integration tests for the notification service and presented the team's testing practices in an internal talk.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "7c485f55-440a-50a7-8ce8-ed6b633a42ff"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Participation in the on-call rotation for internal tooling is documented.",
+        "index": 18,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Participated in the on-call rotation for internal tooling.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "7f788983-90f8-50c5-b871-7d817d14b969",
+          "bf7a639b-3e8a-587d-a155-46fd209e96d2"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title, employer and dates match the corpus.",
+        "index": 19,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Junior Software Engineer \u2014 Ridgeline Analytics (Jul 2018 \u2013 Aug 2019)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72",
+          "b0e3159a-467e-5071-9d51-73a37454c8b4"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the data-processing scripts and unit tests for a new API endpoint are documented.",
+        "index": 20,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built small data-processing scripts for the analytics team and wrote unit tests for a new API endpoint.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "b327a6ff-30da-5e39-81c8-8a5039cf7f9e",
+          "0d69562b-e084-51cc-b4e1-677b97dc2a8f"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Setting up the first shared staging environment and fixing reporting-tool bugs are both documented.",
+        "index": 21,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Set up the team's first shared staging environment and fixed bugs in the internal reporting tool.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Section heading with no factual content to check.",
+        "index": 22,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Skills & context",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "3bda6a1c-e56c-575f-9c47-741953d752ff",
+          "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72",
+          "34bc559d-0571-596d-8105-ecd74a89b9d4",
+          "c484c9cf-4747-533d-8f1e-d8c9c11957fe"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states production work has been in TypeScript and Python only, and the listed domains map to documented work.",
+        "index": 23,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Production experience in Python and TypeScript, across data-processing scripts, backend services and internal developer tooling.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+          "77296d90-d628-519f-a08a-c84b47a7db55",
+          "c484c9cf-4747-533d-8f1e-d8c9c11957fe",
+          "e4ec4ad5-05ff-5315-9c97-4da97dfa0676",
+          "89310a69-2857-5a14-a283-e25adcf95a7b"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Each listed area traces to documented work; the relevance clause to the target role is framing, not a corpus claim.",
+        "index": 24,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Backend and cloud infrastructure: internal deployment platforms, Kubernetes migration, developer environment provisioning, on-call and incident tooling \u2014 relevant to a cloud-connected fleet dashboard.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4bb98449-ebdc-5f45-ab0a-ab3365a26079",
+          "d86ecd24-5823-53cd-81aa-938564d082f9",
+          "9975b96c-510d-51cc-88d9-28bbc14c7b76",
+          "0d48fb40-a937-53be-8d90-469e30a58536"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Six engineers managed, hiring, and mentoring juniors are all documented and within the stated team-size boundary.",
+        "index": 25,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "People leadership and mentoring: managing six engineers, hiring, and mentoring junior engineers.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "3149b8f6-93ca-5ec7-9059-3194cf0d9559",
+          "3bda6a1c-e56c-575f-9c47-741953d752ff"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Disclaimer matches the corpus boundaries on ML/CV and on languages used in production.",
+        "index": 26,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Note: my production work to date has been in backend and platform engineering; I have not built or deployed computer vision or machine-learning models in production, and have no C++ or embedded deployment experience.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Statement of motivation and intent in applying; carries no independently checkable factual claim.",
+        "index": 27,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "I am applying on the strength of production debugging, Python, infrastructure and team leadership, and would be moving into perception work from that base.",
+        "verdict": "supported"
+      }
+    ]
+  },
+  "generated_at": "2026-09-04T22:02:21.290603+00:00",
+  "job": {
+    "employer": "Solstice Vision Labs",
+    "id": "ce4970b2-7f72-5e65-b874-eee9e5a4b2c8",
+    "location": "Onsite (Toronto) preferred, remote considered for senior candidates",
+    "raw_text": "Machine Learning Engineer - Perception\nSolstice Vision Labs - Onsite (Toronto) preferred, remote considered for senior candidates\n\nAbout us\n\nSolstice Vision Labs builds computer vision systems for autonomous inspection robots\nused in warehouses and light manufacturing. Our perception stack has to work on\nreal, messy hardware in the field, not just in a notebook.\n\nThe role\n\nWe're looking for a Machine Learning Engineer to join our Perception team. You'll work\nacross the full lifecycle of our vision models: collecting and labeling data, training,\nand getting models running reliably on the robot's onboard compute. This is a\nproduction-focused role - we care more about a model that runs correctly on the robot\nthan one that looks good on a benchmark.\n\nResponsibilities\n\n- Build and improve computer vision models used in production on our robots\n- Work with our data annotation pipeline to decide what gets labeled next\n- Get models running within the memory and latency limits of embedded hardware\n- Debug production failures back to a root cause, whether that's data, model, or camera\n- Collaborate with hardware engineers on camera placement and calibration\n\nWhat you'll need\n\n- Hands-on experience building and deploying computer vision models to a production\n  system, not only research or coursework\n- Strong Python skills; C++ experience is a plus for the embedded-deployment side\n- Experience with PyTorch or a comparable deep learning framework\n- Experience working with a data annotation or labeling pipeline\n- Comfortable working within hardware constraints such as edge or embedded deployment\n\nNice to have\n\n- Peer-reviewed publications or patents related to computer vision or robotics\n- Experience mentoring junior scientists or engineers\n- Prior robotics industry experience\n- Experience helping set technical research direction for a team, not just executing it\n- Familiarity with backend or cloud infrastructure, for teams that also ship a\n  cloud-connected fleet dashboard\n\nCompensation & benefits\n\nSalary band posted per local pay transparency requirements, equity, health benefits,\nand relocation assistance for candidates moving to Toronto. Solstice Vision Labs is\nan equal opportunity employer.\n",
+    "slug": "solstice-ml-engineer",
+    "source_file": "solstice-ml-engineer.txt",
+    "title": "Machine Learning Engineer - Perception"
+  },
+  "requirements": [
+    {
+      "id": "843b7e25-dd92-5b9c-ba2d-268bfeea1db9",
+      "necessity": "essential",
+      "ordinal": 0,
+      "text": "Hands-on experience building and deploying computer vision models to a production system, not only research or coursework"
+    },
+    {
+      "id": "c056f792-d06d-59b2-8943-43444c10da41",
+      "necessity": "essential",
+      "ordinal": 1,
+      "text": "Strong Python skills"
+    },
+    {
+      "id": "2e63097b-1b48-5716-a9c5-b6e7eb87937c",
+      "necessity": "desirable",
+      "ordinal": 2,
+      "text": "C++ experience for the embedded-deployment side"
+    },
+    {
+      "id": "530e8352-8bc5-5dc9-839b-9ea1eb32538b",
+      "necessity": "essential",
+      "ordinal": 3,
+      "text": "Experience with PyTorch or a comparable deep learning framework"
+    },
+    {
+      "id": "91fa615a-bb80-5c31-9e18-4ce7c105f29b",
+      "necessity": "essential",
+      "ordinal": 4,
+      "text": "Experience working with a data annotation or labeling pipeline"
+    },
+    {
+      "id": "2c224e05-639c-5170-9b56-f31f0f9b1ebc",
+      "necessity": "essential",
+      "ordinal": 5,
+      "text": "Comfortable working within hardware constraints such as edge or embedded deployment"
+    },
+    {
+      "id": "05c1c3fc-8a8c-5daa-8a10-149cbe176c45",
+      "necessity": "desirable",
+      "ordinal": 6,
+      "text": "Peer-reviewed publications or patents related to computer vision or robotics"
+    },
+    {
+      "id": "048f37a5-41f9-54b7-af52-d73e1296d558",
+      "necessity": "desirable",
+      "ordinal": 7,
+      "text": "Experience mentoring junior scientists or engineers"
+    },
+    {
+      "id": "2ded8e33-992f-5b2f-a44c-d5a7713502fe",
+      "necessity": "desirable",
+      "ordinal": 8,
+      "text": "Prior robotics industry experience"
+    },
+    {
+      "id": "6688a219-508f-53a8-b765-bb2720f06131",
+      "necessity": "desirable",
+      "ordinal": 9,
+      "text": "Experience helping set technical research direction for a team, not just executing it"
+    },
+    {
+      "id": "de641108-4e1b-5c33-adf1-5bfd35e9f2a8",
+      "necessity": "desirable",
+      "ordinal": 10,
+      "text": "Familiarity with backend or cloud infrastructure"
+    },
+    {
+      "id": "9576c2b2-7588-5b14-8bf3-1c377a75f712",
+      "necessity": "unstated",
+      "ordinal": 11,
+      "text": "Build and improve computer vision models used in production on our robots"
+    },
+    {
+      "id": "a4357a25-e38c-56dd-a471-da484d63fd6d",
+      "necessity": "unstated",
+      "ordinal": 12,
+      "text": "Work with our data annotation pipeline to decide what gets labeled next"
+    },
+    {
+      "id": "57f8091c-c679-5b75-beb3-95019f45507b",
+      "necessity": "unstated",
+      "ordinal": 13,
+      "text": "Get models running within the memory and latency limits of embedded hardware"
+    },
+    {
+      "id": "4c2243c8-2e68-5bbc-8a50-2da7869d57e6",
+      "necessity": "unstated",
+      "ordinal": 14,
+      "text": "Debug production failures back to a root cause, whether that's data, model, or camera"
+    },
+    {
+      "id": "f7a8c663-1e6f-58e4-bb45-2c961e811c60",
+      "necessity": "unstated",
+      "ordinal": 15,
+      "text": "Collaborate with hardware engineers on camera placement and calibration"
+    }
+  ],
+  "runs": [
+    {
+      "attributes": null,
+      "cache_read_tokens": 4216,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.053748",
+      "error": null,
+      "id": "6aed3c81-ea19-48e7-abd3-bcd4455d3c18",
+      "latency_ms": 30994,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "coverage",
+      "started_at": "2026-09-04T22:00:44.344249Z",
+      "tokens_in": 378,
+      "tokens_out": 1990,
+      "trace_id": "d1072f69-76e4-4cb1-b755-d1b45a7c0200",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 3770,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.04057",
+      "error": null,
+      "id": "87856353-5a72-4b88-9dd0-4f835a2d5ecc",
+      "latency_ms": 14637,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "draft",
+      "started_at": "2026-09-04T22:01:15.366349Z",
+      "tokens_in": 1967,
+      "tokens_out": 1154,
+      "trace_id": "adc52e91-a59a-4cb7-9963-0cd5c5266b6a",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    },
+    {
+      "attributes": {
+        "rule_escalations": 0
+      },
+      "cache_read_tokens": 5641,
+      "cache_write_tokens": 0,
+      "component": "gate",
+      "cost_usd": "0.0939955",
+      "error": null,
+      "id": "2f7f8fd8-2215-48b0-ada6-53ed9656e587",
+      "latency_ms": 51236,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "baseline",
+      "started_at": "2026-09-04T22:01:30.006237Z",
+      "tokens_in": 1025,
+      "tokens_out": 3442,
+      "trace_id": "adc52e91-a59a-4cb7-9963-0cd5c5266b6a",
+      "user_id": "84b62b9c-fc0a-581a-81ff-4fd2dd1c8487"
+    }
+  ],
+  "spans": {
+    "01e18cec-84c7-521f-b9d1-0ddd45da5e55": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not published research or filed a patent."
+    },
+    "0702e0f6-cd78-54ee-a521-83d53a746014": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Represents the platform team in quarterly planning with the infrastructure and security orgs."
+    },
+    "0a13f4d9-7127-510a-aa86-747a1674ef16": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Wrote integration tests for the notification service."
+    },
+    "0d48fb40-a937-53be-8d90-469e30a58536": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never managed a team larger than six people."
+    },
+    "0d69562b-e084-51cc-b4e1-677b97dc2a8f": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Fixed bugs in the internal reporting tool."
+    },
+    "135b7a59-b0a9-56c8-956e-6fa492857595": {
+      "kind": "heading",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Things Stated Explicitly as NOT True, or Boundaries to Hold"
+    },
+    "18b48ac4-156a-594b-8c4a-c2ad36f6c4de": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Gave a short internal talk on the team's testing practices."
+    },
+    "1f36e79a-e617-539c-8e06-85d6fe9b64e2": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Helped migrate the team's services from a monolith to several smaller services."
+    },
+    "269d628a-c321-5de4-b3e1-f13f2f7be3db": {
+      "kind": "heading",
+      "section_path": "Amberlake Systems",
+      "text": "Amberlake Systems"
+    },
+    "3149b8f6-93ca-5ec7-9059-3194cf0d9559": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with computer vision, NLP, or any machine-learning system in production."
+    },
+    "34bc559d-0571-596d-8105-ecd74a89b9d4": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Worked on the backend services team supporting the company's billing system."
+    },
+    "3a2adf5e-bb2a-512b-9108-5ae51da8520d": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not held budget authority above the platform team's own cloud spend line."
+    },
+    "3bda6a1c-e56c-575f-9c47-741953d752ff": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has no experience with Rust or Go; production work has been in TypeScript and Python only."
+    },
+    "4434c4d7-c257-5f19-b000-e2ebe74b62bc": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Fixed a recurring race condition in the environment-provisioning queue."
+    },
+    "4adaa641-4108-5a79-890b-048f117511c6": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Engineering Manager, Platform Team (Jan 2023 - Present)"
+    },
+    "4b3b9ab6-3113-5e62-909d-309f6c4d3436": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Reduced platform onboarding time for new engineers by rewriting the setup documentation."
+    },
+    "4bb98449-ebdc-5f45-ab0a-ab3365a26079": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Manages a team of six backend engineers responsible for the internal deployment platform."
+    },
+    "4c30942d-c6ab-5892-b6e0-1457f2125078": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Proposed the team's move to a standard on-call rotation tool, which the team adopted."
+    },
+    "52cf4e32-62ae-53c2-bda4-f52421fd72f9": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Led the design of the platform team's internal deployment tool used by other engineering teams."
+    },
+    "591a393f-73f3-5687-9321-b50e53eb4078": {
+      "kind": "heading",
+      "section_path": "",
+      "text": "Tobias Reyes"
+    },
+    "77296d90-d628-519f-a08a-c84b47a7db55": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Set the team's roadmap for migrating internal services to the company's new Kubernetes platform."
+    },
+    "77c52b2a-3c2c-53fc-8d3b-df1ffcb17b72": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Built small data-processing scripts for the analytics team."
+    },
+    "7c485f55-440a-50a7-8ce8-ed6b633a42ff": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Participated in the team's on-call rotation for internal tooling."
+    },
+    "7f788983-90f8-50c5-b871-7d817d14b969": {
+      "kind": "heading",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Junior Software Engineer (Jul 2018 - Aug 2019)"
+    },
+    "884eeea9-e660-5fa1-9beb-cc511869d237": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)"
+    },
+    "89310a69-2857-5a14-a283-e25adcf95a7b": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Runs the team's incident postmortem process for platform outages."
+    },
+    "9975b96c-510d-51cc-88d9-28bbc14c7b76": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Mentored two junior engineers during their first year."
+    },
+    "aae7697c-c56f-5b34-89a9-9af611ed3330": {
+      "kind": "heading",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Software Engineer (Aug 2019 - Jun 2021)"
+    },
+    "b0e3159a-467e-5071-9d51-73a37454c8b4": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Wrote unit tests for a new API endpoint."
+    },
+    "b327a6ff-30da-5e39-81c8-8a5039cf7f9e": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Set up the team's first shared staging environment."
+    },
+    "bf7a639b-3e8a-587d-a155-46fd209e96d2": {
+      "kind": "heading",
+      "section_path": "Ridgeline Analytics",
+      "text": "Ridgeline Analytics"
+    },
+    "c484c9cf-4747-533d-8f1e-d8c9c11957fe": {
+      "kind": "bullet",
+      "section_path": "Amberlake Systems > Software Engineer (Aug 2019 - Jun 2021)",
+      "text": "Built internal tooling for provisioning developer environments."
+    },
+    "c4e059ab-8083-5af6-8a07-489990e85b5d": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not built or operated a payment processing system of any kind; billing work at Amberlake used a third-party payment processor with no custom settlement logic."
+    },
+    "c585e678-becd-5d7b-a0da-aadc43f59a6e": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked with Kafka or any self-managed message broker; all messaging work has used managed cloud queue services."
+    },
+    "d68cc6a6-d1e3-5980-b072-cf06f7accd88": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked in a regulated industry such as healthcare."
+    },
+    "d700ca6a-2851-55ab-b1c2-6e2b8cbe9104": {
+      "kind": "heading",
+      "section_path": "Northfield Cloud",
+      "text": "Northfield Cloud"
+    },
+    "d86ecd24-5823-53cd-81aa-938564d082f9": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Hired three engineers onto the team, running the technical interview loop for each."
+    },
+    "e26fc82a-7c23-51d5-9b0e-4ec9f6cdcfc4": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not owned a company-wide technical strategy; the quarterly planning role at Northfield is representational, not a strategy-setting mandate."
+    },
+    "e4ec4ad5-05ff-5315-9c97-4da97dfa0676": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Senior Software Engineer, Platform Team (Jun 2021 - Jan 2023)",
+      "text": "Worked on the on-call rotation tooling used across three engineering teams."
+    },
+    "f445a854-5f0b-5e0f-afa6-470716bdf1bc": {
+      "kind": "bullet",
+      "section_path": "Ridgeline Analytics > Junior Software Engineer (Jul 2018 - Aug 2019)",
+      "text": "Shadowed the on-call engineer during a production incident."
+    },
+    "f8ff899c-1198-55c5-9f0b-82e4da1af08a": {
+      "kind": "bullet",
+      "section_path": "Northfield Cloud > Engineering Manager, Platform Team (Jan 2023 - Present)",
+      "text": "Owns the team's quarterly budget for cloud infrastructure spend."
+    }
+  }
+}

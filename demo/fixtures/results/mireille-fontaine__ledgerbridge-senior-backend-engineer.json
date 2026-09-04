@@ -1,0 +1,1011 @@
+{
+  "candidate": {
+    "slug": "mireille-fontaine",
+    "source_file": "mireille-fontaine.md",
+    "user_id": "4d7943c9-4954-57d0-9318-b75a2aaa45d4"
+  },
+  "cost_usd_total": "0.38951875",
+  "coverage": [
+    {
+      "cited_span_ids": [
+        "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb",
+        "e121d6f9-2040-5dc4-929f-998a8590fffc",
+        "4af24e4a-67be-5181-9bb0-6d3138df4312",
+        "29f889e4-2d28-5b19-95d9-10e2cd2f02a1"
+      ],
+      "evidence_note": "Owns the settlement reconciliation service closing daily payment batches across three currencies; rebuilt the reconciliation pipeline from scratch; earlier migrated batch settlement jobs to an Airflow pipeline and presented the settlement redesign.",
+      "requirement_id": "3103d712-f64a-5b85-90bd-8ed5dbcd6d6d",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb",
+        "bfb68ba6-0cd0-578b-9bce-ff66e4c3c490"
+      ],
+      "evidence_note": "Explicitly owns the settlement reconciliation service; also built the idempotency-key service used by the checkout team.",
+      "requirement_id": "867b386a-08c5-5218-b9de-d9e84bf29beb",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "82645e5f-b3fd-5ae3-806d-ebef8a411817",
+        "dc04d5f6-842d-5a71-a8a7-002521eef55d"
+      ],
+      "evidence_note": "Participates in org-wide incident response rotation for payment-critical services and was on-call primary for the payments service for six consecutive quarters.",
+      "requirement_id": "86bdb4a7-ee83-568e-90bd-c9d45db1c569",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "5657328b-ecc5-5336-90b2-ab56e8ccd2cd",
+        "6cbbf673-5207-536d-8651-9e090404415a",
+        "f67df12f-78d6-580f-83cc-df2bf90f879c"
+      ],
+      "evidence_note": "Worked on the fraud-signal ingestion path feeding the risk team's models and wrote a PCI-DSS scope-reduction runbook adopted by the security team, but the corpus does not describe sustained collaboration with risk/compliance teams on sensitive-data handling, and notes the compliance work was engineering rather than formal auditing.",
+      "requirement_id": "da433dcb-44aa-5e50-bf62-07c82eb64765",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "f565b6d5-4d87-55fc-bbb4-9604339dcc89"
+      ],
+      "evidence_note": "Mentored two mid-level engineers joining the payments team (noted elsewhere as informal mentoring).",
+      "requirement_id": "c84c5f05-558a-5263-bee5-a6e67d03a39a",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "6966f277-e670-5152-be77-db220cfbdfc3",
+        "e11b718c-3434-5093-8db0-72fa35269c2f",
+        "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3"
+      ],
+      "evidence_note": "Corpus states all production work has been in Go, Python, and Java, and shows a backend engineering career from 2014 to present, but does not break down how many of those years were spent on Go or Java specifically.",
+      "requirement_id": "e27a5d8f-7c97-5aa9-bd2a-37739b7fe9ec",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "8cbe9290-af6c-528d-a813-64b3a5e1cdfe"
+      ],
+      "evidence_note": "Corpus states messaging at Harborline and Anchorwell used a managed queue service in production, but explicitly rules out building or operating a Kafka cluster.",
+      "requirement_id": "865d229a-3a49-5e5e-8d49-50ba6e831304",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "6cbbf673-5207-536d-8651-9e090404415a",
+        "f67df12f-78d6-580f-83cc-df2bf90f879c"
+      ],
+      "evidence_note": "Wrote the internal PCI-DSS scope reduction runbook adopted by the security team; corpus notes this was engineering work rather than formal compliance auditing, which matches the 'not formally responsible' framing.",
+      "requirement_id": "949a8035-9f66-500e-abfd-729acdc52a3f",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "dc04d5f6-842d-5a71-a8a7-002521eef55d",
+        "82645e5f-b3fd-5ae3-806d-ebef8a411817"
+      ],
+      "evidence_note": "On-call primary for the payments service for six consecutive quarters and in the incident rotation for payment-critical services.",
+      "requirement_id": "b0fc770b-3fe0-5ce2-a3ee-bf7e8c1b21e4",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "f565b6d5-4d87-55fc-bbb4-9604339dcc89",
+        "9b3d1fd9-6c55-59db-bcfc-cb4c0c19f21e"
+      ],
+      "evidence_note": "Mentored two mid-level engineers; corpus clarifies the mentoring was informal with no hiring or budget authority.",
+      "requirement_id": "2a3865ed-5c84-5d17-8159-9e3ac301afc3",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "29f889e4-2d28-5b19-95d9-10e2cd2f02a1",
+        "6cbbf673-5207-536d-8651-9e090404415a",
+        "343f9aac-6ca2-566f-82fb-71078a34ebab",
+        "b8b52457-80f5-55a5-85dc-3ffa741bdae2"
+      ],
+      "evidence_note": "Presented a pipeline redesign at an internal engineering demo, wrote a runbook adopted by the security team, and wrote deployment documentation; the corpus does not describe explaining technical issues to non-engineering or external audiences.",
+      "requirement_id": "476d77a7-bf03-5ee5-bc6b-95d52e093d42",
+      "status": "partial"
+    },
+    {
+      "cited_span_ids": [
+        "6173076f-2944-5d40-9b6f-087b4059057d",
+        "247abccf-0a34-5996-ab78-f971fbe13a89",
+        "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3",
+        "e11b718c-3434-5093-8db0-72fa35269c2f"
+      ],
+      "evidence_note": "Payments-domain roles at Anchorwell Payments (2021-present) and Harborline Payments (2018-2021).",
+      "requirement_id": "123d340a-c031-5960-8ee0-e86b0146773a",
+      "status": "evidenced"
+    },
+    {
+      "cited_span_ids": [
+        "6966f277-e670-5152-be77-db220cfbdfc3"
+      ],
+      "evidence_note": "Corpus explicitly states no experience with Rust; production work has been in Go, Python, and Java.",
+      "requirement_id": "993cca8b-b623-563e-92a1-b2ea562b40f0",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "4b000f9a-81aa-5504-97b8-1b7cf2e02c3b",
+        "9b3d1fd9-6c55-59db-bcfc-cb4c0c19f21e"
+      ],
+      "evidence_note": "Corpus explicitly states no direct ownership of a budget of any size, and no budget authority attached to mentoring.",
+      "requirement_id": "67570468-967a-5f0f-b1e7-2eba59e35612",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "baa664f4-1abe-565b-9ae1-6d21144a1451",
+        "29f889e4-2d28-5b19-95d9-10e2cd2f02a1"
+      ],
+      "evidence_note": "Corpus states the candidate has never presented at an external conference; the quarterly demo was internal only.",
+      "requirement_id": "8adf97b1-35c8-56af-80e3-1389e8d800d6",
+      "status": "contradicted"
+    },
+    {
+      "cited_span_ids": [
+        "2eae40aa-050a-5416-88f3-53dfad88f431"
+      ],
+      "evidence_note": "Corpus states all four employers had under 200 engineering staff and the candidate has not worked at a company with more than 400 engineers.",
+      "requirement_id": "bdb6adfd-8a0a-5d0d-9ab8-515be4239558",
+      "status": "contradicted"
+    }
+  ],
+  "draft": {
+    "id": "8bd3e40a-252f-4270-b1ba-1f27388c8000",
+    "kind": "cv_bullets",
+    "text": "Mireille Fontaine \u2014 CV bullets (Senior Backend Engineer, Payments Platform, Ledgerbridge Financial)\n\nSummary\n- Backend engineer since 2014, with production work in Go, Python and Java; the last seven years spent entirely in the payments domain at Harborline Payments and Anchorwell Payments.\n- Currently Staff Backend Engineer at Anchorwell Payments, owning the settlement reconciliation service end to end.\n\nAnchorwell Payments \u2014 Staff Backend Engineer (Jul 2023 \u2013 Present)\n- Own the settlement reconciliation service end to end, closing each business day's payment batches across three currencies.\n- Rebuilt the reconciliation pipeline from scratch following a 2023 data-loss incident during a database migration; every batch since has processed without a repeat incident.\n- Led the migration of the payments ledger from a self-hosted Postgres cluster to a managed, multi-region database service.\n- Built on the fraud-signal ingestion path that feeds the risk team's models, working to the risk team's requirements.\n- Introduced a canary deployment process for the payments API to de-risk releases on the money-movement path.\n- Participate in the org-wide incident response rotation for payment-critical services.\n\nAnchorwell Payments \u2014 Senior Backend Engineer (Feb 2021 \u2013 Jul 2023)\n- Built the idempotency-key service used by the checkout team to prevent duplicate charges.\n- Re-architected the payment authorization path, reducing peak-hour checkout latency.\n- Served as on-call primary for the payments service for six consecutive quarters \u2014 production systems with money on the line.\n- Wrote the internal runbook for PCI-DSS scope reduction that the security team adopted; engineering-side compliance work rather than formal audit.\n- Informally mentored two mid-level engineers joining the payments team.\n\nHarborline Payments \u2014 Backend Engineer (Mar 2018 \u2013 Feb 2021)\n- Migrated batch settlement jobs from cron scripts to an Airflow-based pipeline.\n- Implemented retry and backoff logic for failed card-network calls.\n- Investigated and fixed a currency-conversion rounding error that had gone unnoticed for several months.\n- Worked on the merchant onboarding API alongside the platform team, and added test coverage to the refund processing service.\n- Presented the settlement pipeline redesign at the company's internal quarterly engineering demo.\n\nVoss Analytics \u2014 Software Engineer (Aug 2015 \u2013 Feb 2018)\n- Built nightly ETL jobs loading client usage data into a reporting warehouse, and wrote the first version of the internal API behind the analytics dashboard.\n- Performance-tuned slow SQL reports for the customer success team; helped set up the team's first CI pipeline in Jenkins.\n- Provided on-call coverage for the reporting service during quarterly close.\n\nKestrel Digital \u2014 Junior Developer (Jul 2014 \u2013 Jul 2015)\n- Built internal Python tooling for the operations team and documented the internal deployment process.\n\nTechnical notes\n- Production languages: Go, Python, Java. Messaging in production at both Harborline and Anchorwell was via a managed queue service (no self-run Kafka cluster experience).\n- Domain: card-network integration, authorization, refunds, settlement and reconciliation, idempotency, PCI-DSS scope reduction.\n- Team context: all employers to date have had engineering organisations of under 200 people.",
+    "trace_id": "3ff23069-53de-478e-89e2-3b463d32db76"
+  },
+  "gate": {
+    "sentences": [
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Document header naming the candidate and the target role/employer; carries no historical factual claim to check.",
+        "index": 1,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Mireille Fontaine \u2014 CV bullets (Senior Backend Engineer, Payments Platform, Ledgerbridge Financial)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Section heading with no factual content.",
+        "index": 2,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Summary",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "8f9d1553-84f9-5f18-a952-86b84061d476",
+          "e11b718c-3434-5093-8db0-72fa35269c2f",
+          "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3",
+          "6966f277-e670-5152-be77-db220cfbdfc3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Start in 2014 (Kestrel Junior Developer), payments-only since Mar 2018 at Harborline then Anchorwell, and Go/Python/Java all trace to the corpus.",
+        "index": 3,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Backend engineer since 2014, with production work in Go, Python and Java; the last seven years spent entirely in the payments domain at Harborline Payments and Anchorwell Payments.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3",
+          "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states current Staff Backend Engineer role and explicit ownership of the settlement reconciliation service.",
+        "index": 4,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Currently Staff Backend Engineer at Anchorwell Payments, owning the settlement reconciliation service end to end.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "6173076f-2944-5d40-9b6f-087b4059057d",
+          "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title and dates match the corpus exactly.",
+        "index": 5,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Anchorwell Payments \u2014 Staff Backend Engineer (Jul 2023 \u2013 Present)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus documents ownership of the service closing daily payment batches across three currencies.",
+        "index": 6,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Own the settlement reconciliation service end to end, closing each business day's payment batches across three currencies.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e121d6f9-2040-5dc4-929f-998a8590fffc"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Rebuild after the 2023 data-loss incident and the no-repeat-incident record are stated verbatim in the corpus.",
+        "index": 7,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Rebuilt the reconciliation pipeline from scratch following a 2023 data-loss incident during a database migration; every batch since has processed without a repeat incident.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "6164fb7b-decc-538f-aea5-19dc3d87ae77"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus credits her with leading the ledger migration to a managed multi-region database.",
+        "index": 8,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Led the migration of the payments ledger from a self-hosted Postgres cluster to a managed, multi-region database service.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "5657328b-ecc5-5336-90b2-ab56e8ccd2cd"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Phrasing stays at contribution level on the fraud-signal ingestion path, consistent with the corpus 'worked on'.",
+        "index": 9,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built on the fraud-signal ingestion path that feeds the risk team's models, working to the risk team's requirements.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "343ad029-927b-5f61-8738-c8b132691ecf"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Introduction of canary deployment for the payments API is documented; the de-risking rationale is framing folded in.",
+        "index": 10,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Introduced a canary deployment process for the payments API to de-risk releases on the money-movement path.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "82645e5f-b3fd-5ae3-806d-ebef8a411817"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Participation in the org-wide incident response rotation for payment-critical services is stated directly.",
+        "index": 11,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Participate in the org-wide incident response rotation for payment-critical services.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e1f2c3a8-f52b-5e7e-b3f7-ad7e76d42720"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Title and dates match the corpus.",
+        "index": 12,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Anchorwell Payments \u2014 Senior Backend Engineer (Feb 2021 \u2013 Jul 2023)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "bfb68ba6-0cd0-578b-9bce-ff66e4c3c490"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Idempotency-key service build for the checkout team is documented.",
+        "index": 13,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built the idempotency-key service used by the checkout team to prevent duplicate charges.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e43e91b4-c49a-53c7-bd1b-c2eddbc22c31"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus attributes the latency reduction to her re-architecture of the authorization path, with no invented figure.",
+        "index": 14,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Re-architected the payment authorization path, reducing peak-hour checkout latency.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "dc04d5f6-842d-5a71-a8a7-002521eef55d"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Six consecutive quarters as on-call primary for payments is stated verbatim.",
+        "index": 15,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Served as on-call primary for the payments service for six consecutive quarters \u2014 production systems with money on the line.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "6cbbf673-5207-536d-8651-9e090404415a",
+          "f67df12f-78d6-580f-83cc-df2bf90f879c"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Runbook authorship and security-team adoption are documented, and the sentence respects the no-formal-audit boundary.",
+        "index": 16,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Wrote the internal runbook for PCI-DSS scope reduction that the security team adopted; engineering-side compliance work rather than formal audit.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "f565b6d5-4d87-55fc-bbb4-9604339dcc89",
+          "9b3d1fd9-6c55-59db-bcfc-cb4c0c19f21e"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Two mid-level mentees are documented and the 'informally' qualifier matches the stated boundary.",
+        "index": 17,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Informally mentored two mid-level engineers joining the payments team.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "247abccf-0a34-5996-ab78-f971fbe13a89",
+          "e11b718c-3434-5093-8db0-72fa35269c2f"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title and dates match the corpus.",
+        "index": 18,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Harborline Payments \u2014 Backend Engineer (Mar 2018 \u2013 Feb 2021)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "4af24e4a-67be-5181-9bb0-6d3138df4312"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Cron-to-Airflow migration of batch settlement jobs is stated directly.",
+        "index": 19,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Migrated batch settlement jobs from cron scripts to an Airflow-based pipeline.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e1b00b0f-291b-5d7c-8608-0acaf316f1a7"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Retry and backoff logic for failed card-network calls is documented.",
+        "index": 20,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Implemented retry and backoff logic for failed card-network calls.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "343f9aac-6ca2-566f-82fb-71078a34ebab"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "The currency-conversion rounding error investigation and fix trace directly to the corpus.",
+        "index": 21,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Investigated and fixed a currency-conversion rounding error that had gone unnoticed for several months.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "38888713-93b1-58c7-b1aa-1066dca4cfb6",
+          "82aac578-c3a1-52f1-a871-145deb658bb4"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Both the merchant onboarding API collaboration and refund-service test coverage are documented at contribution level.",
+        "index": 22,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Worked on the merchant onboarding API alongside the platform team, and added test coverage to the refund processing service.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "29f889e4-2d28-5b19-95d9-10e2cd2f02a1",
+          "baa664f4-1abe-565b-9ae1-6d21144a1451"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Presentation at the quarterly demo is documented and correctly labelled internal per the boundary.",
+        "index": 23,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Presented the settlement pipeline redesign at the company's internal quarterly engineering demo.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "1d5bebac-94fc-51ad-9fd3-1e27dc44cd1a",
+          "d2b80fc1-8c81-56bf-87a4-76a068a23a94"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title and dates match the corpus.",
+        "index": 24,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Voss Analytics \u2014 Software Engineer (Aug 2015 \u2013 Feb 2018)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "9a307a8b-988e-5a77-808f-aa50c0790452",
+          "53b69506-38ea-5479-96be-d24bf71a7e84"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Nightly ETL jobs and first version of the dashboard's internal API are both documented.",
+        "index": 25,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built nightly ETL jobs loading client usage data into a reporting warehouse, and wrote the first version of the internal API behind the analytics dashboard.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "c386a514-93b3-5301-a304-621312d233a3",
+          "73298cb7-cd1b-50d6-a8e6-14f582f655b1"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "SQL performance tuning for customer success and helping set up the Jenkins CI pipeline both trace to the corpus.",
+        "index": 26,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Performance-tuned slow SQL reports for the customer success team; helped set up the team's first CI pipeline in Jenkins.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "a21e89d2-260c-5d04-adcb-e3dd7041c2d5",
+          "f8132dea-906c-5137-bc20-de5289811bb1"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Mirrors the corpus line on quarterly-close coverage for the reporting service without claiming ownership of on-call responsibility.",
+        "index": 27,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Provided on-call coverage for the reporting service during quarterly close.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "08e5b890-49f9-5c1a-8fa1-4c6bdcf7fef1",
+          "8f9d1553-84f9-5f18-a952-86b84061d476"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Employer, title and dates match the corpus.",
+        "index": 28,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Kestrel Digital \u2014 Junior Developer (Jul 2014 \u2013 Jul 2015)",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "06dd0ebc-7296-5c86-a794-447cfbde4a0a",
+          "b8b52457-80f5-55a5-85dc-3ffa741bdae2"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Internal Python tooling for operations and deployment-process documentation are both documented.",
+        "index": 29,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Built internal Python tooling for the operations team and documented the internal deployment process.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [],
+        "drift_label": "framing",
+        "evidence_note": "Section heading with no factual content.",
+        "index": 30,
+        "kind": "framing",
+        "rule_flags": [],
+        "text": "Technical notes",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "6966f277-e670-5152-be77-db220cfbdfc3"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states all production work has been in Go, Python and Java.",
+        "index": 31,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Production languages: Go, Python, Java.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "8cbe9290-af6c-528d-a813-64b3a5e1cdfe"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Matches the stated boundary about managed queue service and no self-run Kafka.",
+        "index": 32,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Messaging in production at both Harborline and Anchorwell was via a managed queue service (no self-run Kafka cluster experience).",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "e1b00b0f-291b-5d7c-8608-0acaf316f1a7",
+          "e43e91b4-c49a-53c7-bd1b-c2eddbc22c31",
+          "82aac578-c3a1-52f1-a871-145deb658bb4",
+          "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb",
+          "bfb68ba6-0cd0-578b-9bce-ff66e4c3c490",
+          "6cbbf673-5207-536d-8651-9e090404415a"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Each listed domain area maps to a documented piece of work in the corpus.",
+        "index": 33,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Domain: card-network integration, authorization, refunds, settlement and reconciliation, idempotency, PCI-DSS scope reduction.",
+        "verdict": "supported"
+      },
+      {
+        "cited_span_ids": [
+          "2eae40aa-050a-5416-88f3-53dfad88f431"
+        ],
+        "drift_label": "supported",
+        "evidence_note": "Corpus states all four employers had under 200 engineering staff.",
+        "index": 34,
+        "kind": "claim",
+        "rule_flags": [],
+        "text": "Team context: all employers to date have had engineering organisations of under 200 people.",
+        "verdict": "supported"
+      }
+    ]
+  },
+  "generated_at": "2026-09-04T21:52:18.258453+00:00",
+  "job": {
+    "employer": "Ledgerbridge Financial",
+    "id": "0e305b89-8046-5f64-821d-72bea3b1a7ed",
+    "location": "Remote (UK/EU)",
+    "raw_text": "Senior Backend Engineer, Payments Platform\nLedgerbridge Financial - Remote (UK/EU)\n\nAbout Ledgerbridge\n\nLedgerbridge Financial builds settlement infrastructure for mid-sized merchants across\nEurope. We process a lot of money on behalf of businesses who need to trust that it\nmoves correctly, every time. Our platform team owns everything from card-network\nintegration to nightly settlement, and we're growing it.\n\nThe role\n\nWe're looking for a Senior Backend Engineer to join our Payments Platform team. You'll\nwork on the systems that move money between merchants, card networks, and banks, and\nyou'll be one of the people the rest of engineering leans on when a payment doesn't\nreconcile. This is a hands-on engineering role, not a management track.\n\nWhat you'll do\n\n- Design and build services in the core settlement and reconciliation path\n- Take ownership of at least one production service end to end\n- Be part of the on-call rotation for payment-critical systems\n- Work closely with the risk and compliance teams on how we handle sensitive data\n- Help less experienced engineers on the team grow\n\nWhat you'll need\n\n- 5+ years building backend services in Go, Java, or a similar statically typed language\n- Experience with Kafka or a comparable message broker in production\n- Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the\n  one formally responsible for it\n- On-call experience for production systems where money is on the line\n- Experience mentoring other engineers\n- A strong communicator who can explain a tricky bug to someone outside the team\n\nNice to have\n\n- Prior experience at a fintech, payments, or banking company\n- Rust experience\n- Experience managing a team's infrastructure or cloud budget\n- Conference speaking experience\n- Comfortable working in a company with 200+ engineers\n\nBenefits & perks\n\nCompetitive salary and equity, private health cover, 28 days holiday plus bank\nholidays, a home office stipend, and a genuinely flexible remote-first culture.\nLedgerbridge Financial is an equal opportunity employer and welcomes applicants\nregardless of background.\n",
+    "slug": "ledgerbridge-senior-backend-engineer",
+    "source_file": "ledgerbridge-senior-backend-engineer.txt",
+    "title": "Senior Backend Engineer, Payments Platform"
+  },
+  "requirements": [
+    {
+      "id": "3103d712-f64a-5b85-90bd-8ed5dbcd6d6d",
+      "necessity": "unstated",
+      "ordinal": 0,
+      "text": "Design and build services in the core settlement and reconciliation path"
+    },
+    {
+      "id": "867b386a-08c5-5218-b9de-d9e84bf29beb",
+      "necessity": "unstated",
+      "ordinal": 1,
+      "text": "Take ownership of at least one production service end to end"
+    },
+    {
+      "id": "86bdb4a7-ee83-568e-90bd-c9d45db1c569",
+      "necessity": "unstated",
+      "ordinal": 2,
+      "text": "Be part of the on-call rotation for payment-critical systems"
+    },
+    {
+      "id": "da433dcb-44aa-5e50-bf62-07c82eb64765",
+      "necessity": "unstated",
+      "ordinal": 3,
+      "text": "Work closely with the risk and compliance teams on how we handle sensitive data"
+    },
+    {
+      "id": "c84c5f05-558a-5263-bee5-a6e67d03a39a",
+      "necessity": "unstated",
+      "ordinal": 4,
+      "text": "Help less experienced engineers on the team grow"
+    },
+    {
+      "id": "e27a5d8f-7c97-5aa9-bd2a-37739b7fe9ec",
+      "necessity": "essential",
+      "ordinal": 5,
+      "text": "5+ years building backend services in Go, Java, or a similar statically typed language"
+    },
+    {
+      "id": "865d229a-3a49-5e5e-8d49-50ba6e831304",
+      "necessity": "essential",
+      "ordinal": 6,
+      "text": "Experience with Kafka or a comparable message broker in production"
+    },
+    {
+      "id": "949a8035-9f66-500e-abfd-729acdc52a3f",
+      "necessity": "essential",
+      "ordinal": 7,
+      "text": "Familiarity with PCI-DSS or a similar compliance framework, even if you weren't the one formally responsible for it"
+    },
+    {
+      "id": "b0fc770b-3fe0-5ce2-a3ee-bf7e8c1b21e4",
+      "necessity": "essential",
+      "ordinal": 8,
+      "text": "On-call experience for production systems where money is on the line"
+    },
+    {
+      "id": "2a3865ed-5c84-5d17-8159-9e3ac301afc3",
+      "necessity": "essential",
+      "ordinal": 9,
+      "text": "Experience mentoring other engineers"
+    },
+    {
+      "id": "476d77a7-bf03-5ee5-bc6b-95d52e093d42",
+      "necessity": "essential",
+      "ordinal": 10,
+      "text": "A strong communicator who can explain a tricky bug to someone outside the team"
+    },
+    {
+      "id": "123d340a-c031-5960-8ee0-e86b0146773a",
+      "necessity": "desirable",
+      "ordinal": 11,
+      "text": "Prior experience at a fintech, payments, or banking company"
+    },
+    {
+      "id": "993cca8b-b623-563e-92a1-b2ea562b40f0",
+      "necessity": "desirable",
+      "ordinal": 12,
+      "text": "Rust experience"
+    },
+    {
+      "id": "67570468-967a-5f0f-b1e7-2eba59e35612",
+      "necessity": "desirable",
+      "ordinal": 13,
+      "text": "Experience managing a team's infrastructure or cloud budget"
+    },
+    {
+      "id": "8adf97b1-35c8-56af-80e3-1389e8d800d6",
+      "necessity": "desirable",
+      "ordinal": 14,
+      "text": "Conference speaking experience"
+    },
+    {
+      "id": "bdb6adfd-8a0a-5d0d-9ab8-515be4239558",
+      "necessity": "desirable",
+      "ordinal": 15,
+      "text": "Comfortable working in a company with 200+ engineers"
+    }
+  ],
+  "runs": [
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "component": "generate",
+      "cost_usd": "0.028005",
+      "error": null,
+      "id": "08846419-02e7-4820-99fb-22e0d7e088a8",
+      "latency_ms": 9271,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "extract_requirements",
+      "started_at": "2026-09-04T21:48:57.938697Z",
+      "tokens_in": 1376,
+      "tokens_out": 845,
+      "trace_id": "37fd7497-7cf3-4bd4-9987-6f1bc32a7304",
+      "user_id": "4d7943c9-4954-57d0-9318-b75a2aaa45d4"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 4656,
+      "component": "generate",
+      "cost_usd": "0.092305",
+      "error": null,
+      "id": "f87eab13-67e8-4865-b361-963f47589903",
+      "latency_ms": 94070,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "coverage",
+      "started_at": "2026-09-04T21:49:07.229854Z",
+      "tokens_in": 361,
+      "tokens_out": 2456,
+      "trace_id": "f6cb69ca-4dd1-4bad-9ed3-4808d34f8bbe",
+      "user_id": "4d7943c9-4954-57d0-9318-b75a2aaa45d4"
+    },
+    {
+      "attributes": null,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 4210,
+      "component": "generate",
+      "cost_usd": "0.0735175",
+      "error": null,
+      "id": "ba6e6f22-8543-446b-b14a-5f5ecad3b814",
+      "latency_ms": 18680,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "draft",
+      "started_at": "2026-09-04T21:50:41.354118Z",
+      "tokens_in": 2181,
+      "tokens_out": 1452,
+      "trace_id": "3ff23069-53de-478e-89e2-3b463d32db76",
+      "user_id": "4d7943c9-4954-57d0-9318-b75a2aaa45d4"
+    },
+    {
+      "attributes": {
+        "rule_escalations": 0
+      },
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 6081,
+      "component": "gate",
+      "cost_usd": "0.19569125",
+      "error": null,
+      "id": "03061008-cba1-4306-bb4a-6978e3f4a629",
+      "latency_ms": 78198,
+      "model": "claude-opus-5",
+      "outcome": "ok",
+      "parent_run_id": null,
+      "stage": "baseline",
+      "started_at": "2026-09-04T21:51:00.037729Z",
+      "tokens_in": 1217,
+      "tokens_out": 6064,
+      "trace_id": "3ff23069-53de-478e-89e2-3b463d32db76",
+      "user_id": "4d7943c9-4954-57d0-9318-b75a2aaa45d4"
+    }
+  ],
+  "spans": {
+    "01c35015-8e3c-581b-9011-8c5f53365f52": {
+      "kind": "heading",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Things Stated Explicitly as NOT True, or Boundaries to Hold"
+    },
+    "06dd0ebc-7296-5c86-a794-447cfbde4a0a": {
+      "kind": "bullet",
+      "section_path": "Kestrel Digital > Junior Developer (Jul 2014 - Jul 2015)",
+      "text": "Built small internal tools in Python for the operations team."
+    },
+    "08e5b890-49f9-5c1a-8fa1-4c6bdcf7fef1": {
+      "kind": "heading",
+      "section_path": "Kestrel Digital",
+      "text": "Kestrel Digital"
+    },
+    "15e3f8f6-2b2b-5cc3-9a6a-e8417f4b3ffe": {
+      "kind": "bullet",
+      "section_path": "Kestrel Digital > Junior Developer (Jul 2014 - Jul 2015)",
+      "text": "Shadowed senior engineers during production releases."
+    },
+    "1d5bebac-94fc-51ad-9fd3-1e27dc44cd1a": {
+      "kind": "heading",
+      "section_path": "Voss Analytics",
+      "text": "Voss Analytics"
+    },
+    "247abccf-0a34-5996-ab78-f971fbe13a89": {
+      "kind": "heading",
+      "section_path": "Harborline Payments",
+      "text": "Harborline Payments"
+    },
+    "29f889e4-2d28-5b19-95d9-10e2cd2f02a1": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Presented the settlement pipeline redesign at the company's quarterly engineering demo."
+    },
+    "2eae40aa-050a-5416-88f3-53dfad88f431": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked at a company with more than 400 engineers; all four employers were under 200 engineering staff."
+    },
+    "343ad029-927b-5f61-8738-c8b132691ecf": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Introduced a canary deployment process for the payments API."
+    },
+    "343f9aac-6ca2-566f-82fb-71078a34ebab": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Investigated and fixed a rounding error in currency conversion that had gone unnoticed for several months."
+    },
+    "38888713-93b1-58c7-b1aa-1066dca4cfb6": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Worked on the merchant onboarding API alongside the platform team."
+    },
+    "4af24e4a-67be-5181-9bb0-6d3138df4312": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Migrated batch settlement jobs from cron scripts to an Airflow-based pipeline."
+    },
+    "4b000f9a-81aa-5504-97b8-1b7cf2e02c3b": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not directly owned a budget of any size."
+    },
+    "4d31be92-88ec-5a31-921d-068b74ed5371": {
+      "kind": "bullet",
+      "section_path": "Kestrel Digital > Junior Developer (Jul 2014 - Jul 2015)",
+      "text": "Fixed bugs reported against the client-facing booking website."
+    },
+    "4ddf12cc-22d1-5ce1-871a-6dc79229599b": {
+      "kind": "heading",
+      "section_path": "",
+      "text": "Mireille Fontaine"
+    },
+    "53b69506-38ea-5479-96be-d24bf71a7e84": {
+      "kind": "bullet",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Wrote the first version of the internal API used by the analytics dashboard."
+    },
+    "5657328b-ecc5-5336-90b2-ab56e8ccd2cd": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Worked on the fraud-signal ingestion path that feeds the risk team's models."
+    },
+    "6164fb7b-decc-538f-aea5-19dc3d87ae77": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Led migration of the payments ledger from a self-hosted Postgres cluster to a managed, multi-region database service."
+    },
+    "6173076f-2944-5d40-9b6f-087b4059057d": {
+      "kind": "heading",
+      "section_path": "Anchorwell Payments",
+      "text": "Anchorwell Payments"
+    },
+    "6966f277-e670-5152-be77-db220cfbdfc3": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has no experience with Rust; all production work has been in Go, Python, and Java."
+    },
+    "6cbbf673-5207-536d-8651-9e090404415a": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Wrote the internal runbook for PCI-DSS scope reduction that the security team adopted."
+    },
+    "73298cb7-cd1b-50d6-a8e6-14f582f655b1": {
+      "kind": "bullet",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Helped set up the team's first CI pipeline using Jenkins."
+    },
+    "7e6317f4-3f24-54e5-93d6-e37aa19ce7eb": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Owns the settlement reconciliation service that closes each business day's payment batches across three currencies."
+    },
+    "82645e5f-b3fd-5ae3-806d-ebef8a411817": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Participates in the org-wide incident response rotation for payment-critical services."
+    },
+    "82974557-04f0-58b4-a08d-b4079a9f0b93": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not worked in machine learning or computer-vision systems in any capacity."
+    },
+    "82aac578-c3a1-52f1-a871-145deb658bb4": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Contributed test coverage for the refund processing service."
+    },
+    "8cbe9290-af6c-528d-a813-64b3a5e1cdfe": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not built or operated a Kafka cluster; all messaging at Harborline and Anchorwell used a managed queue service, not self-run Kafka."
+    },
+    "8f9d1553-84f9-5f18-a952-86b84061d476": {
+      "kind": "heading",
+      "section_path": "Kestrel Digital > Junior Developer (Jul 2014 - Jul 2015)",
+      "text": "Junior Developer (Jul 2014 - Jul 2015)"
+    },
+    "9a307a8b-988e-5a77-808f-aa50c0790452": {
+      "kind": "bullet",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Built ETL jobs that loaded client usage data into a reporting warehouse nightly."
+    },
+    "9b3d1fd9-6c55-59db-bcfc-cb4c0c19f21e": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not held a formal people-management role; mentoring at Anchorwell was informal, with no budget or hiring authority attached."
+    },
+    "a21e89d2-260c-5d04-adcb-e3dd7041c2d5": {
+      "kind": "bullet",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Provided on-call coverage for the reporting service during quarterly close."
+    },
+    "b8b52457-80f5-55a5-85dc-3ffa741bdae2": {
+      "kind": "bullet",
+      "section_path": "Kestrel Digital > Junior Developer (Jul 2014 - Jul 2015)",
+      "text": "Wrote documentation for the internal deployment process."
+    },
+    "baa664f4-1abe-565b-9ae1-6d21144a1451": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never presented at an external conference; the quarterly demo at Harborline was internal only."
+    },
+    "bccd42c1-f5bc-53b6-a65e-2ef8c273fbe3": {
+      "kind": "heading",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Staff Backend Engineer (Jul 2023 - Present)"
+    },
+    "bfb68ba6-0cd0-578b-9bce-ff66e4c3c490": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Built the idempotency-key service used by the checkout team to prevent duplicate charges."
+    },
+    "c386a514-93b3-5301-a304-621312d233a3": {
+      "kind": "bullet",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Worked on performance tuning for slow SQL reports used by the customer success team."
+    },
+    "d2b80fc1-8c81-56bf-87a4-76a068a23a94": {
+      "kind": "heading",
+      "section_path": "Voss Analytics > Software Engineer (Aug 2015 - Feb 2018)",
+      "text": "Software Engineer (Aug 2015 - Feb 2018)"
+    },
+    "dc04d5f6-842d-5a71-a8a7-002521eef55d": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Was the on-call primary for the payments service for six consecutive quarters."
+    },
+    "e11b718c-3434-5093-8db0-72fa35269c2f": {
+      "kind": "heading",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Backend Engineer (Mar 2018 - Feb 2021)"
+    },
+    "e121d6f9-2040-5dc4-929f-998a8590fffc": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Staff Backend Engineer (Jul 2023 - Present)",
+      "text": "Rebuilt the reconciliation pipeline from scratch after a 2023 data-loss incident during a database migration; it has processed every batch without a repeat incident since."
+    },
+    "e1b00b0f-291b-5d7c-8608-0acaf316f1a7": {
+      "kind": "bullet",
+      "section_path": "Harborline Payments > Backend Engineer (Mar 2018 - Feb 2021)",
+      "text": "Implemented the retry and backoff logic for failed card-network calls."
+    },
+    "e1f2c3a8-f52b-5e7e-b3f7-ad7e76d42720": {
+      "kind": "heading",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Senior Backend Engineer (Feb 2021 - Jul 2023)"
+    },
+    "e43e91b4-c49a-53c7-bd1b-c2eddbc22c31": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Reduced peak-hour checkout latency by re-architecting the payment authorization path."
+    },
+    "f565b6d5-4d87-55fc-bbb4-9604339dcc89": {
+      "kind": "bullet",
+      "section_path": "Anchorwell Payments > Senior Backend Engineer (Feb 2021 - Jul 2023)",
+      "text": "Mentored two mid-level engineers joining the payments team."
+    },
+    "f67df12f-78d6-580f-83cc-df2bf90f879c": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has not obtained a PCI-DSS QSA certification; the runbook work was engineering, not formal compliance auditing."
+    },
+    "f8132dea-906c-5137-bc20-de5289811bb1": {
+      "kind": "bullet",
+      "section_path": "Things Stated Explicitly as NOT True, or Boundaries to Hold",
+      "text": "Has never held on-call responsibility for a service outside the payments domain."
+    }
+  }
+}
