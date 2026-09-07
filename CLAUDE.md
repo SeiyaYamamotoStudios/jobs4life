@@ -205,11 +205,22 @@ intercept a path on that host. Ghost's own subdirectory feature is the inverse (
 `/blog`, static at the root) and is a paid Business add-on. The apex `178.128.137.126` is
 **Ghost's shared apex-redirect server**, not ours; leave that A record alone. GitHub Pages
 is out because it serves private repos only on paid plans. So: `job4life.hiltonlabs.org`
-on Cloudflare Pages (free, DNS already in this account), connected to the private GitHub
-repo, build output directory `demo/site` — **only the output directory is published, never
-the repo**, and `corpus/` and `analysis/` are gitignored so real career data cannot reach
-the build container at all. Results are embedded in the HTML at build time, so the page
-stays self-contained and works from `file://`.
+on Cloudflare Pages (free, DNS already in this account), publishing `demo/site` — **only
+that directory is published, never the repo** — with `corpus/` and `analysis/` gitignored
+so real career data is not in the repo at all. Results are embedded in the HTML at build
+time, so the page stays self-contained and works from `file://`.
+
+**Amended 2026-09-07 — publish by direct upload, not a GitHub connection.** The entry
+above assumed Cloudflare would clone the repo and build it, which is why it named a
+*build output directory*. It then became true that `demo/site/` is committed and there is
+no build command, and at that point the git connection buys only auto-deploy while paying
+for it with third-party read access to a private repo holding a career system. A demo
+page that changes monthly does not need to republish on every push. So: `npx wrangler
+pages deploy demo/site --project-name=job4life`, authenticated by a `CLOUDFLARE_API_TOKEN`
+scoped to **Pages:Edit only**, never an account-wide token. That token is a deploy
+credential, not a `RequestContext` one — nothing under `packages/` reads it, and it must
+never reach the `runs` table or a trace. Reconnect GitHub only if auto-deploy ever matters
+more than the access does.
 
 **2026-09-02 — Never name a structured-output property `reason`.** Every gate call began
 returning `stop_reason: "refusal"`, category `reasoning_extraction`, blocked as apparent

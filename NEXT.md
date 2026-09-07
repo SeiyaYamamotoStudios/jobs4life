@@ -25,9 +25,10 @@ fixtures. Every defect that mattered was found that way and none by review.
 - `docker compose up -d` first; Postgres is on **5433**.
 - `set -a; source .env; set +a` -- holds `JFL_DATABASE_URL` and `ANTHROPIC_API_KEY`.
   Never export the key globally: it silently shadows any `ant auth login` profile.
-- API credit is separate from a Claude subscription. $10 was topped up on 2026-09-05 and
-  **$5.01 of it was spent that day** on C1-C4, leaving roughly $5.58 -- enough for D1
-  (~$2.82) with room over. A gate run over a whole CV is ~$0.35-0.64; a full 210-item
+- API credit is separate from a Claude subscription. $10 was topped up on 2026-09-05;
+  **$7.26 of it was spent that day** on C1-C4 and D1, leaving roughly **$3.33**. Nothing
+  remaining in the September plan costs anything -- D3 is free, and `build_site.py` makes
+  no API calls. A gate run over a whole CV is ~$0.35-0.64; a full 210-item
   eval is ~$2.07. Check with:
   `select component, stage, count(*), sum(cost_usd) from runs group by 1,2;`
   That query is a **lower bound**: the eval harness uses in-memory repositories and
@@ -43,21 +44,58 @@ fixtures. Every defect that mattered was found that way and none by review.
 
 ## Next
 
-**C0-C5 are done (2026-09-05). Tomorrow starts at D1.**
+**C0-C5, D1 and D2 are done (2026-09-05). Only D3 is left, and it is blocked on one
+thing that is not the code's to do.**
+
+The nine demo results exist as real pipeline output, and `demo/site/index.html` is
+built, committed, and verified self-contained: 0 external references, 0 fetch/XHR/module
+uses, screenshotted at 1280px and 390px. Rebuild it any time with:
 
 ```bash
-docker compose up -d && set -a && source .env && set +a
-uv run python demo/generate_results.py        # the remaining 8 combinations, ~$2.82
+uv run python demo/build_site.py        # reads demo/fixtures/results/*.json, no API calls
 ```
 
-| # | Step | Cost | State |
-|---|---|---|---|
-| D1 | Remaining 8 demo combinations | ~$2.82 measured | next |
-| D2 | Static page from the result JSON (Jinja2 only, no `jfl_*` imports) | -- | after D1 |
-| D3 | Deploy to `job4life.hiltonlabs.org` via Cloudflare Pages, output dir `demo/site` | -- | after D2 |
+**D3 -- publish to `job4life.hiltonlabs.org`.** Two routes; pick one, then the rest is
+a single command.
 
-D3 needs one thing that is not mine to do: authorising the Cloudflare GitHub app on
-the private repo. Free, five minutes, no dependency on anything above it.
+| | A: connect GitHub | B: direct upload (Wrangler) |
+|---|---|---|
+| What the owner grants | Cloudflare read access to the whole private repo | one API token, Pages:Edit scope |
+| Deploys when | every push to the branch | when `wrangler pages deploy` is run |
+| Build step | none (output dir `demo/site`) | none |
+
+**B is the better fit** and supersedes the GitHub-connection assumption in CLAUDE.md's
+2026-09-04 entry. That entry chose a build output directory because it assumed Cloudflare
+would clone and build; since `demo/site/` is committed and there is no build command,
+the git connection buys only auto-deploy -- and pays for it by granting a third party
+read access to a private repo holding a career system. A demo page that changes monthly
+does not need to republish on every push. Route A stays available if auto-deploy ever
+matters more than the access.
+
+Route B, once `CLOUDFLARE_API_TOKEN` is in `.env`:
+
+```bash
+npx wrangler pages deploy demo/site --project-name=job4life
+```
+
+Then point `job4life.hiltonlabs.org` at the Pages project in the Cloudflare dashboard.
+Leave the apex A record `178.128.137.126` alone -- it is Ghost's shared redirect server.
+
+**Open, and the owner's call:** the gate flags the draft's own *title line* (e.g. "Ingrid
+Solberg -- CV bullets (Senior Backend Engineer ...)") as `unsupported` /
+`adjacency_substitution`. It is a header naming the role applied for, not a claim to hold
+it, so this is document structure being read as assertion -- the same class as the
+`George R.R.` re-split. It is currently the most prominent item on the demo page.
+Leaving it is honest (the page says the output is unedited, and it is); excluding title
+lines from gating is a pipeline change that costs a regeneration. Recommendation: leave
+it for September, record it.
+
+After D3: `PLAN.md`'s W6 and the local-tool work -- interactive gaps-first mode, span
+validity periods, then the job queue and localhost web UI.
+
+Deferred deliberately: the corpus-first prompt reorder. It changes prompt text, and
+there is now a real baseline to compare against (the 2026-09-05 Opus log), so this is
+finally cheap to evaluate honestly -- re-run and confirm the number did not move, ~$2.07.
 
 **The headline numbers, from the full 210-item tier-1 run:**
 
