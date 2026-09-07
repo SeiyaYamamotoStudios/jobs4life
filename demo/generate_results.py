@@ -528,7 +528,7 @@ def _ensure_scratch_users(conn: Connection, combos: Sequence[Combination]) -> No
             pg_insert(users_table)
             .values(
                 id=uid,
-                email=f"demo+{path.stem}@job4life.invalid",
+                email=f"demo+{path.stem}@jobs4life.invalid",
                 display_name=f"Demo fixture: {path.stem}",
             )
             .on_conflict_do_nothing(index_elements=["id"])
@@ -539,7 +539,7 @@ def _ensure_scratch_users(conn: Connection, combos: Sequence[Combination]) -> No
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run the real job4life pipeline over the demo fixtures and write "
+            "Run the real jobs4life pipeline over the demo fixtures and write "
             "one result JSON per candidate x job-ad combination."
         )
     )

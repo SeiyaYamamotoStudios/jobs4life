@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-**job4life** — a career system, eventually at `job4life.hiltonlabs.org`. It finds roles
+**jobs4life** — a career system, eventually at `jobs4life.hiltonlabs.org`. It finds roles
 worth considering, says honestly how well the author fits them, plans the work to close
 the gap, and stops them overstating that fit when they apply.
 
@@ -66,6 +66,27 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 12. **Observability and cost attribution** — the `runs` table, built for querying.
 
 ## Decisions log
+
+**2026-09-07 — Renamed to jobs4life, except inside the prompts.** The thesis is that
+people should be able to move from job to job across a working life, not hold one job for
+life — so the singular name argued the opposite of the product. Renamed everywhere it is
+user-facing or documentary.
+
+**Deliberately not renamed: the four prompt instruction blocks** (`jfl_gate/prompt.py`'s
+`_INSTRUCTIONS`, and `_EXTRACT_INSTRUCTIONS` / `_COVERAGE_INSTRUCTIONS` /
+`_DRAFT_INSTRUCTIONS` in `jfl_generate/prompts.py`), which still say "job4life". Prompt
+text is what the 2026-09-05 over-claim and over-flag numbers were measured against, and
+this project does not get to assert that a change is too small to matter — that is exactly
+the reasoning the deleted heuristic rules were built on. The cost of being sure is $2.07,
+and a re-run is already required for the two known prompt defects (document titles read as
+assertions; the model re-splitting its own input). The prompt rename rides along with that
+batch, measured in the same run. Until then the prompts name a product that has been
+renamed, which is invisible to users and costs nothing.
+
+**The Python identifiers stay `jfl_*` / `JFL_*`.** The abbreviation expands to "jobs for
+life" as readily as it did to "job for life", so renaming ~100 identifiers, the CLI entry
+point, and every environment variable would be churn with no reader-facing gain. The
+GitHub repo stays `job-for-life` for the same reason.
 
 **2026-09-05 — The product model is Opus 5, and the reason is not accuracy.** Both
 models were run over the whole 210-item tier-1 set and compared **paired**, item by
@@ -183,7 +204,7 @@ embedding interface stay in place but nothing writes to them. Revisit if the cor
 outgrows the context window.
 
 **2026-09-01 — Demo and product split; the corpus never leaves the owner's machine in
-v1.** The public page at `job4life.hiltonlabs.org` is a pre-computed demo over fictional
+v1.** The public page at `jobs4life.hiltonlabs.org` is a pre-computed demo over fictional
 material: a small matrix of fictional candidates × job ads, results produced by the real
 pipeline and committed as fixtures. The live tool stays local — CLI now, a localhost web
 UI later. Three reasons. The verification record is a liability document by design (its
@@ -198,13 +219,13 @@ hand-written**: the page claims "this is what the tool outputs," and that claim 
 true.
 
 **2026-09-04 — The demo is a subdomain on Cloudflare Pages, not a path.** Supersedes
-`hiltonlabs.org/job4life` throughout. `www.hiltonlabs.org` is Ghost Pro, and Ghost Pro
+`hiltonlabs.org/jobs4life` throughout. `www.hiltonlabs.org` is Ghost Pro, and Ghost Pro
 breaks behind a Cloudflare proxy — a custom domain cannot even be activated with the
 orange cloud on, and proxied sites fail at certificate renewal — so no Worker route can
 intercept a path on that host. Ghost's own subdirectory feature is the inverse (Ghost at
 `/blog`, static at the root) and is a paid Business add-on. The apex `178.128.137.126` is
 **Ghost's shared apex-redirect server**, not ours; leave that A record alone. GitHub Pages
-is out because it serves private repos only on paid plans. So: `job4life.hiltonlabs.org`
+is out because it serves private repos only on paid plans. So: `jobs4life.hiltonlabs.org`
 on Cloudflare Pages (free, DNS already in this account), publishing `demo/site` — **only
 that directory is published, never the repo** — with `corpus/` and `analysis/` gitignored
 so real career data is not in the repo at all. Results are embedded in the HTML at build
@@ -216,7 +237,7 @@ above assumed Cloudflare would clone the repo and build it, which is why it name
 no build command, and at that point the git connection buys only auto-deploy while paying
 for it with third-party read access to a private repo holding a career system. A demo
 page that changes monthly does not need to republish on every push. So: `npx wrangler
-pages deploy demo/site --project-name=job4life`, authenticated by a `CLOUDFLARE_API_TOKEN`
+pages deploy demo/site --project-name=jobs4life`, authenticated by a `CLOUDFLARE_API_TOKEN`
 scoped to **Pages:Edit only**, never an account-wide token. That token is a deploy
 credential, not a `RequestContext` one — nothing under `packages/` reads it, and it must
 never reach the `runs` table or a trace. Reconnect GitHub only if auto-deploy ever matters

@@ -18,3 +18,6 @@ corpus/*
 # corpus/: this repo is not where that lives, even while private.
 analysis/*
 !analysis/.gitkeep
+
+# Wrangler's local deploy cache, not source.
+.wrangler/

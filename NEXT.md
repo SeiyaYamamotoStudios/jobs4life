@@ -55,7 +55,7 @@ uses, screenshotted at 1280px and 390px. Rebuild it any time with:
 uv run python demo/build_site.py        # reads demo/fixtures/results/*.json, no API calls
 ```
 
-**D3 -- publish to `job4life.hiltonlabs.org`.** Two routes; pick one, then the rest is
+**D3 -- publish to `jobs4life.hiltonlabs.org`.** Two routes; pick one, then the rest is
 a single command.
 
 | | A: connect GitHub | B: direct upload (Wrangler) |
@@ -75,10 +75,10 @@ matters more than the access.
 Route B, once `CLOUDFLARE_API_TOKEN` is in `.env`:
 
 ```bash
-npx wrangler pages deploy demo/site --project-name=job4life
+npx wrangler pages deploy demo/site --project-name=jobs4life
 ```
 
-Then point `job4life.hiltonlabs.org` at the Pages project in the Cloudflare dashboard.
+Then point `jobs4life.hiltonlabs.org` at the Pages project in the Cloudflare dashboard.
 Leave the apex A record `178.128.137.126` alone -- it is Ghost's shared redirect server.
 
 **Open, and the owner's call:** the gate flags the draft's own *title line* (e.g. "Ingrid

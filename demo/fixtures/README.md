@@ -1,7 +1,7 @@
 # Demo fixtures
 
 Three fictional candidates and three fictional job ads, used to produce the public
-demo at `hiltonlabs.org/job4life` (see PLAN.md, W2-W4). Every name, employer, and
+demo at `hiltonlabs.org/jobs4life` (see PLAN.md, W2-W4). Every name, employer, and
 product below is invented; none is based on a real person, including the repo owner.
 
 ## These are fixtures, not golden-set items

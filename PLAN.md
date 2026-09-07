@@ -1,4 +1,4 @@
-# PLAN — to a working demo at job4life.hiltonlabs.org
+# PLAN — to a working demo at jobs4life.hiltonlabs.org
 
 Written 2026-09-01 (Fable planning session). Executed by an Opus orchestrating session
 delegating to Sonnet implementation agents, per CLAUDE.md's delegation convention.
@@ -23,7 +23,7 @@ decisions log for why the corpus never leaves it in v1.
 
 1. **Where does `hiltonlabs.org` serve from?** Answered: `www` is Ghost Pro (via Fastly),
    the apex A record is Ghost's own shared redirect server, and the zone is on Cloudflare.
-2. **VPS or Pages?** Answered: Cloudflare Pages, on the subdomain `job4life.hiltonlabs.org`,
+2. **VPS or Pages?** Answered: Cloudflare Pages, on the subdomain `jobs4life.hiltonlabs.org`,
    connected to the private GitHub repo. See CLAUDE.md's 2026-09-04 decision for why the
    path-based URL is not available and why GitHub Pages is not an option.
 3. **Credit top-up:** still outstanding. ~$0.59 remains. Revised ask is ~$15, not the $10
