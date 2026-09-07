@@ -1,0 +1,31 @@
+[project]
+name = "jfl-web"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# Server-rendered FastAPI + Jinja2. No SPA, no JS build step, no CDN: every
+# asset is served from packages/web/src/jfl_web/static.
+#   authlib      -- Google OAuth authorization code flow with PKCE
+#   itsdangerous -- signs the short-lived OAuth transaction cookie (Starlette's
+#                   SessionMiddleware); the real session is a Postgres row
+#   anthropic    -- one optional key-validation call at the settings form
+dependencies = [
+  "jfl-core",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.20",
+  "authlib>=1.4",
+  "itsdangerous>=2.2",
+  "httpx>=0.27",
+  "anthropic>=0.40",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jfl_web"]
+
+[tool.uv.sources]
+jfl-core = { workspace = true }

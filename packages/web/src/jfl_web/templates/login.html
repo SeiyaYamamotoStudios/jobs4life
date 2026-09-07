@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Sign in — jobs4life{% endblock %}
+{% block content %}
+<h1>Sign in</h1>
+<p class="lede">
+  jobs4life measures the distance between what your corpus supports and what a
+  draft claims, and shows the number.
+</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<p><a class="button" href="/auth/google">Sign in with Google</a></p>
+<p class="note">
+  Requests only your name, email address and account id. No access to your mail,
+  files or calendar.
+</p>
+{% endblock %}

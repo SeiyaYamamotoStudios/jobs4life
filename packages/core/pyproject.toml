@@ -8,6 +8,8 @@ dependencies = [
   "psycopg[binary]>=3.2",
   "pgvector>=0.3.6",
   "alembic>=1.14",
+  # AES-GCM for credential custody (jfl_core.crypto.envelope).
+  "cryptography>=44",
 ]
 
 [project.optional-dependencies]

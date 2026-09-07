@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Settings — jobs4life{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<section>
+  <h2>Anthropic API key</h2>
+  <p class="lede">
+    Model calls are billed to your own key. It is encrypted before it is stored
+    and can be replaced, but never read back — not by this page, and not by
+    anyone with a copy of the database.
+  </p>
+
+  {% if saved %}<p class="ok" role="status">Key saved.</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+  {% if credential %}
+  <dl class="facts">
+    <dt>Stored key</dt><dd><code>sk-ant-…{{ credential.key_hint }}</code></dd>
+    <dt>Added</dt><dd>{{ credential.created_at.strftime("%a %d %b %Y, %H:%M UTC") }}</dd>
+    <dt>Last replaced</dt>
+    <dd>{% if credential.rotated_at %}{{ credential.rotated_at.strftime("%a %d %b %Y, %H:%M UTC") }}{% else %}never{% endif %}</dd>
+    <dt>Last used</dt>
+    <dd>{% if credential.last_used_at %}{{ credential.last_used_at.strftime("%a %d %b %Y, %H:%M UTC") }}{% else %}not yet{% endif %}</dd>
+  </dl>
+  {% else %}
+  <p class="note">No key stored yet.</p>
+  {% endif %}
+
+  <form method="post" action="/settings/api-key" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="api_key">{% if credential %}Replace with{% else %}API key{% endif %}</label>
+    <input type="password" id="api_key" name="api_key" required
+           autocomplete="off" spellcheck="false"
+           placeholder="sk-ant-...">
+    <button type="submit">{% if credential %}Replace key{% else %}Save key{% endif %}</button>
+  </form>
+  {% if validates %}
+  <p class="note">
+    The key is checked against Anthropic before it is stored, so a bad paste
+    fails here. The check lists models and costs nothing.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

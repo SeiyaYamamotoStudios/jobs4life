@@ -54,9 +54,10 @@ def _ts(name: str, **kw: object) -> Column[datetime]:
 
 
 # --------------------------------------------------------------------------
-# Accounts. v1 runs single-user against a seeded local row; the seams exist so
-# that stops being true without a rewrite. No auth, sessions or tenancy
-# enforcement yet -- deliberately.
+# Accounts. The CLI still runs single-user against the seeded local row; the web
+# app (packages/web, slice A) signs users in with Google and scopes every read
+# and write to the session's user. Tenancy is enforced by construction, not by a
+# WHERE clause -- see jfl_core.storage.tenancy.
 # --------------------------------------------------------------------------
 
 # Deterministic, so the local user is the same row on every machine and in
@@ -67,19 +68,52 @@ users = Table(
     "users",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
+    # Google's `sub` claim: the ONLY identity key. Email addresses change hands
+    # between people and get reassigned inside a workspace; `sub` is stable and
+    # unique forever. Nullable because the seeded local user (and any future
+    # non-Google account) has none -- absence must not collide, so lookups filter
+    # on a non-null value rather than matching NULL.
+    Column("google_sub", Text, unique=True),
+    # Presentation only, refreshed from the id token on every login. Never used
+    # to find or match a user.
     Column("email", Text, nullable=False, unique=True),
     Column("display_name", Text),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
     _ts("created_at", nullable=False, server_default=func.now()),
 )
 
+# Opaque server-side sessions. Deliberately NOT a JWT: this app holds other
+# people's API keys, so revoking a session has to take effect on the next
+# request, which a self-contained token cannot promise.
+#
+# `token_hash` is sha256 of the cookie value, never the value itself -- reading
+# this table gives an attacker no usable session. `csrf_token` IS stored in the
+# clear because it has to be rendered into a form; on its own it authenticates
+# nothing, since a request needs the session cookie too.
+sessions = Table(
+    "sessions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("token_hash", String(64), nullable=False, unique=True),
+    Column("csrf_token", Text, nullable=False),
+    Column("user_agent", Text),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("last_seen_at", nullable=False, server_default=func.now()),
+    _ts("expires_at", nullable=False),  # rolling: extended by `touch` on use
+    Index("ix_sessions_user_id", "user_id"),
+    Index("ix_sessions_expires_at", "expires_at"),
+)
+
 # Envelope encryption: a per-record data key (`wrapped_dek`) encrypted under a
 # master key held outside the database, and the secret encrypted under the DEK.
 # Rotating the master key rewraps DEKs without touching ciphertext.
 #
-# NOTHING WRITES TO THIS TABLE YET. The crypto is not implemented; the columns
-# exist so that when it is, the shape does not change. Plaintext must never
-# reach this table, the runs table, or a log line.
+# Plaintext must never reach this table, the runs table, a log line, or a
+# traceback. See `jfl_core.crypto.envelope` for the seal/unseal pair; a
+# repository here only ever moves ciphertext.
 user_credentials = Table(
     "user_credentials",
     metadata,
@@ -89,10 +123,14 @@ user_credentials = Table(
     ),
     Column("kind", Text, nullable=False),
     Column("label", Text, nullable=False, server_default=""),
-    Column("ciphertext", LargeBinary, nullable=False),
-    Column("wrapped_dek", LargeBinary, nullable=False),
-    Column("nonce", LargeBinary, nullable=False),
+    Column("ciphertext", LargeBinary, nullable=False),  # secret, under the DEK
+    Column("nonce", LargeBinary, nullable=False),  # fresh per encryption, never reused
+    Column("wrapped_dek", LargeBinary, nullable=False),  # DEK, under the KEK
+    Column("dek_nonce", LargeBinary, nullable=False),  # fresh per wrap, never reused
     Column("master_key_id", Text, nullable=False),  # which KEK wrapped the DEK
+    # Last four characters of the secret, so the UI can say which key is stored
+    # beside a field that can be written but never read back.
+    Column("key_hint", Text, nullable=False, server_default=""),
     _ts("created_at", nullable=False, server_default=func.now()),
     _ts("rotated_at"),
     _ts("last_used_at"),
