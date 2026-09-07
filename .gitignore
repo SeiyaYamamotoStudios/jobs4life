@@ -21,3 +21,5 @@ analysis/*
 
 # Wrangler's local deploy cache, not source.
 .wrangler/
+.env.*
+!.env.example

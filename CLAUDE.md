@@ -18,12 +18,19 @@ accuracy. Over-claiming is the error with a real cost. The Inspect harness is th
 headline deliverable and survives every scope change; given a choice between more
 features and a working harness, choose the harness.
 
-Long-running, ~10 hrs/week. One deadline: something demonstrable and honestly
-described by **late September 2026**. After that, product work, no deadline.
+Long-running, ~10 hrs/week. There was one deadline — something demonstrable and honestly
+described by late September 2026 — and it was **met on 2026-09-07**: the demo is live at
+`jobs4life.hiltonlabs.org` and the measured numbers are over-claim 0.7% (1/140) and
+over-flag 2.9% (2/69) across 210 tier-1 items. Everything after this is product work with
+no deadline. **Do not let the absence of a deadline become an argument for scope**: the
+owner already uses this daily across scattered Claude conversations, so the bar is
+"replaces that", not "demonstrates that".
 
-v1 is **single-user with the seams left in**. Do not build auth, sessions, or tenancy
-enforcement yet. Hosting is deferred — assume a container on a small VPS behind
-Cloudflare; nothing should depend on a specific host.
+v1 was single-user with the seams left in. **That phase ended on 2026-09-07** — see the
+decisions log. It is now a hosted, logged-in, multi-user web app on a UK VPS behind
+Cloudflare. The seams were left in well: every table already carries `user_id`, and
+`RequestContext.anthropic_api_key` was already per-request, so multi-tenancy and
+bring-your-own-key are enforcement and plumbing rather than migration.
 
 Owner: engineering manager, ~20 years, JVM/Python/Clojure. Do not explain general
 engineering concepts. Do explain anything specific to the Python AI ecosystem. RTX 5090
@@ -66,6 +73,59 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 12. **Observability and cost attribution** — the `runs` table, built for querying.
 
 ## Decisions log
+
+**2026-09-07 — jobs4life becomes a hosted, logged-in, multi-user web app.** Supersedes
+"v1 is single-user with the seams left in", "CLI only in this iteration", and the demo /
+product split's claim that the live tool stays local. The reasoning is not that the
+prototype succeeded — it is that **there was never a prototype to graduate**. The owner
+already uses this daily, spread across Claude conversations and other sources, and finds
+it useful; the evals and the demo page were evidence of the mechanism, not a trial of the
+idea. What conversations structurally cannot do is *remember*: his own words for the gap
+are "a clear list of all the applications I have going". That absence is the product.
+
+Consequences, each of which supersedes something above:
+
+- **Google OAuth, sessions, and enforced tenancy**, now, not later. Google login alone —
+  no password auth, no email verification, no other providers.
+- **Users bring their own Anthropic API key.** The owner does not fund other people's
+  model calls; a draft-and-gate cycle is $0.35-0.64 measured, which is unbounded across
+  accounts. This makes the project a **custodian of other people's credentials**, so the
+  standing envelope-encryption rule stops being theoretical: per-user data key wrapped by
+  a master key held only in the host environment, ciphertext in Postgres, never logged,
+  never in `runs`, never in a trace, never rendered back to the browser after entry.
+- **Hosting is no longer deferred.** OVHcloud VPS-1 (2 vCore / 4 GB / 40 GB), **London**,
+  ~£4/month, Ubuntu 24.04, docker compose. UK residency is deliberate: storing UK users'
+  career histories and API keys under UK GDPR avoids an international-transfer question
+  that would otherwise need answering to every user. Reachable only through a **Cloudflare
+  Tunnel** — no public inbound HTTP ports. Runbook in `docs/hosting.md`.
+- **The demo page stays exactly as it is**, pre-computed and static on Cloudflare Pages.
+  It is evidence, it costs nothing to serve, and it is now the honest front door to a tool
+  that lives behind a login. It does not become the app.
+
+**The pre-existing architecture paid for this.** `user_id` on every table and a
+per-request `RequestContext.anthropic_api_key` were both decided months earlier for
+deployability. Neither needed changing. Keep making that kind of decision.
+
+**2026-09-07 — Every model call is told what time it is.** The owner's stated reason:
+Claude "always gets a weird perception of how much time has passed", which breaks
+concretely when preparing for an interview tomorrow. So the current timestamp and the
+user's live application timeline are injected into model context on every call, and every
+prompt and artefact is timestamped in the UI. This is cheap and it is not cosmetic — an
+education plan or interview prep that cannot locate itself in time is guessing.
+
+**2026-09-07 — The rating is model-judged, still two axes, still never composited.**
+"Non-deterministically build a rating" means a model judgement, not a formula. The
+standing rule holds unchanged: **do I want this** and **could I get this** are reported
+separately and never averaged, because they diverge constantly and merging them corrupts
+both. It ships **unmeasured and labelled as such** — there is no golden set for fit, and
+inventing one would be the synthetic-data prohibition in a new coat.
+
+**2026-09-07 — Email intake is a forwarding address, not an inbox integration.**
+Reaffirmed, not changed, because the request "point it at my email inbox" reads as
+otherwise. Reading a Gmail inbox needs restricted scopes and therefore an annual
+third-party security assessment (CASA), which is real recurring money and work. The
+capability is kept and the mechanism changed: a dedicated forwarding address, modelled as
+one job source among several. Revisit only if the friction proves real in use.
 
 **2026-09-07 — Renamed to jobs4life, except inside the prompts.** The thesis is that
 people should be able to move from job to job across a working life, not hold one job for
@@ -386,18 +446,25 @@ same write-back path.
 ## Build order
 
 - **Done** — schema, corpus ingestion, the baseline claim gate end to end. Whole corpus
-  in context, single call, verdict out, `runs` row written. CLI only.
+  in context, single call, verdict out, `runs` row written.
 - **Done** — slice 2a: job entity from a pasted ad, requirement extraction,
   per-requirement corpus coverage, gap questions, verbatim answer write-back. The rule
   tier, the Inspect harness and the FEVER tier-1 golden set.
-- **Now** — `PLAN.md` end to end: gap answers to markdown, slice 2b-core (drafting
-  behind the claim gate, autonomous mode), the demo fixtures and hosted demo page, the
-  full eval run.
-- **Then** — 2b-full (interactive mode, sent-document store), local web UI with the job
-  queue the ~2-minute gate latency demands.
-- **Then** — intake with pluggable sources, deterministic prompt filter, unmeasured fit
-  scoring.
-- **Later** — FastAPI and browser UI, MCP server, accounts, education planning, the rest.
+- **Done** — slice 2b-core (drafting behind the claim gate), the nine demo results, the
+  live demo page, and the measured number on 210 items across two models.
+- **Now — the hosted app, sliced so each one is usable the day it lands.** Detail in
+  `PLAN.md`; the ordering principle is that **the tracker comes before the cleverness**,
+  because the tracker is the part conversations cannot do.
+  - **A** — Google login, enforced tenancy, per-user API key custody, and the application
+    tracker with timestamps. Usable alone.
+  - **B** — the existing engine behind a UI: coverage, gap questions, drafting, the claim
+    gate. Needs the job queue first — a ~2-minute gate call never runs in a request.
+  - **C** — intake: Ashby / Greenhouse / Lever / Workable for named employers, plus the
+    forwarding address, plus the two-axis model-judged rating.
+  - **D** — interview stage tracking, and the rejection-feedback loop that turns an
+    outcome into a skill-up plan whose every step names citable evidence.
+- **Later** — 2b-full (interactive gaps-first mode, sent-document store), span validity
+  periods, offer evaluation, artifact import, MCP server.
 
 ## Stack — decided, do not relitigate
 
@@ -405,8 +472,13 @@ Python 3.12 · `uv` workspace · `pydantic` · Postgres + `pgvector` via `docker
 (not SQLite) · `alembic` · `sentence-transformers` with a CPU fallback behind the same
 interface · `Inspect` (AISI) for evals · Anthropic SDK called directly.
 
+Plus **FastAPI + Jinja + htmx**, server-rendered, for the web app — no SPA, no JS build
+chain. Google OAuth via **Authlib**. Envelope encryption via **cryptography** (AES-GCM).
+
 **No LangChain, LangGraph, CrewAI, or AutoGen.** If a tool-use loop is needed, write it.
-CLI only in this iteration — no web UI, no MCP server, no API.
+The CLI stays and stays supported — it is the fastest path to exercising the engine
+against real material, which is how every defect that mattered has been found. Still no
+MCP server.
 
 ## Architectural constraints
 
@@ -431,7 +503,14 @@ These are cheap now and expensive to retrofit. They exist because this gets depl
 - **Gmail restricted scopes are not worth the annual security assessment.** v1 is a
   dedicated forwarding address, modelled as one job source among several.
 - **Credential custody**: envelope encryption, never logged, never in the `runs` table,
-  never in a trace. Non-negotiable.
+  never in a trace. Non-negotiable — and as of 2026-09-07 no longer hypothetical, because
+  users supply their own Anthropic API keys. A key is write-only from the browser's point
+  of view: it can be replaced, never read back. The master key lives in the host
+  environment and never in Postgres, so a database compromise alone yields no usable key.
+- **Tenancy is enforced structurally, not by convention.** A repository is constructed
+  with the `user_id` it may act on and has no per-call override; there is no code path
+  where forgetting a `WHERE user_id = ...` is possible, because callers cannot express it.
+  A `WHERE` clause that a reviewer has to notice is not enforcement.
 - Corpus markdown in `corpus/` is the source of truth; the database is a rebuildable
   index over it. Span IDs derive from content and section, never insertion order.
 - Inspect eval logs stay as Inspect's own files on disk, never in Postgres.

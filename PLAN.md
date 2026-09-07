@@ -1,161 +1,199 @@
-# PLAN — to a working demo at jobs4life.hiltonlabs.org
+# PLAN — jobs4life as a tool the owner actually uses
 
-Written 2026-09-01 (Fable planning session). Executed by an Opus orchestrating session
-delegating to Sonnet implementation agents, per CLAUDE.md's delegation convention.
-Decisions behind this plan are in CLAUDE.md's decisions log (2026-09-01 entries);
-this file is only sequencing, fences, budgets, and acceptance criteria.
+Written 2026-09-07, replacing the September demo plan (archived at
+`docs/PLAN-september-demo.md`, delivered in full). Decisions behind this plan are in
+CLAUDE.md's decisions log, 2026-09-07 entries; this file is sequencing, designs, fences
+and acceptance criteria only.
 
-**Deadline:** something demonstrable and honestly described by late September 2026.
-~4 weeks × ~10 h/week ≈ 40 h. Committed scope is ~21 h; everything else is stretch.
+**There is no deadline and that is a risk, not a licence.** The September deliverable is
+shipped. The bar from here is not "demonstrates the idea" — the owner already uses this
+daily across scattered Claude conversations and finds it useful. The bar is **"replaces
+that"**, and the thing conversations structurally cannot do is remember. In his words:
+*"a clear list of all the applications I have going."*
 
-**The deliverable is two things:** the hosted pre-computed demo (fictional material,
-real pipeline output), and the measured number (the 210-item eval's over-claim and
-over-flag rates, caveated). The live tool stays on the owner's machine — see the
-decisions log for why the corpus never leaves it in v1.
+So the ordering principle throughout: **the tracker comes before the cleverness.** Every
+slice below must be usable on its own the day it lands. If a slice would only make sense
+once the next one exists, it is sliced wrong.
 
-## Standing answers assumed (owner has approved the recommendations)
+## The four slices
 
-- Public demo + local private tool, not hosted multi-user. No in-app auth.
-- Gap answers append to `corpus/answered-questions.md` and re-ingest.
-- 2b-core only for September; 2b-full deferred.
-
-## Open questions — resolved 2026-09-04
-
-1. **Where does `hiltonlabs.org` serve from?** Answered: `www` is Ghost Pro (via Fastly),
-   the apex A record is Ghost's own shared redirect server, and the zone is on Cloudflare.
-2. **VPS or Pages?** Answered: Cloudflare Pages, on the subdomain `jobs4life.hiltonlabs.org`,
-   connected to the private GitHub repo. See CLAUDE.md's 2026-09-04 decision for why the
-   path-based URL is not available and why GitHub Pages is not an option.
-3. **Credit top-up:** still outstanding. ~$0.59 remains. Revised ask is ~$15, not the $10
-   estimated earlier — see the cost-variance finding in NEXT.md.
+| | What lands | Usable alone as |
+|---|---|---|
+| **A** | Google login, enforced tenancy, per-user API key custody, application tracker | The list of live applications, with real timestamps |
+| **B** | Job queue, then the existing engine behind a UI | Draft and gate an application without touching a terminal |
+| **C** | Intake: ATS APIs, forwarding address, two-axis rating | Roles arriving without being hunted for |
+| **D** | Interview stages, rejection feedback, skill-up plans | A closed loop from rejection to a plan |
 
 ---
 
-## W0 — gap answers to markdown (~2 h) — first, it unblocks nothing else but touches shared files
+## Slice A — the shell that remembers
 
-`jfl answer` appends the verbatim answer as a bullet under `corpus/answered-questions.md`
-(single h1, so `section_path` is stable), runs ingestion, computes the resulting span id
-with `ids.span_id(...)`, stores it in `gap_questions.resulting_span_id`, marks the
-question answered. Remove the direct `add_adjudicated_span` call from this path only.
+Nothing model-facing. No Anthropic call anywhere in this slice except one optional
+validation ping. That is deliberate: it means A can be built, deployed and used while
+costing nothing, and it isolates auth bugs from engine bugs.
 
-- Fence: `packages/cli/src/jfl_cli/main.py` (answer command), `packages/core` ingest/
-  storage only as strictly needed, plus tests. Corpus root must be injectable so tests
-  use a tmp dir — check how `run_ingestion` locates `corpus/` before assuming.
-- Acceptance: answering a question creates a line in the markdown file and a
-  `provenance='document'` span; re-running `jfl ingest` is idempotent; the old DB-only
-  path is gone; unit tests cover append format, id computation, and idempotency.
+### A1 — Google login
 
-## W1 — slice 2b-core: drafting behind the claim gate (~10 h)
+Authorization Code flow with PKCE via **Authlib**. Scopes `openid email profile`, nothing
+else — no Gmail scope, ever (see the forwarding-address decision).
 
-New `drafts` table (id, user_id FK, job_id FK, kind CHECK `cv_bullets|cover_letter`,
-text, gate_result JSONB, trace_id, created_at) + migration. `jfl_generate/draft.py`:
-one model call — corpus in a cached system block exactly as coverage does it, job +
-requirements + latest coverage in the user message — then an **automatic** claim-gate
-pass on the output via `jfl_gate.check_text` (the decisions log requires this: the gate
-runs automatically on generated text). CLI: `jfl draft JOB_ID --kind cv|cover_letter`,
-printing the draft with per-sentence verdicts (reuse the existing printers, framing as
-NOT CHECKED) followed by the open gap questions. A flagged draft is still emitted — the
-gate informs, it never blocks.
+**Identify users by Google's `sub`, never by email.** Email addresses change hands;
+`sub` is stable and unique forever. Store email and name for display only, refreshed on
+each login.
 
-- Grounding input is the corpus **only**. 2b-core must not read `sent_documents` at all.
-- `packages/generate` now depends on `packages/gate`; the CLI package split was done
-  precisely so this cycle-free dependency works — no workspace surgery expected.
-- Exactly one `runs` row per model call, as everywhere. Expected cost ≈ $0.33/draft
-  (draft call + gate pass, warm cache).
-- Acceptance: end-to-end on the owner's real corpus and one real job ad — draft out,
-  verdicts attached, run rows written; unit tests with fake clients; one integration
-  test for the drafts table. Verified by the orchestrator on real material before the
-  workstream closes (evidence before code).
+### A2 — Sessions
 
-## W2 — demo fixtures: fiction authoring (~4 h, no API calls) — parallel with W1
+Opaque session id in a cookie, session row in Postgres. **Not a JWT** — this app holds
+other people's API keys, so instant server-side revocation matters more than statelessness
+at one-VPS scale.
 
-`demo/fixtures/`: 3 fictional candidates (each a verification record in the corpus
-format, 40–60 spans, including a stated-boundaries section) × 3 job ads. Each candidate
-built to exhibit specific labeled drift when their fictional CV claims are checked —
-over-claiming in ways the taxonomy names, plus supported claims and framing, plus at
-least one under-claim. Fictional names, invented companies, no resemblance to real
-people. Committable — that is the point of fiction.
+Cookie: `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`, no `Domain` attribute.
+Row carries `user_id`, `created_at`, `expires_at`, `last_seen_at`, and a rolling
+expiry. Logging out deletes the row, not just the cookie.
 
-- Acceptance: each record parses through `parse_document` cleanly; boundary sections
-  match the corpus-format markers; a README in `demo/fixtures/` states these are demo
-  fixtures, not golden-set items, and why that distinction matters.
+### A3 — Tenancy, enforced structurally
 
-## W3 — demo results generation (~2 h + credit) — needs W1 + W2 + top-up
+Per CLAUDE.md: a repository is **constructed with** the `user_id` it may act on and has
+no per-call override. There must be no code path where forgetting a `WHERE user_id = ...`
+is expressible.
 
-A script (committable, `demo/generate_results.py`) that, per candidate, ingests the
-fictional corpus under a scratch user id and runs the real pipeline for all 9
-combinations: extract → coverage → draft → gate. Saves full JSON per combination to
-`demo/fixtures/results/`. These are committable (fiction).
+**Acceptance is a test, not a review:** a test that reflects over every public repository
+method and asserts none of them accepts a `user_id` argument. A `WHERE` clause a reviewer
+has to spot is not enforcement, and this is the failure that leaks one user's career
+history to another.
 
-Budget, from W1's **measured** per-call costs rather than estimates: 3 extractions
-(~$0.012 each, one per job ad, reused across candidates) + 9 coverage (~$0.157) + 9
-drafts (~$0.43, which is a draft call *and* its gate pass) ≈ **$5.30**. Hard-stop the
-script if projected spend exceeds $8. Note the draft figure is ~29% above the original
-$0.33 estimate because the draft call and the gate call sit behind different instruction
-prefixes and so cannot share a cache entry — each pays a full corpus cache write, and
-neither ever gets a cache read.
+### A4 — Credential custody
 
-- Acceptance: 9 result files, each carrying the real `runs`-style token/cost numbers so
-  the demo can honestly show what a check costs; a regeneration is one command.
+Envelope encryption, per the non-negotiable standing rule.
 
-## W4 — the demo page (~5 h) — needs W3
+- **KEK** — 32 bytes, base64, from `JFL_MASTER_KEY` in the host environment. Never in
+  Postgres. A database compromise alone therefore yields nothing usable.
+- **DEK** — 32 random bytes per user, AES-GCM-encrypted under the KEK.
+- **The API key** — AES-GCM-encrypted under that user's DEK.
+- Table `user_credentials`: `user_id`, `provider`, `wrapped_dek`, `dek_nonce`,
+  `ciphertext`, `nonce`, `key_hint` (last 4 characters, for display), `created_at`,
+  `last_used_at`.
 
-Static site: a build script renders `demo/site/` from the fixtures (results embedded
-as JSON, small vanilla JS for the candidate × job picker — no framework, no server).
+**Write-only from the browser's side.** A key can be set or replaced, never read back —
+the UI shows `sk-ant-…4f2a` and a Replace button. Never logged, never in `runs`, never in
+a trace, never in an error message.
 
-**Amended 2026-09-05: no template engine.** This said "Jinja at build time", which does
-not survive contact with the rest of the sentence: if every dynamic element is rendered
-client-side from the embedded JSON, the server side has exactly one substitution to make
-— the JSON blob itself. Jinja would be a dependency with no work to do, and the build
-container then needs it too. `demo/build_site.py` is stdlib-only and swaps a placeholder
-in `demo/template/index.html`, which stays editable as real HTML. The page's centrepiece is the thesis: what was claimed, what the
-corpus supports, the distance, per-sentence. Verdict colours as in the CLI; framing
-rendered as NOT CHECKED — the page must never assert a verification that didn't happen.
-A visible note that the material is fictional and the results are unedited real
-pipeline output, with the per-run cost and latency shown.
+Validate on entry with one cheap Anthropic call so a typo fails at the form rather than
+three screens later.
 
-- Deploy per the answers to open questions 1–2 (default: Cloudflare Pages + a route).
-- Acceptance: page works from `file://` (truly static), passes a squint test on mobile
-  width, and deploys to the real URL.
+### A5 — The application tracker
 
-## W5 — the full eval run (~1 h + $4.44) — needs top-up; independent of W2–W4
+The wedge. Two tables:
 
-`inspect eval ... -T limit=210` with `JFL_ALLOW_REAL_API` semantics respected (the eval
-is outside pytest; its own default limit of 5 is the guard). Record over-claim rate,
-over-flag rate, and the framing × over-claim counter in `packages/evals/README.md`,
-with the CV-domain caveat already written there. This also measures the framing prompt
-change from 2026-09-01, which is currently unverified.
+- `applications` — `user_id`, `job_id`, `status`, `source`, `notes`, timestamps
+- `application_events` — every status transition, with a timestamp and optional note
 
-## W6 — stretch only: local web UI + job queue (~12 h)
+Statuses: `interested` → `applied` → `screening` → `interviewing` → `offer`, plus
+terminal `rejected` and `withdrawn`. Transitions are recorded, never overwritten: the
+event log *is* the timeline, and it is what later gets injected into model context.
 
-`tasks` table + `SELECT … FOR UPDATE SKIP LOCKED` worker (attempt counter, max
-attempts, global `JFL_DISABLE_MODEL_CALLS` kill-switch), FastAPI (`root_path`-aware
-from day one) + Jinja/htmx on localhost. Do not start unless W0–W5 are done and the
-weeks allowed slack. This is October work wearing September clothes.
+Job entry already works — `jfl job add` parses a pasted ad today. Slice A puts a textarea
+in front of it.
+
+### A6 — Timestamps everywhere
+
+Per the 2026-09-07 decision. Current time plus the user's live application timeline go
+into model context on every call from slice B onwards; in slice A it is UI only — every
+event shows an absolute date *and* a relative one ("Tue 8 Sep, 3 days ago"), because
+"tomorrow" is exactly what the owner said gets lost.
+
+### Slice A acceptance
+
+1. Two Google accounts, side by side: neither can see or reach the other's applications
+   by any URL, including guessed ids.
+2. The repository-method reflection test passes.
+3. An API key can be set and replaced, never read back, and appears nowhere in logs,
+   `runs`, or a traceback.
+4. Deployed on the VPS behind the Cloudflare Tunnel, reachable over HTTPS, with the
+   demo page at `jobs4life.hiltonlabs.org` still serving and untouched.
+5. The owner can add a real job ad and move it through states — and prefers doing that
+   to keeping the list in a conversation. **If he doesn't, slice A has failed** and no
+   amount of slice B fixes it.
 
 ---
 
-## Orchestration rules (all learned this session; do not relax)
+## Slice B — the engine, behind a UI
 
-1. Every agent brief names an explicit **file fence**, including root `tests/`
-   ownership. Overlaps caused every integration failure this session.
-2. **Subagents never run git commands.** A `git stash` by one agent reverted all four
-   agents' work; recovery was luck. The orchestrator commits and pushes at green
-   checkpoints (owner has approved push-as-you-go on `scaffold-and-schema`).
-3. Agents get an explicit **API budget or "no API calls"** in the brief. The test suite
-   cannot spend (conftest guard); scripts still can.
-4. Evidence before code: measure on real material before and after; an agent reporting
-   an untested fix is asked to run it, not thanked.
-5. Sonnet implements; Opus orchestrates, reviews, and keeps CLAUDE.md/PLAN.md edits to
-   itself. Escalate a brief to Opus-tier only on demonstrated fumble or genuinely
-   subtle work.
-6. Verify agent self-reports independently when they touch shared state (the corpus
-   near-miss and the stash misattribution both happened this session).
+### B1 — The job queue, first
 
-## Weekly map
+A gate call takes ~2 minutes. Nothing that slow runs inside a request.
 
-- **Week 1:** W0, W1 started; W2 in parallel.
-- **Week 2:** W1 finished and verified on real material; top-up; W3.
-- **Week 3:** W4 built and deployed (needs open questions 1–2 answered); W5 run.
-- **Week 4:** buffer for what slipped; September writeup with the eval numbers; W6 only
-  if genuinely clear.
+`tasks` table with `SELECT … FOR UPDATE SKIP LOCKED`, an attempt counter, a max-attempts
+cap, and a global `JFL_DISABLE_MODEL_CALLS` kill switch. The worker is a separate
+container so it can be stopped without taking the site down — which is also the incident
+response if a user's key starts burning money.
+
+### B2 — The engine's screens
+
+All of this exists and is tested; it needs a UI, not a rewrite: requirement extraction,
+per-requirement coverage, gap questions, verbatim answer write-back, drafting, and the
+claim gate with per-sentence verdicts.
+
+**Framing renders as `NOT CHECKED`, never as supported** — the same rule the demo page
+already obeys, for the same reason. Per-run cost is shown to the user, because they are
+paying for it with their own key.
+
+### B3 — Corpus upload
+
+A user with no corpus has nothing to measure against, so this gates B's usefulness for
+anyone but the owner. Markdown upload, parsed by the existing ingestion, spans stored
+per-user. The "markdown is the source of truth" rule holds: uploads are stored and
+re-ingestible, never only indexed.
+
+---
+
+## Slice C — intake
+
+ATS APIs open by design — **Greenhouse, Lever, Ashby, Workable** — for employers the user
+names, plus RSS. **No LinkedIn or Indeed scraping**, unchanged and not negotiable.
+
+Email intake is a **dedicated forwarding address**, not an inbox integration. Reaffirmed
+2026-09-07; Gmail restricted scopes need an annual CASA assessment.
+
+The rating is model-judged, **two axes, never composited**: *do I want this* and *could I
+get this*. It ships unmeasured and labelled unmeasured — there is no golden set for fit,
+and inventing one would be the synthetic-data prohibition wearing a new coat.
+
+---
+
+## Slice D — the loop that closes
+
+Interview stages tracked as events on the application, so preparation can be anchored to
+a real date.
+
+Then the part that makes this more than a tracker: a rejection, with its reason, becomes
+a skill-up plan. Feedback is **the only external ground truth in the system and it is
+scarce** — capture it carefully and never paraphrase it into something tidier, for the
+same reason gap answers are stored verbatim.
+
+**Every step in a plan names the requirement it closes and the evidence it would produce.
+A step that creates no citable evidence is not a step.** That evidence, once produced,
+becomes a corpus span — which is the flywheel closing: a rejection eventually improves
+the corpus that the claim gate measures against.
+
+---
+
+## Risks worth naming now
+
+**Slice A is boring and that is the point.** The temptation will be to jump to B because
+the engine is the interesting part. The engine already works and is measured; the reason
+the tool isn't used daily is that there is nowhere to put an application. Resist.
+
+**Holding other people's API keys raises the stakes on every mistake.** A logging bug is
+now a credential disclosure. This is why custody is in slice A rather than bolted on when
+the first non-owner user appears.
+
+**Two prompt defects are known and unfixed** — document titles read as assertions, and
+the model re-splitting its own input at initials. Both need a prompt change, which
+invalidates the 2026-09-05 eval baseline, so they are batched with the deferred prompt
+rename into one $2.07 re-run. Do that before slice B puts drafting in front of a second
+user.
+
+**The demo page must not rot.** It is the honest front door and it is pre-computed. If
+the pipeline changes materially, regenerate it — nine combinations, ~$2.82 — or take it
+down. A page claiming "this is what the tool outputs" must stay true.
