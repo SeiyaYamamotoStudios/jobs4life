@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Applications — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Applications</h1>
+  <a class="button" href="/applications/new">Add application</a>
+</div>
+
+<nav class="status-filter">
+  <a href="/applications" class="{{ 'active' if active_status is none else '' }}">All</a>
+  {% for s in statuses %}
+  <a href="/applications?status={{ s }}" class="{{ 'active' if s == active_status else '' }}">{{ s }}</a>
+  {% endfor %}
+</nav>
+
+{% if applications %}
+<div class="table-wrap">
+  <table class="applications">
+    <thead>
+      <tr><th>Title</th><th>Employer</th><th>Status</th><th>Updated</th></tr>
+    </thead>
+    <tbody>
+      {% for application in applications %}
+        {% include "_application_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="note">
+  {% if active_status %}No applications with status "{{ active_status }}".
+  {% else %}No applications yet. <a href="/applications/new">Add your first one</a>.
+  {% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -13,10 +13,16 @@ from fastapi import Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
+from jfl_web.timeformat import humanize
+
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
 _templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+# A6: every event and record shows an absolute date plus a relative one --
+# `{{ value | humanize_dt }}` -> "Tue 8 Sep 2026, 3 days ago". See
+# jfl_web.timeformat for the thresholds.
+_templates.env.filters["humanize_dt"] = humanize
 
 
 def render(

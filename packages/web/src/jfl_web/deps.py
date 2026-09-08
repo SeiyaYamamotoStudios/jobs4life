@@ -19,6 +19,7 @@ from jfl_core.storage.accounts import (
     PostgresSessionRepository,
     PostgresUserRepository,
 )
+from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from sqlalchemy.engine import Connection
 
@@ -109,6 +110,14 @@ def credential_repo(session: SessionDep, conn: ConnDep) -> PostgresCredentialRep
 
 
 CredentialRepoDep = Annotated[PostgresCredentialRepository, Depends(credential_repo)]
+
+
+def application_repo(session: SessionDep, conn: ConnDep) -> PostgresApplicationRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresApplicationRepository(conn, session.user.id)
+
+
+ApplicationRepoDep = Annotated[PostgresApplicationRepository, Depends(application_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

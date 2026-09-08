@@ -1,0 +1,25 @@
+{# One row of the applications table. Included from applications_list.html for
+   the initial render, and returned standalone by POST /applications/{id}/status
+   when htmx asks for it -- same markup either way, so the row never drifts
+   from what a full page load would have shown.
+   Needs in context: session, application, statuses. #}
+<tr id="application-{{ application.id }}">
+  <td class="col-title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+  <td class="col-employer">{{ application.employer or "—" }}</td>
+  <td class="col-status">
+    <form class="status-form">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <select name="to_status" data-status="{{ application.status }}"
+              hx-post="/applications/{{ application.id }}/status"
+              hx-target="#application-{{ application.id }}" hx-swap="outerHTML"
+              hx-trigger="change" hx-include="closest form">
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if s == application.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </td>
+  <td class="col-updated" title="{{ application.updated_at.isoformat() }}">
+    {{ application.updated_at | humanize_dt }}
+  </td>
+</tr>

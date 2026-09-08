@@ -33,7 +33,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from jfl_web.deps import CsrfFailed, NotAuthenticated
 from jfl_web.oauth import AuthlibGoogleProvider, GoogleIdentityProvider
-from jfl_web.routes import auth, pages
+from jfl_web.routes import applications, auth, pages
 from jfl_web.settings import WebSettings
 from jfl_web.templating import STATIC_DIR, render
 
@@ -88,6 +88,7 @@ def create_app(
 
     app.include_router(auth.router)
     app.include_router(pages.router)
+    app.include_router(applications.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     _install_error_handlers(app)

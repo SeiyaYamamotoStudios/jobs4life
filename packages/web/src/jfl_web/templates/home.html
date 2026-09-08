@@ -2,6 +2,7 @@
 {% block title %}jobs4life{% endblock %}
 {% block content %}
 <h1>Signed in</h1>
+<p><a class="button" href="/applications">View your applications</a></p>
 <dl class="facts">
   <dt>Name</dt><dd>{{ user.display_name or "—" }}</dd>
   <dt>Email</dt><dd>{{ user.email }}</dd>
@@ -9,8 +10,7 @@
   <dt>Session expires</dt><dd>{{ session.expires_at.strftime("%a %d %b %Y, %H:%M UTC") }}</dd>
 </dl>
 <p class="note">
-  Everything below this shell — the application tracker, drafting, the claim
-  gate — arrives in later slices. Set your Anthropic API key in
-  <a href="/settings">Settings</a> so it is ready when they do.
+  Drafting and the claim gate arrive in a later slice. Set your Anthropic API
+  key in <a href="/settings">Settings</a> now so it is ready when they do.
 </p>
 {% endblock %}

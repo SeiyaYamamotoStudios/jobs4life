@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Add application — jobs4life{% endblock %}
+{% block content %}
+<h1>Add application</h1>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<form method="post" action="/applications">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+  <label for="title">Title</label>
+  <input type="text" id="title" name="title" required autofocus
+         value="{{ values.title if values else '' }}">
+
+  <label for="employer">Employer</label>
+  <input type="text" id="employer" name="employer" value="{{ values.employer if values else '' }}">
+
+  <label for="url">URL</label>
+  <input type="url" id="url" name="url" placeholder="https://…"
+         value="{{ values.url if values else '' }}">
+
+  <label for="source">Source</label>
+  <input type="text" id="source" name="source" placeholder="e.g. referral, LinkedIn, company site"
+         value="{{ values.source if values else '' }}">
+
+  <label for="notes">Notes</label>
+  <textarea id="notes" name="notes" rows="3">{{ values.notes if values else '' }}</textarea>
+
+  <label for="job_ad">Job ad</label>
+  <p class="note">
+    Optional. Stored exactly as pasted — nothing here is parsed or extracted.
+    That comes later, behind the claim gate.
+  </p>
+  <textarea id="job_ad" name="job_ad" rows="14"
+            placeholder="Paste the job ad text here">{{ values.job_ad if values else '' }}</textarea>
+
+  <button type="submit">Add application</button>
+</form>
+{% endblock %}

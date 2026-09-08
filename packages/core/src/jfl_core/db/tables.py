@@ -486,6 +486,97 @@ adjudications = Table(
 )
 
 # --------------------------------------------------------------------------
+# Application tracker (slice A5). This is the wedge: what conversations cannot
+# do is remember a running list of applications with real timestamps -- see
+# CLAUDE.md's 2026-09-07 decision. Nothing here calls a model.
+#
+# `applications` holds current state; `application_events` is the append-only
+# timeline that state is derived from. A status change writes BOTH -- the row
+# is updated and an event is inserted -- because the event log is what later
+# slices inject into model context, so it must stay complete, never
+# overwritten. See `jfl_core.storage.applications.PostgresApplicationRepository`.
+# --------------------------------------------------------------------------
+
+_APPLICATION_STATUSES = (
+    "interested",
+    "applied",
+    "screening",
+    "interviewing",
+    "offer",
+    "rejected",
+    "withdrawn",
+)
+
+applications = Table(
+    "applications",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    # Nullable: an application can exist with no linked job (added before a
+    # pasted ad, or one that was never pasted at all). SET NULL rather than
+    # CASCADE -- losing the ad text should never take the tracked application
+    # with it.
+    Column("job_id", UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="SET NULL")),
+    Column("title", Text, nullable=False),
+    Column("employer", Text),
+    Column("url", Text),
+    Column("status", Text, nullable=False, server_default="interested"),
+    # Free text ("referral", "LinkedIn", "company site"), not a controlled
+    # vocabulary yet -- unlike `job_sources.kind`, which is. Domain 3 (intake)
+    # is where a real taxonomy belongs; this is a user-typed label.
+    Column("source", Text),
+    Column("notes", Text),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    # `onupdate` is a Core-level default: SQLAlchemy adds `updated_at = now()`
+    # to any UPDATE built from this table that does not itself set the column
+    # -- which is every status change and every notes edit, so the repository
+    # never has to remember to touch it by hand.
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_APPLICATION_STATUSES) + "')",
+        name="status",
+    ),
+    Index("ix_applications_user_id_updated_at", "user_id", "updated_at"),
+    Index("ix_applications_user_id_status", "user_id", "status"),
+)
+
+# APPEND-ONLY: never updated or deleted. `from_status` is NULL on the row
+# created alongside the application itself, so the timeline includes "added"
+# as well as every transition after it.
+application_events = Table(
+    "application_events",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("from_status", Text),
+    Column("to_status", Text, nullable=False),
+    Column("note", Text),
+    _ts("occurred_at", nullable=False, server_default=func.now()),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "to_status in ('" + "','".join(_APPLICATION_STATUSES) + "')",
+        name="to_status",
+    ),
+    Index(
+        "ix_application_events_user_id_application_id_occurred_at",
+        "user_id",
+        "application_id",
+        "occurred_at",
+    ),
+)
+
+
+# --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not
 # rendered on a dashboard.

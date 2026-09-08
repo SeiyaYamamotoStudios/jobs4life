@@ -150,3 +150,51 @@ class Draft(BaseModel):
     text: str
     gate_result: dict[str, object]
     trace_id: uuid.UUID
+
+
+# --------------------------------------------------------------------------
+# Application tracker (slice A5). No model call anywhere in this slice --
+# see CLAUDE.md's build order. `created_at`/`updated_at`/`occurred_at` are
+# NOT left off these models the way `Job`'s are: the list and detail screens
+# these exist for show timestamps on every row, so the repository always
+# populates them from what Postgres actually wrote (via `RETURNING`), never
+# guessed client-side.
+# --------------------------------------------------------------------------
+
+ApplicationStatus = Literal[
+    "interested", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn"
+]
+
+
+class Application(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    job_id: uuid.UUID | None = None
+    title: str
+    employer: str | None = None
+    url: str | None = None
+    status: ApplicationStatus
+    source: str | None = None
+    notes: str | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class ApplicationEvent(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    application_id: uuid.UUID
+    from_status: ApplicationStatus | None = None
+    to_status: ApplicationStatus
+    note: str | None = None
+    occurred_at: dt.datetime
+    created_at: dt.datetime
+
+
+class ApplicationDetail(BaseModel):
+    """What the detail screen needs: the row, plus its full timeline in
+    chronological order (oldest first -- how a timeline reads).
+    """
+
+    application: Application
+    events: list[ApplicationEvent]

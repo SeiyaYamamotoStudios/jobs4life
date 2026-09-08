@@ -125,3 +125,137 @@ button.link {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* --------------------------------------------------------------------
+   Application tracker
+   -------------------------------------------------------------------- */
+
+main:has(.applications),
+main:has(.page-header) {
+  max-width: 56rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-header h1 { margin: 0; }
+
+.status-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.9rem;
+}
+.status-filter a {
+  color: var(--muted);
+  text-decoration: none;
+  text-transform: capitalize;
+}
+.status-filter a:hover { color: var(--accent); }
+.status-filter a.active {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent);
+}
+
+.table-wrap { overflow-x: auto; }
+
+table.applications {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+table.applications th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+table.applications td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+table.applications tr:hover td { background: var(--panel); }
+table.applications .col-updated { color: var(--muted); white-space: nowrap; }
+table.applications .status-form { margin: 0; }
+
+select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+table.applications select { width: auto; }
+
+/* A quiet colour hint on the status control -- not the only signal (the
+   text label is always there too), just a faster scan. */
+select[data-status="offer"] { color: var(--good); border-color: var(--good); }
+select[data-status="rejected"] { color: var(--bad); border-color: var(--bad); }
+select[data-status="withdrawn"] { color: var(--muted); }
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+.status-badge.status-offer { color: var(--good); border-color: var(--good); }
+.status-badge.status-rejected { color: var(--bad); border-color: var(--bad); }
+
+input[type="text"], input[type="url"], textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+textarea { resize: vertical; }
+
+section { margin: 2rem 0; }
+
+ul.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid var(--rule);
+}
+ul.timeline li {
+  position: relative;
+  padding: 0 0 1rem 1.1rem;
+}
+ul.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0.3rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+ul.timeline .timeline-status { text-transform: capitalize; }
+ul.timeline time {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+}

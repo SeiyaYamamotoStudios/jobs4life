@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ application.title }} — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ application.title }}</h1>
+  <a href="/applications">Back to applications</a>
+</div>
+
+<dl class="facts">
+  <dt>Employer</dt><dd>{{ application.employer or "—" }}</dd>
+  <dt>URL</dt>
+  <dd>{% if application.url %}<a href="{{ application.url }}">{{ application.url }}</a>{% else %}—{% endif %}</dd>
+  <dt>Source</dt><dd>{{ application.source or "—" }}</dd>
+  <dt>Status</dt>
+  <dd><span class="status-badge status-{{ application.status }}">{{ application.status }}</span></dd>
+  <dt>Added</dt>
+  <dd title="{{ application.created_at.isoformat() }}">{{ application.created_at | humanize_dt }}</dd>
+  <dt>Updated</dt>
+  <dd title="{{ application.updated_at.isoformat() }}">{{ application.updated_at | humanize_dt }}</dd>
+  {% if application.job_id %}
+  <dt>Job ad</dt><dd>Stored (<code>{{ application.job_id }}</code>) — not yet extracted.</dd>
+  {% endif %}
+</dl>
+
+<section>
+  <h2>Change status</h2>
+  <form method="post" action="/applications/{{ application.id }}/status">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="to_status">New status</label>
+    <select id="to_status" name="to_status">
+      {% for s in statuses %}
+      <option value="{{ s }}" {% if s == application.status %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <label for="note">Note (optional)</label>
+    <input type="text" id="note" name="note" placeholder="e.g. recruiter called, scheduling a screen">
+    <button type="submit">Update status</button>
+  </form>
+</section>
+
+<section>
+  <h2>Notes</h2>
+  <form method="post" action="/applications/{{ application.id }}/notes">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <textarea name="notes" rows="4">{{ application.notes or "" }}</textarea>
+    <button type="submit">Save notes</button>
+  </form>
+</section>
+
+<section>
+  <h2>Timeline</h2>
+  {% if events %}
+  <ul class="timeline">
+    {% for event in events %}
+    <li>
+      <span class="timeline-status">
+        {% if event.from_status %}{{ event.from_status }} → {% endif %}<strong>{{ event.to_status }}</strong>
+      </span>
+      <time title="{{ event.occurred_at.isoformat() }}">{{ event.occurred_at | humanize_dt }}</time>
+      {% if event.note %}<p class="note">{{ event.note }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No events yet.</p>
+  {% endif %}
+</section>
+{% endblock %}
