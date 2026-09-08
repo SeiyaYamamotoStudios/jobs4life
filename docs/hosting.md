@@ -101,18 +101,27 @@ ssh deploy@VPS_IP
 sudo whoami   # should print "root" after your account password
 ```
 
-Only once that works, harden `sshd`. Ubuntu 24.04 reads `/etc/ssh/sshd_config.d/*.conf`
-after the main file, so drop a small override in rather than editing the shipped file:
+Only once that works, harden `sshd`. Drop an override into
+`/etc/ssh/sshd_config.d/` rather than editing the shipped file.
+
+**Name it `00-`, not `60-` or `99-`.** In `sshd_config` the **first** occurrence of a
+keyword wins, not the last, and drop-ins are read in lexical order — so a
+higher-numbered file *loses*. The OVH image ships `50-cloud-init.conf` containing
+`PasswordAuthentication yes`, which beats anything numbered above it. This was
+originally written as `99-`; on the real box it applied cleanly, `sshd -t` passed,
+`systemctl reload` succeeded, and `PasswordAuthentication` stayed `yes`. Always
+confirm with `sshd -T`, never with "the file is there".
 
 ```bash
 # root@vps, first terminal — still open
-cat <<'EOF' > /etc/ssh/sshd_config.d/60-hardening.conf
+cat <<'EOF' > /etc/ssh/sshd_config.d/00-hardening.conf
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF
 sshd -t              # syntax check — must print nothing
-systemctl reload sshd
+systemctl reload ssh || systemctl reload sshd
+sshd -T | grep -E '^(permitrootlogin|passwordauthentication)'   # the real check
 ```
 
 Verify in the second terminal (or a fresh one) **before** closing the root session:
@@ -543,6 +552,42 @@ nmap -p 22,80,443,8000 VPS_IP   # from your laptop
 ```
 
 ---
+
+## Learned by actually running this (2026-09-08)
+
+Five things this runbook could not have predicted, all hit on the real box. They are
+recorded here because each one *looked* like it had worked.
+
+**1. sshd drop-ins: first match wins.** Covered above, but it is the most dangerous of
+these because the failure is silent — config applied, reload succeeded, setting ignored.
+
+**2. Cloudflare's free Universal SSL covers the apex and ONE label.** `*.hiltonlabs.org`
+does not match `app.jobs4life.hiltonlabs.org`. DNS resolves to Cloudflare's edge, the
+tunnel is healthy, and TLS fails the handshake with no certificate ever issued. Deeper
+subdomains need paid Advanced Certificate Manager. Use a single-label hostname —
+`app-jobs4life.hiltonlabs.org` — unless you intend to buy ACM.
+
+**3. `ufw limit OpenSSH` will block your own deploy script.** It denies a source opening
+6 or more connections in 30 seconds. A deploy that runs several `ssh` commands in
+sequence trips it and locks itself out part-way, leaving the app built but not restarted.
+Fix the script with SSH multiplexing (`ControlMaster=auto`, `ControlPersist`), not the
+firewall — see `deploy/deploy.sh`.
+
+**4. A venv's console scripts carry an absolute shebang.** Building the virtualenv at one
+path in a Docker builder stage and copying it to another leaves every entry point
+(`alembic`, `uvicorn`) pointing at an interpreter that does not exist. The error names the
+script — `exec /app/.venv/bin/alembic: no such file or directory` — so it reads as though
+the package was never installed. Build at the path it will run from.
+
+**5. Never run the app at DEBUG log level.** Authlib logs the PKCE `code_verifier` at
+DEBUG, which undermines exactly what PKCE is for. The Dockerfile pins `--log-level info`
+deliberately; do not raise it to debug an OAuth problem, which is precisely when you will
+be tempted to.
+
+Also worth noting: the OVH Ubuntu image ships **26.04 LTS with OpenSSH 10.2**, not the
+24.04 this runbook assumed, and its default user is `ubuntu` with a password and
+passwordless sudo — `root` is locked (`passwd -S root` reports `L`) and cannot log in even
+at the console. If a root password does not work, that is why.
 
 ## What this does NOT do yet
 
