@@ -43,6 +43,43 @@ router = APIRouter()
 
 STATUSES: tuple[ApplicationStatus, ...] = get_args(ApplicationStatus)
 
+# The happy path, in order, for the "next step" quick action. A dropdown plus a
+# submit is the wrong control for the common case -- almost every status change
+# is a move one step along this line, and it should take one click.
+#
+# `rejected` and `withdrawn` are deliberately not on it: they can follow any
+# active state rather than a particular one, so `rejected` is offered as its own
+# secondary action and `withdrawn` stays in the full picker, which remains for
+# jumps, reversals and corrections.
+_PIPELINE: tuple[ApplicationStatus, ...] = (
+    "interested",
+    "applied",
+    "screening",
+    "interviewing",
+    "offer",
+)
+
+_NEXT_LABEL: dict[str, str] = {
+    "applied": "Mark as applied",
+    "screening": "Move to screening",
+    "interviewing": "Move to interviewing",
+    "offer": "Record an offer",
+}
+
+
+def next_status(current: ApplicationStatus) -> ApplicationStatus | None:
+    """The state one step along, or None at the end of the line.
+
+    Returns None for `rejected` and `withdrawn` too: they are outcomes, not
+    stages, so there is nothing to advance to.
+    """
+    try:
+        index = _PIPELINE.index(current)
+    except ValueError:
+        return None
+    return _PIPELINE[index + 1] if index + 1 < len(_PIPELINE) else None
+
+
 # Deliberately the same message whether the id never existed or belongs to
 # another user -- distinguishing the two would tell a caller which ids are
 # real, which is a tenancy leak in miniature.
@@ -147,6 +184,8 @@ def application_detail(
             "application": detail.application,
             "events": detail.events,
             "statuses": STATUSES,
+            "next_status": next_status(detail.application.status),
+            "next_labels": _NEXT_LABEL,
         },
     )
 
@@ -183,7 +222,13 @@ def change_status(
         return render(
             request,
             "_application_row.html",
-            {"session": session, "application": application, "statuses": STATUSES},
+            {
+                "session": session,
+                "application": application,
+                "statuses": STATUSES,
+                "next_status": next_status(application.status),
+                "next_labels": _NEXT_LABEL,
+            },
         )
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
 

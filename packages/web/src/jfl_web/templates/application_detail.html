@@ -23,8 +23,32 @@
 </dl>
 
 <section>
-  <h2>Change status</h2>
-  <form method="post" action="/applications/{{ application.id }}/status">
+  <h2>Status</h2>
+
+  {# One click for the common case. Almost every change is a step along the
+     pipeline; the full picker below stays for jumps, reversals and corrections. #}
+  {% if next_status or application.status not in ("rejected", "withdrawn") %}
+  <div class="quick-actions">
+    {% if next_status %}
+    <form method="post" action="/applications/{{ application.id }}/status">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="to_status" value="{{ next_status }}">
+      <button type="submit">{{ next_labels.get(next_status, "Move to " ~ next_status) }}</button>
+    </form>
+    {% endif %}
+    {% if application.status not in ("rejected", "withdrawn") %}
+    <form method="post" action="/applications/{{ application.id }}/status">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="to_status" value="rejected">
+      <button type="submit" class="secondary">Mark as rejected</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <details class="status-more">
+    <summary>Set a different status</summary>
+    <form method="post" action="/applications/{{ application.id }}/status">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label for="to_status">New status</label>
     <select id="to_status" name="to_status">
@@ -34,8 +58,9 @@
     </select>
     <label for="note">Note (optional)</label>
     <input type="text" id="note" name="note" placeholder="e.g. recruiter called, scheduling a screen">
-    <button type="submit">Update status</button>
-  </form>
+      <button type="submit">Update status</button>
+    </form>
+  </details>
 </section>
 
 <section>

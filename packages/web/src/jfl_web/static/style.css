@@ -293,3 +293,31 @@ ul.timeline time {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* Status quick-actions. The primary move sits first and reads as the obvious
+   thing to do; the secondary is present but visually quieter, because marking a
+   rejection should never be a mis-click away from marking progress. */
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.quick-actions form { margin: 0; }
+
+button.secondary {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+}
+
+button.secondary:hover { border-color: var(--muted); color: var(--ink); }
+
+.status-more summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.status-more[open] summary { margin-bottom: 0.5rem; }
