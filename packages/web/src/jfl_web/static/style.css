@@ -69,7 +69,11 @@ header {
   gap: 1rem;
   padding: 1.15rem 1.5rem;
   border-bottom: 1px solid var(--rule);
-  background: var(--panel);
+  /* No white bar. On www.hiltonlabs.org the header sits on the ground itself --
+     sampled at #f7f6f3, the same as the page -- and a white band across the top
+     is what made this read as a white site despite the ground being correct.
+     White is reserved for data surfaces (panels, table rows), not chrome. */
+  background: transparent;
 }
 
 .wordmark {
