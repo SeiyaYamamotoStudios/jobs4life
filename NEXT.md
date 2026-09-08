@@ -1,24 +1,39 @@
 # Where this got to
 
-State at the end of the session on 2026-09-05. Design decisions live in CLAUDE.md;
-this file is only "what is done, what is next, what is known to be wrong".
+State at the end of the session on 2026-09-08. Design decisions live in CLAUDE.md,
+sequencing in PLAN.md; this file is only "what is done, what is next, what is known to
+be wrong".
+
+## Live right now
+
+- **The app**: <https://app-jobs4life.hiltonlabs.org> — Google sign-in, per-user
+  Anthropic key custody, the application tracker. On an OVH VPS in London behind a
+  Cloudflare Tunnel, with no public inbound HTTP ports. Runbook: `docs/hosting.md`.
+- **The demo**: <https://jobs4life.hiltonlabs.org> — pre-computed, static, on Cloudflare
+  Pages. Nine candidate x job combinations, all real pipeline output.
+- **The number**: over-claim **0.7%** (1/140), over-flag **2.9%** (2/69) across 210
+  tier-1 items. Framing was 0/209, so tier 1 never exercised the gate's one unguarded
+  path — say that whenever the number is quoted.
 
 ## Working, verified against real data
 
-- **Corpus ingestion.** `corpus/*.md` to spans with stable ids. `uv run jfl ingest`.
-- **The claim gate.** `uv run jfl check "text"` or `--file path.pdf`. Whole corpus in a
-  cached system block, one streamed Opus call, per-sentence verdict with cited span ids.
-- **Generation slice 2a.** `jfl job add|list|coverage|questions` and `jfl answer`. Paste a
-  job ad, get requirements extracted, get a per-requirement corpus coverage verdict
-  (`evidenced` / `partial` / `absent` / `contradicted`), get questions for the gaps.
-  `jfl answer` stores your words verbatim -- there is no model anywhere in that path.
-- **Inspect eval harness.** `packages/evals`, with a 210-item FEVER tier-1 golden set
-  (balanced 70/70/70). Reports over-claim and over-flag as separate numbers, never one.
-- **Instrumentation.** One `runs` row per model call: tokens, cache hits, cost, latency.
-- 371 unit + 31 integration tests. `uv run mypy packages` is clean across 63 files.
+- **Corpus ingestion**, **the claim gate**, **generation slice 2a and 2b-core** — all as
+  before, all still driven by the CLI as well as the web app.
+- **Inspect eval harness** with the 210-item FEVER tier-1 golden set, plus
+  `packages/evals/scripts/compare_eval_runs.py` for paired model comparison.
+- **Google login, sessions, structurally-enforced tenancy, envelope-encrypted per-user
+  API keys** (`packages/web`, `jfl_core.crypto`, `jfl_core.storage`).
+- **The application tracker** — statuses, an append-only event timeline, absolute and
+  relative timestamps, one-click quick-actions along the pipeline.
+- **The background job queue** (`packages/worker`) — `SELECT ... FOR UPDATE SKIP LOCKED`,
+  at-least-once delivery with a 900s visibility timeout, attempts counted at claim so a
+  poison pill terminates, backoff, and a `JFL_DISABLE_MODEL_CALLS` kill switch that
+  refuses rather than fails. Running in production; its first handler purges expired
+  sessions at zero API cost.
+- 528 unit + 103 integration tests. `uv run mypy packages` clean across 106 files.
 
-Everything above was exercised against the author's real corpus and real CVs, not only
-fixtures. Every defect that mattered was found that way and none by review.
+Everything above was exercised against real material, not only fixtures. Every defect
+that mattered was found that way and none by review.
 
 ## Setup that is easy to forget
 
@@ -26,14 +41,9 @@ fixtures. Every defect that mattered was found that way and none by review.
 - `set -a; source .env; set +a` -- holds `JFL_DATABASE_URL` and `ANTHROPIC_API_KEY`.
   Never export the key globally: it silently shadows any `ant auth login` profile.
 - API credit is separate from a Claude subscription. $10 was topped up on 2026-09-05;
-  **$7.26 of it was spent that day** on C1-C4 and D1, leaving roughly **$3.33**. Nothing
-  remaining in the September plan costs anything -- D3 is free, and `build_site.py` makes
-  no API calls. A gate run over a whole CV is ~$0.35-0.64; a full 210-item
-  eval is ~$2.07. Check with:
-  `select component, stage, count(*), sum(cost_usd) from runs group by 1,2;`
-  That query is a **lower bound**: the eval harness uses in-memory repositories and
-  spends invisibly (see "known to be wrong"). Read the real total from the Anthropic
-  console, never from Postgres.
+  roughly **$3.30 remains**. The next planned spend is the prompt-defect batch's eval
+  re-run at ~$2.07. Users of the deployed app pay for their own calls with their own key,
+  so the app's running cost to the owner is the VPS (~£4/month) and nothing else.
 - `corpus/` and `analysis/` are gitignored and hold real career detail. Back `corpus/` up
   somewhere private: the database is a rebuildable index over it, so losing the markdown
   loses the source.
@@ -44,86 +54,39 @@ fixtures. Every defect that mattered was found that way and none by review.
 
 ## Next
 
-**C0-C5, D1 and D2 are done (2026-09-05). Only D3 is left, and it is blocked on one
-thing that is not the code's to do.**
+**Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
+quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,
+which replaces the six-field add form with a paste box and is the queue's first real
+producer.
 
-The nine demo results exist as real pipeline output, and `demo/site/index.html` is
-built, committed, and verified self-contained: 0 external references, 0 fetch/XHR/module
-uses, screenshotted at 1280px and 390px. Rebuild it any time with:
+Then, in order: B4 (two scores on arrival, never composited), B5 (the engine's screens,
+including "Generate a CV"), B6 (corpus upload), C (intake), D1 (interview prep), D2
+(rejection into a plan).
 
-```bash
-uv run python demo/build_site.py        # reads demo/fixtures/results/*.json, no API calls
-```
+**Do before B5 puts drafting in front of anyone but the owner:** the prompt-defect batch.
+Two known defects — document titles read as assertions, the model re-splitting its own
+input at initials — plus the deferred `job4life` → `jobs4life` prompt rename, in one
+change and one ~$2.07 eval re-run against the 2026-09-05 Opus baseline. Until that runs,
+the published over-claim rate describes a prompt that is not the one deployed.
 
-**D3 -- publish to `jobs4life.hiltonlabs.org`.** Two routes; pick one, then the rest is
-a single command.
+Also outstanding, small:
 
-| | A: connect GitHub | B: direct upload (Wrangler) |
-|---|---|---|
-| What the owner grants | Cloudflare read access to the whole private repo | one API token, Pages:Edit scope |
-| Deploys when | every push to the branch | when `wrangler pages deploy` is run |
-| Build step | none (output dir `demo/site`) | none |
+- **Error references.** A short reference shown to the user, the traceback in the log.
+  Not a browser traceback: the failure that motivated this was on
+  `/auth/google/callback`, which is not behind authentication.
+- **Drop `users.email`'s UNIQUE NOT NULL.** Identity is Google's `sub` now; the
+  constraint makes a reassigned address a hard login failure for its new owner.
+- **An old `git stash` entry** is sitting in the repo from a previous session's incident.
+  Check it holds nothing wanted, then drop it.
 
-**B is the better fit** and supersedes the GitHub-connection assumption in CLAUDE.md's
-2026-09-04 entry. That entry chose a build output directory because it assumed Cloudflare
-would clone and build; since `demo/site/` is committed and there is no build command,
-the git connection buys only auto-deploy -- and pays for it by granting a third party
-read access to a private repo holding a career system. A demo page that changes monthly
-does not need to republish on every push. Route A stays available if auto-deploy ever
-matters more than the access.
-
-Route B, once `CLOUDFLARE_API_TOKEN` is in `.env`:
+### Deploying
 
 ```bash
-npx wrangler pages deploy demo/site --project-name=jobs4life
+./deploy/deploy.sh          # git archive HEAD -> build -> migrate -> restart -> healthcheck
 ```
 
-Then point `jobs4life.hiltonlabs.org` at the Pages project in the Cloudflare dashboard.
-Leave the apex A record `178.128.137.126` alone -- it is Ghost's shared redirect server.
-
-**Open, and the owner's call:** the gate flags the draft's own *title line* (e.g. "Ingrid
-Solberg -- CV bullets (Senior Backend Engineer ...)") as `unsupported` /
-`adjacency_substitution`. It is a header naming the role applied for, not a claim to hold
-it, so this is document structure being read as assertion -- the same class as the
-`George R.R.` re-split. It is currently the most prominent item on the demo page.
-Leaving it is honest (the page says the output is unedited, and it is); excluding title
-lines from gating is a pipeline change that costs a regeneration. Recommendation: leave
-it for September, record it.
-
-After D3: `PLAN.md`'s W6 and the local-tool work -- interactive gaps-first mode, span
-validity periods, then the job queue and localhost web UI.
-
-Deferred deliberately: the corpus-first prompt reorder. It changes prompt text, and
-there is now a real baseline to compare against (the 2026-09-05 Opus log), so this is
-finally cheap to evaluate honestly -- re-run and confirm the number did not move, ~$2.07.
-
-**The headline numbers, from the full 210-item tier-1 run:**
-
-| | Opus 5 | Sonnet 5 |
-|---|---|---|
-| over-claim rate | **0.7%** (1/140), CI 0.1-3.9% | **0.7%** (1/140), CI 0.1-3.9% |
-| over-flag rate | **2.9%** (2/69), CI 0.8-10.0% | **2.9%** (2/69), CI 0.8-10.0% |
-| silence read as contradiction | 22.9% (16/70) | **71.4%** (50/70) |
-| framing | 0/209 | 0/209 |
-| cost | $2.0715 | $1.8451 |
-
-Both models over-claim and over-flag on the *same items* -- zero discordant pairs,
-McNemar p = 1.000. They differ 34-0 on silence-as-contradiction, p < 0.001. Opus is
-the default; see CLAUDE.md's 2026-09-05 entry for why, and note the reason is cost
-and temperament, not accuracy.
-
-**Caveat to state whenever the number is quoted:** framing was 0/209, so tier 1 did
-not exercise the gate's one unguarded path at all. FEVER items are factual assertions
-by construction, so this is the dataset's shape, not a clean bill of health. The
-framing hole remains unmeasured until tier 2 exists.
-
-After D3: `PLAN.md`'s W6 and the local-tool work -- interactive gaps-first mode, span
-validity periods, then the job queue and localhost web UI.
-
-Deferred deliberately: the corpus-first prompt reorder. It changes prompt text, and
-there is now a real baseline to compare against (the 2026-09-05 Opus log), so this is
-finally cheap to evaluate honestly -- re-run and confirm the number did not move,
-~$2.07.
+Ships **tracked files only**, so `corpus/` and `analysis/` cannot reach the server even by
+mistake. Uncommitted changes are not deployed, on purpose: the box always runs a commit.
 
 ## Measurements worth not re-deriving
 
