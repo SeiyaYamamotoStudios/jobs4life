@@ -12,7 +12,12 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
-WORKDIR /build
+# Built at /app, the same path it runs from. A venv's console scripts carry an
+# absolute shebang, so building at /build and copying to /app leaves every
+# entry point pointing at an interpreter that does not exist -- which surfaces
+# as `exec ...: no such file or directory` naming the script rather than the
+# missing Python.
+WORKDIR /app
 
 # Dependency resolution is cached separately from source: the manifests change
 # rarely, the source changes every deploy.
@@ -50,10 +55,10 @@ RUN groupadd --system --gid 1001 app \
  && useradd --system --uid 1001 --gid app --create-home app
 
 WORKDIR /app
-COPY --from=builder --chown=app:app /build/.venv /app/.venv
-COPY --from=builder --chown=app:app /build/packages /app/packages
-COPY --from=builder --chown=app:app /build/migrations /app/migrations
-COPY --from=builder --chown=app:app /build/alembic.ini /app/alembic.ini
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /app/packages /app/packages
+COPY --from=builder --chown=app:app /app/migrations /app/migrations
+COPY --from=builder --chown=app:app /app/alembic.ini /app/alembic.ini
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
