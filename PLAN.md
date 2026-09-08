@@ -20,9 +20,9 @@ once the next one exists, it is sliced wrong.
 | | What lands | Usable alone as |
 |---|---|---|
 | **A** | Google login, enforced tenancy, per-user API key custody, application tracker | The list of live applications, with real timestamps |
-| **B** | Job queue, then the existing engine behind a UI | Draft and gate an application without touching a terminal |
-| **C** | Intake: ATS APIs, forwarding address, two-axis rating | Roles arriving without being hunted for |
-| **D** | Interview stages, rejection feedback, skill-up plans | A closed loop from rejection to a plan |
+| **B** | Queue, quick-actions, paste-an-ad, two scores, the engine behind a UI | Paste an ad and get it scored, drafted and gated without a terminal |
+| **C** | Intake: ATS APIs, forwarding address, scored on arrival | Roles arriving without being hunted for |
+| **D** | Interview prep, and rejection feedback into a plan | A closed loop from rejection to citable evidence |
 
 ---
 
@@ -119,33 +119,71 @@ event shows an absolute date *and* a relative one ("Tue 8 Sep, 3 days ago"), bec
 
 ## Slice B — the engine, behind a UI
 
-### B1 — The job queue, first
+Revised 2026-09-08 after the owner used slice A. His feedback drives the ordering
+below; everything except B2 needs the queue, which is why the queue is first.
 
-A gate call takes ~2 minutes. Nothing that slow runs inside a request.
+### B1 — the job queue, first
+
+A gate call takes ~2 minutes and an extraction is not much quicker. Nothing that slow
+runs inside a request. His words set the requirement exactly: **fast input, slow
+processing is acceptable** — so the form returns immediately and the work happens behind
+it.
 
 `tasks` table with `SELECT … FOR UPDATE SKIP LOCKED`, an attempt counter, a max-attempts
 cap, and a global `JFL_DISABLE_MODEL_CALLS` kill switch. The worker is a separate
 container so it can be stopped without taking the site down — which is also the incident
-response if a user's key starts burning money.
+response if a user's key starts burning money. It also gets the jobs nothing else owns:
+purging expired sessions, and later the demo regeneration.
 
-### B2 — The engine's screens
+### B2 — status quick-actions (no queue, do it early)
 
-All of this exists and is tested; it needs a UI, not a rewrite: requirement extraction,
-per-requirement coverage, gap questions, verbatim answer write-back, drafting, and the
-claim gate with per-sentence verdicts.
+A dropdown plus submit is wrong for the 90% case. A primary button for the **likely next
+state** — "Mark as applied", "Mark as screening" — with the full picker still present for
+jumps and reversals. Cheap, and the most-used control in the app.
+
+### B3 — paste an ad, get an application
+
+Replaces the current long form. A paste box, an optional URL, and nothing else required.
+The extraction engine already exists (`jfl_generate.extract`, exercised today by
+`jfl job add`) so this is a form, a task, and a results view.
+
+**Paste is primary and the URL is best-effort.** Most ATS pages render client-side and
+many refuse non-browser fetches, and LinkedIn and Indeed are excluded by standing
+decision — not only legally, but because a scraper in the architecture reads as poor
+judgement. So: try the URL, fall back quietly, never pretend it is reliable.
+
+This is also the slice that proves the queue end to end, which is why it comes first
+among the model-facing work.
+
+### B4 — two scores on arrival, never one
+
+On add, the application is scored automatically, with a paragraph for each score.
+
+**Two axes, never composited** — the standing decision, and the owner's three requests map
+onto it cleanly: *chances* is **could I get this**, *alignment to interest* is **do I want
+this**, and *appropriateness* is a blend of the two, which is exactly what must not be
+built. A role he would love and will not get, and one he would hate and would walk into,
+must never land on the same number; averaging them hides the disagreement precisely when
+it is the useful signal.
+
+Ships **labelled unmeasured**. There is no golden set for fit and inventing one would be
+the synthetic-data prohibition in a new coat. The over-claim rate remains the measured
+number and must not be confused with these.
+
+### B5 — the rest of the engine's screens
+
+Coverage, gap questions, drafting ("Generate a CV" from an application), and the claim
+gate with per-sentence verdicts. All built; all needing a UI and the queue.
 
 **Framing renders as `NOT CHECKED`, never as supported** — the same rule the demo page
-already obeys, for the same reason. Per-run cost is shown to the user, because they are
-paying for it with their own key.
+obeys. Per-run cost is shown, because the user is paying for it with their own key.
 
-### B3 — Corpus upload
+### B6 — corpus upload
 
 A user with no corpus has nothing to measure against, so this gates B's usefulness for
-anyone but the owner. Markdown upload, parsed by the existing ingestion, spans stored
-per-user. The "markdown is the source of truth" rule holds: uploads are stored and
-re-ingestible, never only indexed.
-
----
+anyone but the owner. Markdown upload through the existing ingestion, spans stored
+per-user. "Markdown is the source of truth" holds: uploads are stored and re-ingestible,
+never only indexed.
 
 ## Slice C — intake
 
@@ -155,28 +193,51 @@ names, plus RSS. **No LinkedIn or Indeed scraping**, unchanged and not negotiabl
 Email intake is a **dedicated forwarding address**, not an inbox integration. Reaffirmed
 2026-09-07; Gmail restricted scopes need an annual CASA assessment.
 
-The rating is model-judged, **two axes, never composited**: *do I want this* and *could I
-get this*. It ships unmeasured and labelled unmeasured — there is no golden set for fit,
-and inventing one would be the synthetic-data prohibition wearing a new coat.
+Arriving roles are scored on the same two axes as B4.
 
----
+## Slice D — the loops that close
 
-## Slice D — the loop that closes
+### D1 — interview preparation
 
-Interview stages tracked as events on the application, so preparation can be anchored to
-a real date.
+Its own section, showing every application in `interviewing`. Paste the recruiter's prep
+notes; get a plan anchored to the actual interview date — which is what the timestamps in
+A6 exist for.
 
-Then the part that makes this more than a tracker: a rejection, with its reason, becomes
-a skill-up plan. Feedback is **the only external ground truth in the system and it is
-scarce** — capture it carefully and never paraphrase it into something tidier, for the
-same reason gap answers are stored verbatim.
+**It must say what is not worth preparing.** The owner raised this and it is not a
+footnote: this tool exists to stop someone presenting a distorted picture of themselves,
+and a prep plan that rehearses them into a person they are not is that same failure in
+different clothes. Naming the two or three things that matter, and explicitly saying the
+rest is over-preparation, is the product's thesis applied to interviews.
 
-**Every step in a plan names the requirement it closes and the evidence it would produce.
-A step that creates no citable evidence is not a step.** That evidence, once produced,
-becomes a corpus span — which is the flywheel closing: a rejection eventually improves
-the corpus that the claim gate measures against.
+### D2 — rejection, feedback, and the plan
 
----
+A rejection captures its reason, and that reason **is stored verbatim**. No model tidies
+it. It is the only external ground truth in the system and it is scarce — the same
+reasoning that keeps gap answers in the user's own words.
+
+That feeds a gap-analysis and action-plan section, **separate from applications** because
+it is about the person over time rather than about one role.
+
+**Every step names the requirement it closes and the evidence it would produce. A step
+that creates no citable evidence is not a step.** That is what stops a plan degenerating
+into "get better at Kafka" and makes it "build X, which produces Y". And when that
+evidence exists it becomes a corpus span — which is the flywheel closing: a rejection
+eventually improves the corpus the claim gate measures against.
+
+## Cross-cutting, before the model-facing work
+
+- **Error references.** Every unhandled exception gets a short reference shown to the
+  user and logged with the traceback. Not a browser traceback: the failure that motivated
+  this was on `/auth/google/callback`, which is not behind authentication, and a stack
+  through `envelope.py` names the crypto layer to whoever hit it.
+- **Drop `users.email`'s UNIQUE NOT NULL.** Email is presentation-only now that identity
+  is Google's `sub`; the constraint makes a reassigned address a hard login failure for
+  its new owner.
+- **The prompt batch.** Two known defects — document titles read as assertions, the model
+  re-splitting its own input at initials — plus the deferred prompt rename, in one change
+  and one $2.07 eval re-run. **Before drafting goes in front of anyone but the owner**, or
+  the published over-claim rate describes a prompt that is not running.
+
 
 ## Risks worth naming now
 
