@@ -16,7 +16,7 @@ from jfl_core.db.tables import applications as applications_table
 from jfl_core.db.tables import jobs as jobs_table
 from jfl_core.db.tables import users
 from jfl_core.storage.applications import ApplicationNotFoundError, PostgresApplicationRepository
-from sqlalchemy import create_engine, delete, insert, select
+from sqlalchemy import create_engine, delete, insert, select, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
@@ -169,10 +169,26 @@ def test_update_notes_round_trips_and_does_not_touch_the_timeline(
 
 def test_list_applications_orders_most_recently_updated_first(
     repo: PostgresApplicationRepository,
+    conn: Connection,
 ) -> None:
+    """Ordering is by `updated_at` descending.
+
+    The timestamps are set explicitly rather than being allowed to fall out of
+    the writes, because they would not: `updated_at` is `onupdate=func.now()`,
+    Postgres `now()` is *transaction-start* time, and this whole test runs inside
+    one rolled-back transaction -- so every row here would carry a byte-identical
+    timestamp and the assertion would be testing which row the executor happened
+    to return first. Production is unaffected, since each request is its own
+    transaction and `now()` advances between them.
+    """
     first = repo.create_application(title="First")
     second = repo.create_application(title="Second")
-    repo.change_status(first.id, to_status="applied")  # bump first back to the top
+
+    conn.execute(
+        applications_table.update()
+        .where(applications_table.c.id == second.id)
+        .values(updated_at=text("now() - interval '1 hour'"))
+    )
 
     ids_in_order = [a.id for a in repo.list_applications()]
     assert ids_in_order.index(first.id) < ids_in_order.index(second.id)

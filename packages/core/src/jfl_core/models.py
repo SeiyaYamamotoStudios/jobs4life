@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -198,3 +198,52 @@ class ApplicationDetail(BaseModel):
 
     application: Application
     events: list[ApplicationEvent]
+
+
+# --------------------------------------------------------------------------
+# Background work (slice B1). A row in `tasks`, as the queue and the worker see
+# it -- see `jfl_core.storage.tasks`.
+# --------------------------------------------------------------------------
+
+TaskStatus = Literal["pending", "running", "succeeded", "failed"]
+
+
+class Task(BaseModel):
+    """One unit of background work.
+
+    `payload` carries `repr=False` deliberately. This object reaches log lines
+    and tracebacks, and while a payload is only ever meant to hold arguments
+    (see `tables.py`), "only ever meant to" is not a guarantee -- so the default
+    repr shows the id, kind and status and leaves the arguments out. Code that
+    genuinely needs the payload asks for `task.payload`, which is a decision
+    someone made rather than a field that came along for the ride.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    kind: str
+    payload: dict[str, Any] = Field(default_factory=dict, repr=False)
+    status: TaskStatus
+    attempts: int
+    max_attempts: int
+    last_error: str | None = None
+    scheduled_at: dt.datetime
+    started_at: dt.datetime | None = None
+    finished_at: dt.datetime | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class ReclaimResult(BaseModel):
+    """What one sweep of the stale-`running` reclaim did.
+
+    Two lists, not one count, because they mean different things to whoever is
+    reading the logs: `requeued` is a worker that died and a task that will run
+    again, `failed` is a task that died for the last time and now needs a human.
+    """
+
+    requeued: list[uuid.UUID] = Field(default_factory=list)
+    failed: list[uuid.UUID] = Field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.requeued or self.failed)

@@ -1,0 +1,22 @@
+[project]
+name = "jfl-worker"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# The background worker: slice B1. Deliberately thin -- `jfl-core` and nothing
+# else. In particular NO `anthropic`: the queue is infrastructure, and the
+# handlers that call models arrive with the slices that need them. A dependency
+# that cannot be imported cannot be called by accident.
+dependencies = ["jfl-core"]
+
+[project.scripts]
+jfl-worker = "jfl_worker.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jfl_worker"]
+
+[tool.uv.sources]
+jfl-core = { workspace = true }

@@ -161,7 +161,16 @@ class PostgresApplicationRepository(TenantScopedRepository):
         query = (
             select(*_APPLICATION_COLUMNS)
             .where(applications_table.c.user_id == self._user_id)
-            .order_by(applications_table.c.updated_at.desc())
+            # `created_at` and `id` break ties, and they are not decoration.
+            # Postgres `now()` is transaction-start time, so two rows written in
+            # one transaction share a timestamp exactly; ordering by `updated_at`
+            # alone then returns whatever the executor prefers, and the list
+            # reorders itself between page loads for no visible reason.
+            .order_by(
+                applications_table.c.updated_at.desc(),
+                applications_table.c.created_at.desc(),
+                applications_table.c.id.desc(),
+            )
         )
         if status is not None:
             query = query.where(applications_table.c.status == status)

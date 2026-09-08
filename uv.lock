@@ -10,6 +10,7 @@ members = [
     "jfl-gate",
     "jfl-generate",
     "jfl-web",
+    "jfl-worker",
     "job-for-life",
 ]
 
@@ -998,6 +999,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "jfl-worker"
+version = "0.1.0"
+source = { editable = "packages/worker" }
+dependencies = [
+    { name = "jfl-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "jfl-core", editable = "packages/core" }]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1055,6 +1067,7 @@ dependencies = [
     { name = "jfl-gate" },
     { name = "jfl-generate" },
     { name = "jfl-web" },
+    { name = "jfl-worker" },
 ]
 
 [package.dev-dependencies]
@@ -1076,6 +1089,7 @@ requires-dist = [
     { name = "jfl-gate", editable = "packages/gate" },
     { name = "jfl-generate", editable = "packages/generate" },
     { name = "jfl-web", editable = "packages/web" },
+    { name = "jfl-worker", editable = "packages/worker" },
 ]
 
 [package.metadata.requires-dev]

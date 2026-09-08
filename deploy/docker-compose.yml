@@ -1,8 +1,10 @@
 # Production stack for the jobs4life VPS. Lives at /opt/jobs4life on the box.
 #
-# There is no worker service yet: slice A makes no model calls at all, so there
-# is nothing to queue. The worker arrives with slice B, when a ~2-minute claim
-# gate call needs somewhere to run that is not a request.
+# `app` and `worker` are the SAME image (built once from the repo root
+# Dockerfile, tagged `jobs4life:latest`) running two different commands. They are
+# separate containers so the worker can be stopped without taking the site down
+# -- which is the incident response if a user's key starts burning money, the
+# other half of it being `JFL_DISABLE_MODEL_CALLS`.
 
 services:
   db:
@@ -24,6 +26,8 @@ services:
     build:
       context: ./src
       dockerfile: Dockerfile
+    # Named so `worker` below can run the same image without building it twice.
+    image: jobs4life:latest
     restart: unless-stopped
     env_file: .env
     # Same reasoning as above. Cloudflare Tunnel dials out to this port from the
@@ -36,6 +40,44 @@ services:
       # The app talks to Postgres over the compose network, not the host's
       # loopback publish.
       JFL_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+  worker:
+    # Same build and same tag as `app`: one image, two commands. `docker compose
+    # build app` therefore builds this too, and `up -d` starts it without a
+    # second build.
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    image: jobs4life:latest
+    command: ["jfl-worker"]
+    restart: unless-stopped
+    env_file: .env
+    # NO `ports`. The worker serves nothing and must not be reachable from
+    # anywhere: it talks out to Postgres and to the model API, and nothing talks
+    # in to it.
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      JFL_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # The kill switch, set here rather than in .env so that turning it on is a
+      # one-line edit to this file and a `docker compose up -d worker` -- with
+      # the site left running. Any value other than 0/false/no/off turns it ON;
+      # the worker then refuses every task whose handler is marked as calling a
+      # model and leaves it `pending`, so nothing is lost when it comes back off.
+      JFL_DISABLE_MODEL_CALLS: "0"
+    # The image's HEALTHCHECK probes the web app's /healthz on port 8000, which
+    # this container does not serve. Left on, it would report `unhealthy`
+    # forever and hide a real problem behind a permanent false one.
+    healthcheck:
+      disable: true
+    # Docker sends SIGTERM and then SIGKILL this long after. The worker finishes
+    # the task in hand on SIGTERM, and the slowest known task is a ~2-minute
+    # claim-gate call, so anything under that guarantees a kill mid-task on
+    # every deploy. A killed task is not lost -- it is reclaimed after the
+    # visibility timeout and run again -- but re-running a gate call means paying
+    # for it twice, so the grace period is set to make that the exception.
+    stop_grace_period: 150s
 
 volumes:
   pgdata:

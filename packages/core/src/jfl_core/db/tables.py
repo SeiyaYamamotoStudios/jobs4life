@@ -577,6 +577,86 @@ application_events = Table(
 
 
 # --------------------------------------------------------------------------
+# Background work (slice B1). A claim-gate call takes ~2 minutes and an
+# extraction is not much quicker, so nothing that slow may run inside a request:
+# the form returns immediately and a worker container picks the work up here.
+#
+# Claiming is `SELECT ... FOR UPDATE SKIP LOCKED` (see
+# `jfl_core.storage.tasks.PostgresTaskQueue`), which is why the two partial
+# indexes below exist -- they are the claim query and the stale-reclaim query,
+# nothing else.
+#
+# **Delivery is at-least-once, not exactly-once, and no schema can change
+# that.** A worker killed between claiming a row and finishing it leaves the row
+# in `running` forever; the reclaim query finds those by `started_at` and puts
+# them back. A handler must therefore tolerate being run twice.
+#
+# `kind` carries NO check constraint, unlike every other kind/status column
+# here. The set of kinds is a code-level registry in `jfl_worker`, grows with
+# every slice, and a task whose kind no worker recognises is simply never
+# claimed -- so a CHECK would buy nothing and cost a migration per handler.
+# `status` does carry one: those four values are the state machine itself.
+# --------------------------------------------------------------------------
+
+_TASK_STATUSES = ("pending", "running", "succeeded", "failed")
+
+tasks = Table(
+    "tasks",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    # Every task belongs to someone, including maintenance work: the worker
+    # attributes system tasks (session purging) to the seeded local user, so
+    # there is no second, unowned code path into this table.
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("kind", Text, nullable=False),
+    # Arguments only -- ids, flags, a job id. NEVER a secret: an API key lives
+    # encrypted in `user_credentials` and is fetched by the handler from there,
+    # because a payload is read back by the worker, shown in admin queries and
+    # quoted into error messages.
+    Column("payload", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("status", Text, nullable=False, server_default="pending"),
+    # Incremented when the row is CLAIMED, not when it fails -- a task that kills
+    # the worker outright still burns an attempt, so a poison pill cannot loop
+    # forever.
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("max_attempts", Integer, nullable=False, server_default=text("3")),
+    # Why the last attempt failed. Kept on success too: it is the record of what
+    # went wrong before the retry that worked.
+    Column("last_error", Text),
+    # Not before this. Backoff between attempts is written here, so a failing
+    # task waits instead of spinning.
+    _ts("scheduled_at", nullable=False, server_default=func.now()),
+    _ts("started_at"),  # when the current/last attempt was claimed
+    _ts("finished_at"),  # set on 'succeeded' and on terminal 'failed' only
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_TASK_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint("attempts >= 0 and max_attempts >= 1", name="attempt_counts"),
+    # The claim query, exactly: status = 'pending' and scheduled_at <= now() and
+    # kind = any(...), ordered by scheduled_at. Partial, because pending rows are
+    # a small and shrinking minority of a table that keeps its history.
+    Index(
+        "ix_tasks_pending_scheduled_at",
+        "scheduled_at",
+        "kind",
+        postgresql_where=text("status = 'pending'"),
+    ),
+    # The reclaim query: rows stuck in 'running' past the visibility timeout.
+    Index(
+        "ix_tasks_running_started_at",
+        "started_at",
+        postgresql_where=text("status = 'running'"),
+    ),
+    # "What is happening to my application?" -- the user-facing list.
+    Index("ix_tasks_user_id_created_at", "user_id", "created_at"),
+)
+
+# --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not
 # rendered on a dashboard.
