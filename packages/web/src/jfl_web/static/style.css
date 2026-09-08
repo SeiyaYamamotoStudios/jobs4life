@@ -21,6 +21,18 @@
    exactly; where it is not, it degrades to the same stack the blog degrades to. */
 
 :root {
+  /* Light only, and declared rather than assumed. www.hiltonlabs.org has no
+     dark mode at all -- it renders #f7f6f3 whatever `prefers-color-scheme`
+     says -- so a dark palette here is not "the same design language", it is a
+     second design nobody asked for. It also meant anyone with dark mode on saw
+     colours that exist nowhere on the site this is meant to match.
+
+     `color-scheme: light` is the half that is easy to forget: without it the
+     browser still paints its own widgets -- inputs, selects, scrollbars, the
+     autofill background -- from the OS preference, so the page reads light and
+     the controls in it do not. */
+  color-scheme: light;
+
   --ink: #15171a;
   --ink-soft: rgba(0, 0, 0, 0.72);
   --muted: rgba(0, 0, 0, 0.55);
@@ -34,23 +46,6 @@
   --warn: #8a6d1f;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #ecebe7;
-    --ink-soft: hsla(0, 0%, 100%, 0.78);
-    --muted: hsla(0, 0%, 100%, 0.64);
-    --rule: hsla(0, 0%, 100%, 0.15);
-    --rule-soft: hsla(0, 0%, 100%, 0.08);
-    --ground: #15171a;
-    --panel: #1d2024;
-    --accent: #b9cde0;
-    --bad: #e0a08a;
-    --good: #8fc7a8;
-    --warn: #d4b872;
-  }
-}
-
-* { box-sizing: border-box; }
 
 body {
   margin: 0;
