@@ -3,19 +3,25 @@ exists. See CLAUDE.md's 2026-09-07 decision log and `PLAN.md`'s slice A: the
 owner's own words for the gap conversations cannot close are "a clear list of
 all the applications I have going."
 
-No model call anywhere in this file -- see `jfl_core.storage.applications`'s
-module docstring for why a pasted job ad is stored verbatim and never parsed.
+**No model call anywhere in this file, and that is a hard rule rather than a
+description.** Slice B3 replaced the six-field add form with a paste box, and
+reading the pasted ad is a ~30-second Anthropic call on the user's own key --
+so the POST creates the row, enqueues an `extract_job_ad` task and redirects,
+and the work happens in the worker. Fast input, slow processing.
 
 Screens:
 
   GET  /applications                 -- the list, most recently updated first,
                                          optionally filtered by `?status=`
-  GET  /applications/new             -- the add form
-  POST /applications                 -- create, then redirect to the detail page
+  GET  /applications/new             -- the paste box
+  POST /applications                 -- create, enqueue the read, redirect
   GET  /applications/{id}            -- one application: fields, full timeline,
                                          a status control, editable notes
   POST /applications/{id}/status     -- change status; appends an event
   POST /applications/{id}/notes      -- replace the notes field
+  GET  /applications/{id}/extraction -- the extraction panel, for htmx polling
+  POST /applications/{id}/extract    -- read the ad again; explicit, never
+                                         automatic, because it costs the user
 
 `POST /applications/{id}/status` answers two different callers with one route
 rather than two: the **list** screen calls it over htmx (`HX-Request` header
@@ -33,11 +39,25 @@ from typing import Annotated, get_args
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.models import ApplicationStatus
+from jfl_core.models import ApplicationExtraction, ApplicationStatus
+from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
 
-from jfl_web.deps import ApplicationRepoDep, CsrfDep, SessionDep
+from jfl_web.deps import ApplicationRepoDep, CsrfDep, SessionDep, TaskRepoDep
+from jfl_web.jobads import (
+    MAX_AD_CHARS,
+    extraction_failure,
+    normalise_url,
+    provisional_title,
+)
 from jfl_web.templating import render
+
+# The worker's kind for "read this pasted ad". A string on both sides, on
+# purpose: importing `jfl_worker` here would make the web container carry the
+# worker, and the queue's whole point is that the two deploy separately. A kind
+# no deployed worker knows stays `pending` rather than failing, which is the
+# safe direction for a rolling deploy.
+EXTRACT_JOB_AD_KIND = "extract_job_ad"
 
 router = APIRouter()
 
@@ -122,46 +142,76 @@ def create_application(
     request: Request,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    tasks: TaskRepoDep,
     _csrf: CsrfDep,
-    title: Annotated[str, Form()],
-    employer: Annotated[str, Form()] = "",
+    job_ad: Annotated[str, Form()],
     url: Annotated[str, Form()] = "",
-    source: Annotated[str, Form()] = "",
-    notes: Annotated[str, Form()] = "",
-    job_ad: Annotated[str, Form()] = "",
 ) -> Response:
-    title = title.strip()
-    if not title:
-        return render(
-            request,
-            "application_form.html",
-            {
-                "session": session,
-                "user": session.user,
-                "error": "A title is required.",
-                "values": {
-                    "title": title,
-                    "employer": employer,
-                    "url": url,
-                    "source": source,
-                    "notes": notes,
-                    "job_ad": job_ad,
-                },
-            },
-            status_code=400,
+    """Two fields, one required, and no model call.
+
+    Everything that used to be typed here -- title, employer, source -- is in
+    the ad, and asking someone to retype it is the friction that gets a tool
+    abandoned. So the ad goes in verbatim, the row gets a provisional title, and
+    an `extract_job_ad` task reads it properly in the background.
+
+    Both writes are in the request's single transaction (`deps.db_conn`), so the
+    application and its task are committed together: there is no state where a
+    row sits `pending` with nothing queued to move it, or a task names an
+    application that was rolled back.
+    """
+    ad = job_ad.strip()
+    if not ad or len(ad) > MAX_AD_CHARS:
+        message = (
+            "Paste the job ad to add an application."
+            if not ad
+            else "That is much longer than a job ad -- paste just the role and its requirements."
         )
+        return _form(request, session, error=message, job_ad=job_ad, url=url)
+
+    try:
+        link = normalise_url(url)
+    except ValueError as exc:
+        return _form(request, session, error=str(exc), job_ad=job_ad, url=url)
 
     application = applications.create_application(
-        title=title,
-        employer=employer.strip() or None,
-        url=url.strip() or None,
-        source=source.strip() or None,
-        notes=notes.strip() or None,
-        # Stored verbatim, never parsed -- see the module docstring.
-        raw_job_text=job_ad.strip() or None,
+        # A placeholder, and the row says so: extraction may replace a
+        # provisional title, and may never replace a typed one.
+        title=provisional_title(ad),
+        url=link,
+        raw_job_text=ad,
+        title_is_provisional=True,
+        extraction_status="pending",
+    )
+    tasks.enqueue(
+        kind=EXTRACT_JOB_AD_KIND,
+        # Ids only. The ad text is already stored once in `jobs.raw_text` and
+        # the handler reads it from there under its own tenancy scope; a second
+        # copy in a payload that admin queries read back buys nothing. The API
+        # key is never here at all -- it is unsealed in the worker.
+        payload={"application_id": str(application.id)},
     )
     # POST/redirect/GET: a refresh must not resubmit the form.
     return RedirectResponse(f"/applications/{application.id}", status_code=303)
+
+
+def _form(
+    request: Request, session: AuthenticatedSession, *, error: str, job_ad: str, url: str
+) -> Response:
+    """Re-render the paste box with what was typed still in it. Losing a pasted
+    ad to a validation error is the kind of small insult that stops a tool being
+    used.
+    """
+    return render(
+        request,
+        "application_form.html",
+        {
+            "session": session,
+            "user": session.user,
+            "error": error,
+            "values": {"job_ad": job_ad, "url": url},
+        },
+        status_code=400,
+    )
 
 
 @router.get("/applications/{application_id}")
@@ -175,6 +225,7 @@ def application_detail(
     if detail is None:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
+    extraction = applications.get_extraction(application_id)
     return render(
         request,
         "application_detail.html",
@@ -186,8 +237,70 @@ def application_detail(
             "statuses": STATUSES,
             "next_status": next_status(detail.application.status),
             "next_labels": _NEXT_LABEL,
+            "application_id": application_id,
+            **_extraction_context(extraction),
         },
     )
+
+
+@router.get("/applications/{application_id}/extraction")
+def extraction_panel(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+) -> Response:
+    """The extraction panel on its own, for htmx to poll while it is pending.
+
+    The fragment carries its own polling trigger only while `status` is
+    `pending`, so the poll stops by virtue of what came back rather than by
+    anything having to cancel it -- there is no timer left running against a
+    finished job, and no client-side state to get out of step with the row.
+    """
+    extraction = applications.get_extraction(application_id)
+    if extraction is None:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+    return render(
+        request,
+        "_extraction.html",
+        {"session": session, "application_id": application_id, **_extraction_context(extraction)},
+    )
+
+
+@router.post("/applications/{application_id}/extract")
+def extract_again(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Read the ad again. A button, never automatic.
+
+    Extraction is a model call on the user's own key, so a re-run spends their
+    money: it happens because a person asked, not because a page was refreshed
+    or a task was redelivered. `request_extraction` returns False when there is
+    no ad stored, and then nothing is enqueued -- a task that could only fail is
+    not worth queueing.
+    """
+    if applications.get_application(application_id) is None:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+    if applications.request_extraction(application_id):
+        tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
+    return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+def _extraction_context(extraction: ApplicationExtraction | None) -> dict[str, object]:
+    """One shape for both the full page and the polled fragment, so the panel
+    cannot render differently depending on which route produced it.
+    """
+    if extraction is None:
+        return {"extraction": None, "failure": None}
+    failure = extraction_failure(extraction.error_code) if extraction.status == "failed" else None
+    return {"extraction": extraction, "failure": failure}
 
 
 @router.post("/applications/{application_id}/status")

@@ -5,14 +5,26 @@ This is the wedge -- see CLAUDE.md's 2026-09-07 decision log entry and
 close are "a clear list of all the applications I have going"; this repository
 is that list.
 
-No model call anywhere in this module, deliberately: slice A is model-free so
-it costs nothing to run and keeps auth bugs separate from engine bugs. A
-pasted job ad's raw text is stored verbatim in `jobs.raw_text` -- reusing the
-existing domain-2a table rather than inventing a second place for job text --
-and NOTHING extracts `employer`/`title`/`location` from it here. That is a
-model call (`jfl_generate.extract.extract_requirements`) and belongs to slice
-B; when it lands, `jobs.upsert_job`-style logic will happily fill those columns
-in on the same deterministic row id this module already wrote.
+No model call anywhere in this module, deliberately -- and that stays true in
+slice B3, which is what the extraction methods at the bottom are for. A pasted
+job ad's raw text is stored verbatim in `jobs.raw_text` (reusing the existing
+domain-2a table rather than inventing a second place for job text) and nothing
+here reads `employer`/`title`/`location` out of it. That is a model call
+(`jfl_generate.extract.extract_requirements`), it takes ~30 seconds, and it
+happens in the worker: this module only records that it was asked for, hands
+the worker its input, and records what came back.
+
+**Extraction never overwrites something the user typed.** `title` is replaced
+only while `title_is_provisional` is true -- the placeholder this app derived
+from the ad's first line -- and `employer` only while it is NULL. That is a
+condition in the UPDATE's WHERE clause, not a check a caller has to remember,
+because the caller that forgets silently rewrites someone's own words.
+
+**Extraction costs the user money**, since users bring their own API key. So
+`claim_extraction` refuses to hand out work for an application that is already
+`done`: at-least-once delivery means a handler can be run twice, and twice here
+means paying twice. A genuine re-read is `request_extraction`, which a person
+has to press.
 
 **Transitions are recorded, never overwritten.** `change_status` updates
 `applications.status` AND inserts an `application_events` row in the same
@@ -27,14 +39,25 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 
 from jfl_core.db.tables import application_events as application_events_table
 from jfl_core.db.tables import applications as applications_table
+from jfl_core.db.tables import job_requirements as job_requirements_table
 from jfl_core.db.tables import jobs as jobs_table
 from jfl_core.ids import content_hash
 from jfl_core.ids import job_id as derive_job_id
-from jfl_core.models import Application, ApplicationDetail, ApplicationEvent, ApplicationStatus
+from jfl_core.models import (
+    Application,
+    ApplicationDetail,
+    ApplicationEvent,
+    ApplicationExtraction,
+    ApplicationStatus,
+    ExtractionErrorCode,
+    ExtractionInput,
+    ExtractionStatus,
+    JobRequirement,
+)
 from jfl_core.storage.tenancy import TenantScopedRepository
 
 DEFAULT_STATUS: ApplicationStatus = "interested"
@@ -49,6 +72,10 @@ _APPLICATION_COLUMNS = (
     applications_table.c.status,
     applications_table.c.source,
     applications_table.c.notes,
+    applications_table.c.extraction_status,
+    applications_table.c.extraction_error_code,
+    applications_table.c.extracted_at,
+    applications_table.c.title_is_provisional,
     applications_table.c.created_at,
     applications_table.c.updated_at,
 )
@@ -89,6 +116,10 @@ def _application_from_row(row: Any) -> Application:
         status=row.status,
         source=row.source,
         notes=row.notes,
+        extraction_status=row.extraction_status,
+        extraction_error_code=row.extraction_error_code,
+        extracted_at=row.extracted_at,
+        title_is_provisional=row.title_is_provisional,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -120,10 +151,18 @@ class PostgresApplicationRepository(TenantScopedRepository):
         notes: str | None = None,
         raw_job_text: str | None = None,
         status: ApplicationStatus = DEFAULT_STATUS,
+        title_is_provisional: bool = False,
+        extraction_status: ExtractionStatus = "none",
     ) -> Application:
         """Add an application, and write the "added" event that opens its
         timeline. `raw_job_text`, if given, is stored verbatim as a `jobs` row
-        (see the module docstring) and linked via `job_id`; it is never parsed.
+        (see the module docstring) and linked via `job_id`; it is never parsed
+        here.
+
+        `title_is_provisional` says the title is a placeholder this app derived
+        rather than the user's own words, and `extraction_status="pending"` says
+        a task has been (or is about to be) enqueued to read the ad properly.
+        Both default off, so the CLI-era callers keep their old behaviour.
         """
         job_id = self._store_raw_job(raw_job_text) if raw_job_text else None
 
@@ -140,6 +179,8 @@ class PostgresApplicationRepository(TenantScopedRepository):
                 status=status,
                 source=source,
                 notes=notes,
+                title_is_provisional=title_is_provisional,
+                extraction_status=extraction_status,
             )
             .returning(*_APPLICATION_COLUMNS)
         ).one()
@@ -255,6 +296,175 @@ class PostgresApplicationRepository(TenantScopedRepository):
         if row is None:
             raise ApplicationNotFoundError(application_id)
         return _application_from_row(row)
+
+    # -- extraction (slice B3) ---------------------------------------------
+    #
+    # Four methods, one per moment: asked for, picked up, finished, failed.
+    # Plus one read for the panel that shows the state.
+
+    def request_extraction(self, application_id: uuid.UUID) -> bool:
+        """Mark this application's ad as waiting to be read. Returns False if
+        there is no ad to read, in which case nothing is written and the caller
+        must not enqueue a task.
+
+        Separate from enqueueing on purpose: the row and the task row are two
+        writes and the second can fail, so the state the user sees is set by the
+        same transaction that decides whether there is anything to do.
+        """
+        row = self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+                applications_table.c.job_id.is_not(None),
+            )
+            .values(extraction_status="pending", extraction_error_code=None)
+            .returning(applications_table.c.id)
+        ).first()
+        return row is not None
+
+    def claim_extraction(self, application_id: uuid.UUID) -> ExtractionInput | None:
+        """The worker's read: the ad text to extract from, or None if there is
+        nothing to do.
+
+        None on any of three cases, all of which mean "do not call the model":
+        no such application for this user, no ad stored against it, or an
+        extraction that has already succeeded. The last is the one that matters
+        -- a redelivered task must not spend the user's money a second time on
+        an answer that is already in the database.
+        """
+        row = self._conn.execute(
+            select(applications_table.c.job_id, jobs_table.c.raw_text)
+            .select_from(applications_table.join(jobs_table))
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+                applications_table.c.extraction_status != "done",
+            )
+        ).first()
+        if row is None:
+            return None
+        return ExtractionInput(
+            application_id=application_id, job_id=row.job_id, raw_text=row.raw_text
+        )
+
+    def finish_extraction(
+        self, application_id: uuid.UUID, *, title: str | None, employer: str | None
+    ) -> None:
+        """Record a successful read, and fold what it found into the row --
+        but only into fields the user has not filled in themselves.
+
+        Two UPDATEs rather than one because they have different WHERE clauses,
+        and the WHERE clause is where the guarantee lives: a title is replaced
+        only while it is provisional, an employer only while it is NULL.
+        """
+        if title and title.strip():
+            self._conn.execute(
+                update(applications_table)
+                .where(
+                    applications_table.c.id == application_id,
+                    applications_table.c.user_id == self._user_id,
+                    applications_table.c.title_is_provisional.is_(True),
+                )
+                .values(title=title.strip(), title_is_provisional=False)
+            )
+        if employer and employer.strip():
+            self._conn.execute(
+                update(applications_table)
+                .where(
+                    applications_table.c.id == application_id,
+                    applications_table.c.user_id == self._user_id,
+                    applications_table.c.employer.is_(None),
+                )
+                .values(employer=employer.strip())
+            )
+        self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(extraction_status="done", extraction_error_code=None, extracted_at=func.now())
+        )
+
+    def fail_extraction(self, application_id: uuid.UUID, code: ExtractionErrorCode) -> None:
+        """Record that the read failed, as a code and never as a message.
+
+        The caller is holding the user's decrypted API key while it calls this.
+        A code from a closed set cannot carry one; a formatted exception can.
+        """
+        self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(extraction_status="failed", extraction_error_code=code)
+        )
+
+    def get_extraction(self, application_id: uuid.UUID) -> ApplicationExtraction | None:
+        """Everything the extraction panel renders, in one call. None if the
+        application is not this user's -- same answer as "does not exist".
+        """
+        row = self._conn.execute(
+            select(
+                applications_table.c.job_id,
+                applications_table.c.extraction_status,
+                applications_table.c.extraction_error_code,
+                applications_table.c.extracted_at,
+                jobs_table.c.employer,
+                jobs_table.c.title,
+                jobs_table.c.location,
+            )
+            .select_from(applications_table.outerjoin(jobs_table))
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+            )
+        ).first()
+        if row is None:
+            return None
+
+        requirements: list[JobRequirement] = []
+        if row.job_id is not None:
+            requirement_rows = self._conn.execute(
+                select(
+                    job_requirements_table.c.id,
+                    job_requirements_table.c.user_id,
+                    job_requirements_table.c.job_id,
+                    job_requirements_table.c.ordinal,
+                    job_requirements_table.c.text,
+                    job_requirements_table.c.necessity,
+                )
+                .where(
+                    job_requirements_table.c.job_id == row.job_id,
+                    job_requirements_table.c.user_id == self._user_id,
+                )
+                .order_by(job_requirements_table.c.ordinal.asc())
+            ).all()
+            requirements = [
+                JobRequirement(
+                    id=r.id,
+                    user_id=r.user_id,
+                    job_id=r.job_id,
+                    ordinal=r.ordinal,
+                    text=r.text,
+                    necessity=r.necessity,
+                )
+                for r in requirement_rows
+            ]
+
+        return ApplicationExtraction(
+            application_id=application_id,
+            status=row.extraction_status,
+            error_code=row.extraction_error_code,
+            extracted_at=row.extracted_at,
+            has_job_ad=row.job_id is not None,
+            employer=row.employer,
+            title=row.title,
+            location=row.location,
+            requirements=requirements,
+        )
 
     def _store_raw_job(self, raw_text: str) -> uuid.UUID:
         """Store a pasted job ad verbatim as a `jobs` row and return its id.

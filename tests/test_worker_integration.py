@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Iterator, Mapping
 
 import pytest
+from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import sessions as sessions_table
 from jfl_core.db.tables import users
 from jfl_core.storage.accounts import PostgresSessionRepository
@@ -65,9 +66,11 @@ def _build_worker(
     env: Mapping[str, str] | None = None,
     stream: io.StringIO | None = None,
 ) -> Worker:
-    settings = WorkerSettings(database_url=DATABASE_URL, system_user_id=user_id)
+    settings = WorkerSettings(
+        database_url=DATABASE_URL, system_user_id=user_id, master_key=MasterKey.generate()
+    )
     return Worker(
-        registry=registry or build_registry(),
+        registry=registry or build_registry(settings),
         settings=settings,
         queue_scope=postgres_queue_scope(engine),
         enqueuer_scope=postgres_enqueuer_scope(engine, user_id),

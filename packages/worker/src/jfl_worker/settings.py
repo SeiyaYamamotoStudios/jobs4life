@@ -16,9 +16,15 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import LOCAL_USER_ID
 
 DISABLE_MODEL_CALLS_ENV = "JFL_DISABLE_MODEL_CALLS"
+
+# Kept in sync with `jfl_gate.pricing.MODEL` and `RequestContext.model` the same
+# way those two are kept in sync with each other: by hand, because the worker's
+# settings module may not reach across into the gate to read a constant.
+DEFAULT_MODEL = "claude-opus-5"
 
 # Explicitly-off values. Anything else non-empty counts as ON, because the
 # person typing this is doing it at speed while a user's key burns money, and
@@ -131,16 +137,30 @@ class WorkerSettings:
     # which makes it the honest owner of work that is nobody's in particular.
     system_user_id: uuid.UUID = LOCAL_USER_ID
 
+    # The KEK, for unsealing a user's stored Anthropic key at the moment a
+    # handler needs it. Optional on the dataclass so a test can build settings
+    # for the model-free handlers without minting one; `from_env` always
+    # supplies it, so a deployed worker with no `JFL_MASTER_KEY` fails at boot
+    # rather than one task into someone's first extraction.
+    master_key: MasterKey | None = None
+
+    # Which model the handlers call. A product option, not a hidden default --
+    # see CLAUDE.md's 2026-09-05 decision. The web app and the CLI read the same
+    # `JFL_MODEL`, so a deployment sets it once.
+    model: str = DEFAULT_MODEL
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> WorkerSettings:
         """The only place this process reads its environment.
 
-        A missing `JFL_DATABASE_URL` raises here, at boot, rather than at the
-        first task.
+        A missing `JFL_DATABASE_URL` or `JFL_MASTER_KEY` raises here, at boot,
+        rather than at the first task.
         """
         source = os.environ if env is None else env
         return cls(
             database_url=source["JFL_DATABASE_URL"],
+            master_key=MasterKey.from_env(source),
+            model=source.get("JFL_MODEL") or DEFAULT_MODEL,
             poll_interval=_seconds(source, "JFL_WORKER_POLL_INTERVAL", DEFAULT_POLL_INTERVAL),
             visibility_timeout=_seconds(
                 source, "JFL_WORKER_VISIBILITY_TIMEOUT", DEFAULT_VISIBILITY_TIMEOUT

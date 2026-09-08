@@ -112,4 +112,11 @@ def test_the_worker_side_queue_is_deliberately_outside_the_tenancy_scheme() -> N
         for name, _ in inspect.getmembers(PostgresTaskQueue, predicate=inspect.isfunction)
         if not name.startswith("_")
     }
-    assert public == {"claim", "mark_succeeded", "mark_failed", "release", "reclaim_stale"}
+    assert public == {
+        "claim",
+        "mark_succeeded",
+        "mark_failed",
+        "fail_permanently",
+        "release",
+        "reclaim_stale",
+    }

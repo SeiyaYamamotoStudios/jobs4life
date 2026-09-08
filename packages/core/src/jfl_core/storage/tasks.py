@@ -346,6 +346,27 @@ class PostgresTaskQueue:
             last_error=_clean_error(error),
         )
 
+    def fail_permanently(self, task_id: uuid.UUID, *, now: dt.datetime, error: str) -> Task:
+        """Give up now, with attempts left on the clock.
+
+        For a failure a retry cannot fix: the user has no API key stored, the
+        payload names an application that is not theirs, the model refused. The
+        backoff ladder exists to ride out a transient 529 or a Postgres restart;
+        spending three attempts and twenty minutes to rediscover a missing key
+        is noise in the log and a worse answer on the screen, and where the
+        handler did reach the model it would be paying twice more to be told the
+        same thing.
+
+        `attempts` is left exactly as it is: it records what happened, and this
+        is a decision about the failure's kind, not its count.
+        """
+        return self._transition(
+            task_id,
+            status="failed",
+            finished_at=now,
+            last_error=_clean_error(error),
+        )
+
     def release(
         self,
         task_id: uuid.UUID,

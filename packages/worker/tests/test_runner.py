@@ -22,7 +22,7 @@ import pytest
 from jfl_core.models import ReclaimResult, Task
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import TaskEnqueuer, TaskQueue
-from jfl_worker.registry import HandlerRegistry, TaskContext
+from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
 from jfl_worker.runner import PURGE_SESSIONS_KIND, Worker
 from jfl_worker.settings import WorkerSettings
 from sqlalchemy import create_engine
@@ -96,6 +96,12 @@ class FakeQueue:
         return self._update(
             task_id, status="pending", scheduled_at=retry_at, started_at=None, last_error=error
         )
+
+    def fail_permanently(self, task_id: uuid.UUID, *, now: dt.datetime, error: str) -> Task:
+        """Terminal immediately, with attempts left on the clock -- exactly what
+        Postgres does, and the point of the distinction being tested.
+        """
+        return self._update(task_id, status="failed", finished_at=now, last_error=error)
 
     def release(
         self, task_id: uuid.UUID, *, retry_at: dt.datetime, note: str | None = None
@@ -211,6 +217,64 @@ def test_a_successful_task_is_marked_succeeded(engine: Engine) -> None:
     assert calls == [task.id]
     assert queue.tasks[task.id].status == "succeeded"
     assert queue.tasks[task.id].attempts == 1
+
+
+def test_a_permanent_failure_is_terminal_on_the_first_attempt(engine: Engine) -> None:
+    """`PermanentTaskError` skips the ladder entirely.
+
+    The case that motivated it: a user with no API key stored. Nothing changes
+    between attempts, so three of them would buy twenty minutes of a spinner on
+    a screen that should already be saying "add your API key" -- and, for a
+    handler that had reached the model, two more charges to be told the same.
+    """
+    queue = FakeQueue()
+    task = queue.add(make_task(max_attempts=3))
+
+    def handler(ctx: TaskContext) -> Mapping[str, object]:
+        raise PermanentTaskError("no Anthropic API key stored for this user")
+
+    registry = HandlerRegistry()
+    registry.register("thing", handler, calls_model=True)
+    stream = io.StringIO()
+    worker, _ = build_worker(engine, registry, queue, stream=stream)
+
+    worker.run_once()
+
+    failed = queue.tasks[task.id]
+    assert failed.status == "failed"
+    assert failed.finished_at == NOW
+    # One attempt spent, two left unused: the count records what happened, and
+    # giving up is a judgement about the failure's kind, not its number.
+    assert failed.attempts == 1
+    assert "no Anthropic API key stored" in (failed.last_error or "")
+
+    # And it stays failed: nothing re-claims it, whatever the clock says.
+    later = NOW + dt.timedelta(hours=1)
+    worker, _ = build_worker(engine, registry, queue, clock=later)
+    assert worker.run_once() == 0
+
+    line = json.loads(stream.getvalue().strip().splitlines()[-1])
+    assert line["event"] == "task.failed"
+    assert line["permanent"] is True
+
+
+def test_an_ordinary_failure_is_still_retried(engine: Engine) -> None:
+    """The distinction is only worth having if the other branch survives."""
+    queue = FakeQueue()
+    task = queue.add(make_task(max_attempts=3))
+
+    def handler(ctx: TaskContext) -> Mapping[str, object]:
+        raise RuntimeError("a 529 from the model API, say")
+
+    registry = HandlerRegistry()
+    registry.register("thing", handler, calls_model=True)
+    worker, _ = build_worker(engine, registry, queue)
+
+    worker.run_once()
+
+    retrying = queue.tasks[task.id]
+    assert retrying.status == "pending"
+    assert retrying.scheduled_at > NOW
 
 
 def test_a_failing_task_retries_with_backoff_then_lands_failed(engine: Engine) -> None:

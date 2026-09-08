@@ -37,7 +37,7 @@ def main() -> int:
     engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=2, max_overflow=2)
 
     worker = Worker(
-        registry=build_registry(),
+        registry=build_registry(settings),
         settings=settings,
         queue_scope=postgres_queue_scope(engine),
         enqueuer_scope=postgres_enqueuer_scope(engine, settings.system_user_id),

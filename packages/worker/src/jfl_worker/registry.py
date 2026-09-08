@@ -52,9 +52,31 @@ class TaskContext:
         return self.task.user_id
 
 
+class PermanentTaskError(Exception):
+    """Raise from a handler for a failure a retry cannot fix.
+
+    The retry ladder rides out transient trouble -- a 529 from the model API, a
+    Postgres restart. It is the wrong answer for "this user has no API key
+    stored" or "the payload names an application that does not exist": nothing
+    changes between attempts, so three of them buy twenty minutes of a worse
+    message on the user's screen and, for anything that reached the model, two
+    more charges to be told the same thing.
+
+    The runner marks the task `failed` immediately on this, leaving `attempts`
+    as it is -- the count records what happened; this is a statement about the
+    failure's kind, not its number.
+
+    **The message goes into `tasks.last_error`, which is read back by admin
+    queries and quoted into log lines. Construct it from literals.** Never
+    format an exception from the Anthropic SDK, a payload, or anything that has
+    been near a credential into it.
+    """
+
+
 # A handler returns whatever it wants recorded in the success log line -- counts,
 # ids, a cost. None means "nothing worth saying". It raises to fail; the worker
-# turns the exception into `last_error` and a retry.
+# turns the exception into `last_error` and a retry -- or, for
+# `PermanentTaskError`, into a terminal failure with no retry.
 Handler = Callable[[TaskContext], Mapping[str, object] | None]
 
 

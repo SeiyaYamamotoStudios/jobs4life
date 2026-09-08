@@ -5,6 +5,11 @@
   <h1>{{ application.title }}</h1>
   <a href="/applications">Back to applications</a>
 </div>
+{% if application.title_is_provisional %}
+{# Honest about what it is: a line lifted off the top of the ad, standing in
+   until the background read replaces it. #}
+<p class="note">Provisional title, taken from the top of the ad.</p>
+{% endif %}
 
 <dl class="facts">
   <dt>Employer</dt><dd>{{ application.employer or "—" }}</dd>
@@ -17,10 +22,9 @@
   <dd title="{{ application.created_at.isoformat() }}">{{ application.created_at | humanize_dt }}</dd>
   <dt>Updated</dt>
   <dd title="{{ application.updated_at.isoformat() }}">{{ application.updated_at | humanize_dt }}</dd>
-  {% if application.job_id %}
-  <dt>Job ad</dt><dd>Stored (<code>{{ application.job_id }}</code>) — not yet extracted.</dd>
-  {% endif %}
 </dl>
+
+{% include "_extraction.html" %}
 
 <section>
   <h2>Status</h2>

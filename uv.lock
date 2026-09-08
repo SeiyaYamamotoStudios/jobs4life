@@ -1004,10 +1004,14 @@ version = "0.1.0"
 source = { editable = "packages/worker" }
 dependencies = [
     { name = "jfl-core" },
+    { name = "jfl-generate" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "jfl-core", editable = "packages/core" }]
+requires-dist = [
+    { name = "jfl-core", editable = "packages/core" },
+    { name = "jfl-generate", editable = "packages/generate" },
+]
 
 [[package]]
 name = "jinja2"

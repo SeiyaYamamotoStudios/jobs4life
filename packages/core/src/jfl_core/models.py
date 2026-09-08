@@ -165,6 +165,26 @@ ApplicationStatus = Literal[
     "interested", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn"
 ]
 
+# Slice B3. Where the background read of the pasted ad has got to -- deliberately
+# a separate axis from `ApplicationStatus`, which is where the application is in
+# the world. An extraction that failed says nothing about whether the user has
+# applied, and collapsing the two would make one lie about the other.
+ExtractionStatus = Literal["none", "pending", "done", "failed"]
+
+# A closed set, and never a message. The worker writes this while holding the
+# user's decrypted API key, and a free-text error column is exactly where a
+# careless `str(exc)` from the SDK ends up. Wording lives in the web layer, where
+# it can change without a migration.
+ExtractionErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "no_job_ad",
+    "ad_too_long",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+]
+
 
 class Application(BaseModel):
     id: uuid.UUID
@@ -176,6 +196,12 @@ class Application(BaseModel):
     status: ApplicationStatus
     source: str | None = None
     notes: str | None = None
+    extraction_status: ExtractionStatus = "none"
+    extraction_error_code: ExtractionErrorCode | None = None
+    extracted_at: dt.datetime | None = None
+    # True while `title` is a placeholder taken from the ad's first line. See
+    # `jfl_core.db.tables.applications` for why this is a column and not a guess.
+    title_is_provisional: bool = False
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -198,6 +224,39 @@ class ApplicationDetail(BaseModel):
 
     application: Application
     events: list[ApplicationEvent]
+
+
+class ExtractionInput(BaseModel):
+    """What the `extract_job_ad` handler needs to do its work, read out of the
+    database under the task's own `user_id` rather than carried in the payload.
+
+    The ad text is deliberately NOT in the task payload. It is already stored
+    once, verbatim, in `jobs.raw_text`; a second copy in `tasks.payload` would
+    be a second place a user's job ad lives, read back by admin queries and
+    quoted into log lines, for no gain over a scoped read of the row.
+    """
+
+    application_id: uuid.UUID
+    job_id: uuid.UUID
+    raw_text: str
+
+
+class ApplicationExtraction(BaseModel):
+    """The extraction panel's whole state, in one read.
+
+    `status` is the only thing the UI needs while work is in flight; the rest is
+    the result, and is empty until `status == "done"`.
+    """
+
+    application_id: uuid.UUID
+    status: ExtractionStatus
+    error_code: ExtractionErrorCode | None = None
+    extracted_at: dt.datetime | None = None
+    has_job_ad: bool = False
+    employer: str | None = None
+    title: str | None = None
+    location: str | None = None
+    requirements: list[JobRequirement] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------

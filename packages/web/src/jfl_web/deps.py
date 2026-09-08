@@ -21,6 +21,7 @@ from jfl_core.storage.accounts import (
 )
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
+from jfl_core.storage.tasks import PostgresTaskRepository
 from sqlalchemy.engine import Connection
 
 from jfl_web.oauth import GoogleIdentityProvider
@@ -118,6 +119,18 @@ def application_repo(session: SessionDep, conn: ConnDep) -> PostgresApplicationR
 
 
 ApplicationRepoDep = Annotated[PostgresApplicationRepository, Depends(application_repo)]
+
+
+def task_repo(session: SessionDep, conn: ConnDep) -> PostgresTaskRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    The web side of the queue only ever enqueues and reads back; claiming is the
+    worker's, through `PostgresTaskQueue`, which is cross-tenant by necessity.
+    """
+    return PostgresTaskRepository(conn, session.user.id)
+
+
+TaskRepoDep = Annotated[PostgresTaskRepository, Depends(task_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

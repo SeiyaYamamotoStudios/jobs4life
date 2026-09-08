@@ -45,7 +45,7 @@ from sqlalchemy.engine import Engine
 
 from jfl_worker.log import LOGGER_NAME, log_event
 from jfl_worker.queue import EnqueuerScope, QueueScope
-from jfl_worker.registry import HandlerRegistry, TaskContext
+from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
 from jfl_worker.settings import WorkerSettings, model_calls_disabled
 
 PURGE_SESSIONS_KIND = "purge_expired_sessions"
@@ -265,9 +265,18 @@ class Worker:
         # Type and message only. The traceback goes to the log line, not to the
         # database row, and neither carries the payload.
         error = f"{type(exc).__name__}: {exc}"
+        # A handler that raises `PermanentTaskError` has said the retry ladder
+        # cannot help -- no key stored, no such application, a refusal. Retrying
+        # would spend attempts, and for anything that reached the model, money,
+        # to be told the same thing.
+        permanent = isinstance(exc, PermanentTaskError)
         retry_at = now + self._settings.retry_delay(task.attempts)
         with self._queue_scope() as queue:
-            updated = queue.mark_failed(task.id, now=now, error=error, retry_at=retry_at)
+            updated = (
+                queue.fail_permanently(task.id, now=now, error=error)
+                if permanent
+                else queue.mark_failed(task.id, now=now, error=error, retry_at=retry_at)
+            )
 
         exhausted = updated.status == "failed"
         log_event(
@@ -283,6 +292,7 @@ class Worker:
             max_attempts=task.max_attempts,
             duration_ms=elapsed_ms,
             error=error,
+            permanent=permanent,
             retry_at=None if exhausted else retry_at.isoformat(),
             exc_info=True,
         )

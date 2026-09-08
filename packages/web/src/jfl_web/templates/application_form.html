@@ -7,31 +7,22 @@
 <form method="post" action="/applications">
   <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
 
-  <label for="title">Title</label>
-  <input type="text" id="title" name="title" required autofocus
-         value="{{ values.title if values else '' }}">
-
-  <label for="employer">Employer</label>
-  <input type="text" id="employer" name="employer" value="{{ values.employer if values else '' }}">
-
-  <label for="url">URL</label>
-  <input type="url" id="url" name="url" placeholder="https://…"
-         value="{{ values.url if values else '' }}">
-
-  <label for="source">Source</label>
-  <input type="text" id="source" name="source" placeholder="e.g. referral, LinkedIn, company site"
-         value="{{ values.source if values else '' }}">
-
-  <label for="notes">Notes</label>
-  <textarea id="notes" name="notes" rows="3">{{ values.notes if values else '' }}</textarea>
-
   <label for="job_ad">Job ad</label>
   <p class="note">
-    Optional. Stored exactly as pasted — nothing here is parsed or extracted.
-    That comes later, behind the claim gate.
+    Paste the whole ad. Everything else — the title, the employer, the
+    requirements — is read out of it in the background, so there is nothing here
+    to retype.
   </p>
-  <textarea id="job_ad" name="job_ad" rows="14"
+  <textarea id="job_ad" name="job_ad" rows="18" required autofocus
             placeholder="Paste the job ad text here">{{ values.job_ad if values else '' }}</textarea>
+
+  <label for="url">Link (optional)</label>
+  <p class="note">
+    Kept for reference only — the ad is read from what you pasted, not from the
+    link. A link can rot, or need a login; the paste always works.
+  </p>
+  <input type="url" id="url" name="url" placeholder="https://…"
+         value="{{ values.url if values else '' }}">
 
   <button type="submit">Add application</button>
 </form>

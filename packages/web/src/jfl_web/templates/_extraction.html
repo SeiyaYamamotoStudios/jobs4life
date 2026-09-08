@@ -1,0 +1,78 @@
+{# The extraction panel, rendered both inside the detail page and on its own by
+   GET /applications/{id}/extraction.
+
+   The polling trigger lives on this element and only while the state is
+   `pending`, so a finished extraction stops the poll by virtue of what came
+   back: there is no timer to cancel and no client-side state to get out of step
+   with the row. `hx-swap="outerHTML"` because the element replaces itself. #}
+<section id="extraction"
+         {% if extraction and extraction.status == "pending" %}
+         hx-get="/applications/{{ application_id }}/extraction"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML"
+         {% endif %}>
+  <h2>The ad</h2>
+
+  {% if not extraction or not extraction.has_job_ad %}
+  <p class="note">No job ad stored against this application.</p>
+
+  {% elif extraction.status == "pending" %}
+  <p class="note" role="status">Reading the job ad… this takes about half a minute.</p>
+
+  {% elif extraction.status == "failed" %}
+  <p class="error" role="alert">
+    {{ failure.message }}
+    {% if failure.fix_url %}<a href="{{ failure.fix_url }}">{{ failure.fix_label }}</a>.{% endif %}
+  </p>
+  <form method="post" action="/applications/{{ application_id }}/extract">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Try reading it again</button>
+  </form>
+
+  {% elif extraction.status == "done" %}
+  <dl class="facts">
+    <dt>Title</dt><dd>{{ extraction.title or "—" }}</dd>
+    <dt>Employer</dt><dd>{{ extraction.employer or "—" }}</dd>
+    <dt>Location</dt><dd>{{ extraction.location or "—" }}</dd>
+    {% if extraction.extracted_at %}
+    <dt>Read</dt>
+    <dd title="{{ extraction.extracted_at.isoformat() }}">{{ extraction.extracted_at | humanize_dt }}</dd>
+    {% endif %}
+  </dl>
+
+  <h3>Requirements</h3>
+  {% if extraction.requirements %}
+  <ul class="requirements">
+    {% for requirement in extraction.requirements %}
+    <li>
+      <span class="necessity necessity-{{ requirement.necessity }}">{{ requirement.necessity }}</span>
+      {{ requirement.text }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">The ad named no requirements this could pull out.</p>
+  {% endif %}
+
+  {# Explicit, never automatic: a re-read is another model call on the user's
+     own key, so it happens because they pressed something. #}
+  <details class="status-more">
+    <summary>Read the ad again</summary>
+    <p class="note">
+      This calls the model again and is billed to your own API key. Worth it if
+      the ad was pasted incompletely the first time.
+    </p>
+    <form method="post" action="/applications/{{ application_id }}/extract">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="secondary">Read it again</button>
+    </form>
+  </details>
+
+  {% else %}
+  <p class="note">This ad has not been read yet.</p>
+  <form method="post" action="/applications/{{ application_id }}/extract">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Read the job ad</button>
+  </form>
+  {% endif %}
+</section>

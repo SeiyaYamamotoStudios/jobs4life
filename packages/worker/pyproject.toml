@@ -2,11 +2,16 @@
 name = "jfl-worker"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-# The background worker: slice B1. Deliberately thin -- `jfl-core` and nothing
-# else. In particular NO `anthropic`: the queue is infrastructure, and the
-# handlers that call models arrive with the slices that need them. A dependency
-# that cannot be imported cannot be called by accident.
-dependencies = ["jfl-core"]
+# The background worker. `jfl-core` for storage and crypto; `jfl-generate` for
+# the engine the handlers run -- which brings `anthropic` with it.
+#
+# B1 shipped with `jfl-core` alone and a comment saying a dependency that cannot
+# be imported cannot be called by accident. B3 is the slice that needs it: the
+# `extract_job_ad` handler calls `jfl_generate.extract.extract_requirements` on
+# the user's own key. The guarantee moved rather than went away -- what stops an
+# accidental model call now is `calls_model=True` at registration and the
+# `JFL_DISABLE_MODEL_CALLS` switch that acts on it.
+dependencies = ["jfl-core", "jfl-generate"]
 
 [project.scripts]
 jfl-worker = "jfl_worker.main:main"
@@ -20,3 +25,4 @@ packages = ["src/jfl_worker"]
 
 [tool.uv.sources]
 jfl-core = { workspace = true }
+jfl-generate = { workspace = true }

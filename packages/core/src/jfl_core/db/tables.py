@@ -507,6 +507,29 @@ _APPLICATION_STATUSES = (
     "withdrawn",
 )
 
+# Slice B3: where the background read of the pasted ad has got to. Separate from
+# `status` on purpose -- `status` is where the *application* is in the world, and
+# an extraction failing has nothing to do with whether the user has applied.
+#
+# `none` is the honest fourth value: rows added before B3, and rows added with no
+# ad text at all, have never had an extraction and are not "pending" one.
+_EXTRACTION_STATUSES = ("none", "pending", "done", "failed")
+
+# Why a code and not a message. The failure is written by the worker, which is
+# holding the user's decrypted API key three frames up the stack; a free-text
+# error column is exactly where a careless `str(exc)` from the SDK ends up. A
+# closed set of codes cannot carry a secret, and the wording belongs to the web
+# layer anyway, where it can be changed without a migration.
+_EXTRACTION_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "no_job_ad",
+    "ad_too_long",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+)
+
 applications = Table(
     "applications",
     metadata,
@@ -528,6 +551,16 @@ applications = Table(
     # is where a real taxonomy belongs; this is a user-typed label.
     Column("source", Text),
     Column("notes", Text),
+    # -- slice B3: the background read of the pasted ad -----------------------
+    Column("extraction_status", Text, nullable=False, server_default="none"),
+    Column("extraction_error_code", Text),
+    _ts("extracted_at"),
+    # Whether `title` is a placeholder this app derived from the ad's first line
+    # rather than something the user typed. It is what makes "never overwrite
+    # something the user typed themselves" a fact about the row instead of a
+    # guess: extraction may replace a provisional title and may not replace any
+    # other kind, and once it has, the title stops being provisional.
+    Column("title_is_provisional", Boolean, nullable=False, server_default=text("false")),
     _ts("created_at", nullable=False, server_default=func.now()),
     # `onupdate` is a Core-level default: SQLAlchemy adds `updated_at = now()`
     # to any UPDATE built from this table that does not itself set the column
@@ -537,6 +570,16 @@ applications = Table(
     CheckConstraint(
         "status in ('" + "','".join(_APPLICATION_STATUSES) + "')",
         name="status",
+    ),
+    CheckConstraint(
+        "extraction_status in ('" + "','".join(_EXTRACTION_STATUSES) + "')",
+        name="extraction_status",
+    ),
+    CheckConstraint(
+        "extraction_error_code is null or extraction_error_code in ('"
+        + "','".join(_EXTRACTION_ERROR_CODES)
+        + "')",
+        name="extraction_error_code",
     ),
     Index("ix_applications_user_id_updated_at", "user_id", "updated_at"),
     Index("ix_applications_user_id_status", "user_id", "status"),
