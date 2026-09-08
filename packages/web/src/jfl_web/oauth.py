@@ -80,15 +80,22 @@ class AuthlibGoogleProvider:
         return response
 
     async def fetch_identity(self, request: Request) -> GoogleIdentity:
-        from authlib.integrations.base_client.errors import BaseAppError
+        # AuthlibBaseError, not BaseAppError: the latter does not exist in
+        # Authlib 1.8 and the import sat inside this function, so it raised only
+        # on a real token exchange -- every test stubs the provider out, and
+        # mypy does not resolve names through an untyped dependency. The first
+        # thing to exercise it was a live Google sign-in returning a 500.
+        from authlib.integrations.base_client.errors import AuthlibBaseError
 
         try:
             token = await self._client.authorize_access_token(request)
-        except BaseAppError as exc:
+        except AuthlibBaseError as exc:
             # Authlib's message can quote provider error codes but never the
             # client secret or the code; still, do not chain -- a traceback from
             # inside the client has the token exchange's request in scope.
-            raise OAuthError(f"Google sign-in failed: {exc.error or 'unknown error'}") from None
+            raise OAuthError(
+                f"Google sign-in failed: {getattr(exc, 'error', None) or 'unknown error'}"
+            ) from None
 
         claims = token.get("userinfo") or {}
         return _identity_from_claims(claims)
