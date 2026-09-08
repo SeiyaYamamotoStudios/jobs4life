@@ -1,0 +1,41 @@
+# Production stack for the jobs4life VPS. Lives at /opt/jobs4life on the box.
+#
+# There is no worker service yet: slice A makes no model calls at all, so there
+# is nothing to queue. The worker arrives with slice B, when a ~2-minute claim
+# gate call needs somewhere to run that is not a request.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    env_file: .env
+    # Loopback ONLY, and this is not cosmetic: Docker writes its iptables rules
+    # ahead of ufw's, so "5432:5432" would be reachable from the internet
+    # regardless of `ufw default deny incoming`.
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    # Same reasoning as above. Cloudflare Tunnel dials out to this port from the
+    # host; nothing dials in from outside.
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # The app talks to Postgres over the compose network, not the host's
+      # loopback publish.
+      JFL_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+
+volumes:
+  pgdata:

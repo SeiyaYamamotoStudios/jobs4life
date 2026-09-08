@@ -1,0 +1,76 @@
+# The jobs4life web app.
+#
+# Two stages so the runtime image carries no build tooling. Only `jfl-web` and
+# its workspace dependencies are installed -- `--package jfl-web` -- which keeps
+# `sentence-transformers` and `torch` out: they are an optional extra of
+# `jfl-core` (~3GB) and nothing in the web path touches them. Retrieval is unused
+# in v1 by decision, so this is not a shortcut, it is the actual dependency set.
+
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /build
+
+# Dependency resolution is cached separately from source: the manifests change
+# rarely, the source changes every deploy.
+COPY pyproject.toml uv.lock ./
+COPY packages/core/pyproject.toml packages/core/
+COPY packages/gate/pyproject.toml packages/gate/
+COPY packages/generate/pyproject.toml packages/generate/
+COPY packages/cli/pyproject.toml packages/cli/
+COPY packages/evals/pyproject.toml packages/evals/
+COPY packages/web/pyproject.toml packages/web/
+
+# Sources must exist for the workspace members to build; stub them so the
+# dependency layer can resolve before real source is copied.
+RUN mkdir -p packages/core/src/jfl_core packages/gate/src/jfl_gate \
+      packages/generate/src/jfl_generate packages/cli/src/jfl_cli \
+      packages/evals/src/jfl_evals packages/web/src/jfl_web \
+ && touch packages/core/src/jfl_core/__init__.py packages/gate/src/jfl_gate/__init__.py \
+      packages/generate/src/jfl_generate/__init__.py packages/cli/src/jfl_cli/__init__.py \
+      packages/evals/src/jfl_evals/__init__.py packages/web/src/jfl_web/__init__.py
+
+RUN uv sync --frozen --no-dev --package jfl-web --no-install-workspace
+
+COPY packages/ packages/
+COPY migrations/ migrations/
+COPY alembic.ini ./
+RUN uv sync --frozen --no-dev --package jfl-web
+
+
+FROM python:3.12-slim-bookworm AS runtime
+
+# Runs as a non-root user. The container is reachable only from the host's
+# loopback (Cloudflare Tunnel dials out to it), but a container escape should
+# not land on uid 0.
+RUN groupadd --system --gid 1001 app \
+ && useradd --system --uid 1001 --gid app --create-home app
+
+WORKDIR /app
+COPY --from=builder --chown=app:app /build/.venv /app/.venv
+COPY --from=builder --chown=app:app /build/packages /app/packages
+COPY --from=builder --chown=app:app /build/migrations /app/migrations
+COPY --from=builder --chown=app:app /build/alembic.ini /app/alembic.ini
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER app
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status==200 else 1)"
+
+# `--factory`: jfl_web.app exposes create_app(), not a module-level `app`, so
+# settings are read at startup rather than at import.
+#
+# Log level is deliberately NOT debug. Authlib logs the PKCE `code_verifier` at
+# DEBUG (authlib/integrations/base_client/sync_app.py), and a verifier in the
+# logs undermines the protection PKCE exists to give.
+CMD ["uvicorn", "jfl_web.app:create_app", "--factory", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--log-level", "info", "--proxy-headers", "--forwarded-allow-ips", "*"]
