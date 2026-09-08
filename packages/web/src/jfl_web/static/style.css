@@ -1,27 +1,40 @@
 /* Plain and legible. A working tool, not a showcase. No web fonts, no CDN --
-   every byte this page needs is served from here. */
+   every byte this page needs is served from here.
+
+   Palette follows www.hiltonlabs.org: a warm off-white ground (#F7F6F3) with
+   white content surfaces and a dark navy accent (#1E2B3A), both taken from that
+   site's own custom properties. Warm neutrals throughout -- the borders and
+   muted text are warm greys, not blue-greys, because a cool rule against a warm
+   ground reads as a mistake. Restraint over decoration: content carries the
+   page, colour is reserved for meaning (a verdict, a status, an error). */
 
 :root {
-  --ink: #14171a;
-  --muted: #5c6570;
-  --rule: #d8dde2;
-  --ground: #fbfbfa;
+  --ink: #1e2b3a;         /* the site's accent, used as primary ink */
+  --ink-soft: #3d4a58;    /* body copy: navy pulled back from headings */
+  --muted: #6b7280;
+  --rule: #e5e2dc;        /* warm, sits with the ground rather than against it */
+  --rule-soft: #efedE7;
+  --ground: #f7f6f3;
   --panel: #ffffff;
-  --accent: #1a4f8a;
-  --bad: #8a1f1f;
-  --good: #1c6b3a;
+  --accent: #1e2b3a;
+  --bad: #9a3412;
+  --good: #2f6b4f;
+  --warn: #8a6d1f;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e7e9ec;
-    --muted: #9aa4af;
-    --rule: #333a42;
-    --ground: #14171a;
-    --panel: #1b1f24;
-    --accent: #7fb2ea;
-    --bad: #e88a8a;
-    --good: #7fc79c;
+    --ink: #ecebe7;
+    --ink-soft: #cdcbc5;
+    --muted: #9a9790;
+    --rule: #33383f;
+    --rule-soft: #262b31;
+    --ground: #16191d;
+    --panel: #1d2126;
+    --accent: #a8c4e0;
+    --bad: #e0a08a;
+    --good: #8fc7a8;
+    --warn: #d4b872;
   }
 }
 
@@ -31,7 +44,8 @@ body {
   margin: 0;
   background: var(--ground);
   color: var(--ink);
-  font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 header {
@@ -39,7 +53,7 @@ header {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: 1.15rem 1.5rem;
   border-bottom: 1px solid var(--rule);
   background: var(--panel);
 }
@@ -55,15 +69,17 @@ nav { display: flex; align-items: baseline; gap: 1rem; }
 nav form { display: inline; margin: 0; }
 
 main {
-  max-width: 44rem;
+  max-width: 46rem;
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
+  padding: 2.75rem 1.5rem 5rem;
 }
 
-h1 { font-size: 1.5rem; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
-h2 { font-size: 1.1rem; margin: 2rem 0 0.5rem; }
+h1 { font-size: 1.6rem; margin: 0 0 0.6rem; letter-spacing: -0.02em; font-weight: 650; }
+h2 { font-size: 1.05rem; margin: 2.4rem 0 0.6rem; letter-spacing: -0.01em; font-weight: 650; }
+p { color: var(--ink-soft); }
 
-a { color: var(--accent); }
+a { color: var(--accent); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
 
 .lede { color: var(--muted); margin-top: 0; }
 .note { color: var(--muted); font-size: 0.9rem; }
