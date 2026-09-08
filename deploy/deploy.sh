@@ -24,7 +24,11 @@ REMOTE_DIR="${JFL_DEPLOY_DIR:-/opt/jobs4life}"
 # built but not restarted. Multiplexing puts every command down ONE connection,
 # so the rate limit never sees a burst. The alternative -- relaxing ufw to
 # `allow` -- would weaken the box to suit a script, which is the wrong way round.
-CTL="$(mktemp -u /tmp/jfl-ssh-%C)"
+# %C is an ssh token (a hash of host/port/user), expanded by ssh itself --
+# not a mktemp template. Kept under ~/.ssh because a unix socket path is
+# capped near 104 characters.
+mkdir -p ~/.ssh/cm
+CTL="$HOME/.ssh/cm/%C"
 SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=$CTL" -o ControlPersist=120)
 ssh_run() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 cleanup() { ssh "${SSH_OPTS[@]}" -O exit "$HOST" 2>/dev/null || true; }
