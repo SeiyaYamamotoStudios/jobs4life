@@ -54,6 +54,40 @@ that mattered was found that way and none by review.
 
 ## Next
 
+### Resume here — end of session, 2026-09-11
+
+**The working tree is mid-edit. Do not commit it blind.**
+
+- **Deployed and healthy: `451f50a`** — the watched-boards engine with Greenhouse, Ashby,
+  Lever and Workday adapters, presence intervals, the completeness rules, and the
+  socket-level network guard. Zero boards in production; the scheduler is running and
+  inert. Zero errors in app or worker logs after deploy.
+- **Uncommitted, and verified green before the fixes below began:** eight more adapters —
+  SmartRecruiters, Rippling, Breezy, Teamtailor, Personio, Recruitee, Pinpoint, Workable —
+  parsing XML only through `defusedxml`; 872 unit and 150 integration tests passing.
+- **In flight when the session ended — a subagent applying three fixes, possibly only
+  partly written:**
+  1. A **new** migration widening `ck_watched_boards_platform` to all twelve platforms.
+     The original `f07cdd619c07` is deployed — **never edit it.** Plus `_BOARD_PLATFORMS`
+     in `tables.py`, plus a test that `default_registry()`, the `BoardPlatform` Literal and
+     `_BOARD_PLATFORMS` stay equal. Without this, adding a board on any of the eight new
+     platforms fails at INSERT.
+  2. Text support in `jfl_intake/http.py`, so Teamtailor (RSS) and Personio (XML) can
+     succeed live. Today the transport turns any non-JSON body into `None`.
+  3. Rippling locations merged deterministically: its board is 648 rows but 347 jobs, one
+     row per job × location.
+- **To resume:** the next session will offer to resume that subagent; otherwise inspect the
+  tree directly. Then run the full verification — ruff and format, mypy, unit, integration,
+  the tenancy test, `pytest packages/intake`, and alembic up / down / up — and commit only
+  if every one passes.
+- **After that:** deploy; build the minimal "add a board, see my boards" screen, since
+  history cannot be backfilled and every day unwatched is lost (owner to confirm); and settle
+  the four display questions before the comparison feed is built — since-last-looked vs
+  fixed windows, how long gone jobs stay on the main screen, one global filter vs per board,
+  and whether "Track as application" reads the ad with the model.
+- **Twenty commits were unpushed** at the end of this session.
+
+
 **Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
 quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,
 which replaces the six-field add form with a paste box and is the queue's first real

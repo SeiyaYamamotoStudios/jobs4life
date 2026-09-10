@@ -17,7 +17,7 @@ into the history slice C exists to show. See CLAUDE.md, 2026-09-10, and `PLAN.md
 | Lever | `GET api.lever.co/v0/postings/{company}?mode=json` | `id` (title is `text`) | — | single response | `leverdemo` — 13 |
 | **Workday** | `POST {t}.{wdN}.myworkdayjobs.com/wday/cxs/{t}/{site}/jobs` | `externalPath` suffix, e.g. `R171808-1` | `bulletFields[0]` | **paged, with traps** — below | NVIDIA — 2,630; Adobe — 730 |
 | SmartRecruiters | `GET api.smartrecruiters.com/v1/companies/{id}/postings` | `id` | `refNumber` | paged by the **echoed** `limit` — below | Bosch — 4,835 |
-| Rippling | `GET api.rippling.com/platform/api/ats/v1/board/{slug}/jobs` | `uuid` (title is `name`) | — | single response (v2 pages at 20 — use v1) | Rippling — 647 |
+| Rippling | `GET api.rippling.com/platform/api/ats/v1/board/{slug}/jobs` | `uuid` (title is `name`) | — | single response, **one row per job × location** — below (v2 pages at 20 — use v1) | Rippling — 648 rows, 347 jobs |
 | Breezy | `GET {company}.breezy.hr/json` | `id` | — | single response | Breezy — 3 |
 | Teamtailor | `GET {careers site}/jobs.rss` | `guid` | — | single feed | career.teamtailor.com — 12 |
 | Personio | `GET {company}.jobs.personio.de/xml` | `id` | — | single feed | Personio — 1 |
@@ -29,7 +29,7 @@ into the history slice C exists to show. See CLAUDE.md, 2026-09-10, and `PLAN.md
 aggregators, never a customer's board to test against.
 
 "Single response" on a small board proves little about caps on a large one. Only Greenhouse
-(595), Rippling (647) and Pinpoint (206) were observed returning a large list in one response.
+(595), Rippling (648 rows, 347 jobs) and Pinpoint (206) were observed returning a large list in one response.
 
 ## Keys: the posting, never the requisition
 
@@ -108,6 +108,29 @@ it asked for.
 - Fields are top-level — not JSON:API `attributes`/`relationships`.
 - The public posting URL uses a UUID path; the API `id` is numeric.
 - `/api/v1/*` is the authenticated API (HTTP 401). Not used.
+
+## Rippling — one row per job, per location
+
+Verified 2026-09-11 against Rippling's own board (v1): **648 rows but only 347 distinct
+`uuid`s.** 129 jobs appear more than once — up to 20 copies of a single `uuid` — and across
+those copies **only `workLocation` differs** (128 of the 129; one job repeats identically).
+"Account Executive, Broker Channel (Pittsburgh or Cleveland)" is two rows: one for Cleveland,
+one for Pittsburgh.
+
+- **The job is the `uuid`; a row is a job × location.** Count jobs by distinct `uuid`, or a
+  347-job board reads as 648 and the drop guard compares the wrong number.
+- **Merge a job's locations deterministically — distinct, sorted — never keep the first row.**
+  First-occurrence makes the stored location depend on the order Rippling happens to return
+  rows, and location is half the repost fingerprint, so a reordering alone could manufacture a
+  false repost.
+
+## Personio — no verifiable posting URL
+
+The XML feed carries no URL field. The obvious pattern, `{company}.jobs.personio.de/job/{id}`,
+returned **HTTP 429 on both of two separate attempts**, and the redirect lands on personio.com's
+marketing homepage. It is unverified, so the adapter leaves the job URL empty rather than ship a
+guess. Do not probe it repeatedly — Personio rate-limits hard, and politeness is a requirement
+here, not a courtesy.
 
 ## Greenhouse
 
