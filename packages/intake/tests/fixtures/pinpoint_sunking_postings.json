@@ -1,0 +1,148 @@
+{
+  "data": [
+    {
+      "id": "332887",
+      "compensation": null,
+      "compensation_minimum": null,
+      "compensation_maximum": null,
+      "compensation_currency": null,
+      "compensation_frequency": null,
+      "compensation_visible": false,
+      "deadline_at": null,
+      "employment_type": "permanent_full_time",
+      "employment_type_text": "Permanent - Full Time",
+      "reporting_to": null,
+      "title": "Sun King Store Executive, Soweto",
+      "url": "https://sunking.pinpointhq.com/en/postings/d73a7468-0dc5-4adc-8717-57bcbcfdfb5b",
+      "path": "/en/postings/d73a7468-0dc5-4adc-8717-57bcbcfdfb5b",
+      "workplace_type": "onsite",
+      "workplace_type_text": "Onsite",
+      "job": {
+        "id": "347536",
+        "requisition_id": "",
+        "department": {
+          "id": "10088",
+          "name": "EasyBuy Direct Sales"
+        },
+        "division": null,
+        "structure_custom_group_one": null
+      },
+      "location": {
+        "id": "15288",
+        "city": "",
+        "name": "South Africa",
+        "postal_code": "",
+        "province": "",
+        "street_address": ""
+      }
+    },
+    {
+      "id": "388598",
+      "compensation": null,
+      "compensation_minimum": null,
+      "compensation_maximum": null,
+      "compensation_currency": null,
+      "compensation_frequency": null,
+      "compensation_visible": false,
+      "deadline_at": null,
+      "employment_type": "permanent_full_time",
+      "employment_type_text": "Permanent - Full Time",
+      "reporting_to": "Customer Service Team Manager-Cameroon",
+      "title": "Customer Service Executive (Call Center) , Douala, Cameroon.",
+      "url": "https://sunking.pinpointhq.com/en/postings/12d16dd9-4fcb-4353-abe2-de4102b8c242",
+      "path": "/en/postings/12d16dd9-4fcb-4353-abe2-de4102b8c242",
+      "workplace_type": "onsite",
+      "workplace_type_text": "Onsite",
+      "job": {
+        "id": "400693",
+        "requisition_id": "",
+        "department": {
+          "id": "11123",
+          "name": "EasyBuy Program Management"
+        },
+        "division": null,
+        "structure_custom_group_one": null
+      },
+      "location": {
+        "id": "8159",
+        "city": "",
+        "name": "Cameroon",
+        "postal_code": "",
+        "province": "",
+        "street_address": ""
+      }
+    },
+    {
+      "id": "395125",
+      "compensation": null,
+      "compensation_minimum": null,
+      "compensation_maximum": null,
+      "compensation_currency": null,
+      "compensation_frequency": null,
+      "compensation_visible": false,
+      "deadline_at": null,
+      "employment_type": "contract",
+      "employment_type_text": "Contract",
+      "reporting_to": "Bibhas Mishra",
+      "title": "Survey Engineer",
+      "url": "https://sunking.pinpointhq.com/en/postings/ccb83457-cd36-40d4-be95-b8e2aa3be19a",
+      "path": "/en/postings/ccb83457-cd36-40d4-be95-b8e2aa3be19a",
+      "workplace_type": "onsite",
+      "workplace_type_text": "Onsite",
+      "job": {
+        "id": "406837",
+        "requisition_id": "",
+        "department": {
+          "id": "10084",
+          "name": "Operations"
+        },
+        "division": null,
+        "structure_custom_group_one": null
+      },
+      "location": {
+        "id": "6039",
+        "city": "New Delhi",
+        "name": "India",
+        "postal_code": "",
+        "province": "Delhi",
+        "street_address": ""
+      }
+    },
+    {
+      "id": "406125",
+      "compensation": null,
+      "compensation_minimum": null,
+      "compensation_maximum": null,
+      "compensation_currency": null,
+      "compensation_frequency": null,
+      "compensation_visible": false,
+      "deadline_at": null,
+      "employment_type": "permanent_full_time",
+      "employment_type_text": "Permanent - Full Time",
+      "reporting_to": null,
+      "title": "After - Sales Support Executive - Paygo Phones, Lagos",
+      "url": "https://sunking.pinpointhq.com/en/postings/8120c840-f69f-4836-9221-5f7642f49d66",
+      "path": "/en/postings/8120c840-f69f-4836-9221-5f7642f49d66",
+      "workplace_type": "onsite",
+      "workplace_type_text": "Onsite",
+      "job": {
+        "id": "417242",
+        "requisition_id": "",
+        "department": {
+          "id": "10084",
+          "name": "Operations"
+        },
+        "division": null,
+        "structure_custom_group_one": null
+      },
+      "location": {
+        "id": "6070",
+        "city": "Lagos",
+        "name": "Nigeria",
+        "postal_code": "",
+        "province": "Lagos",
+        "street_address": ""
+      }
+    }
+  ]
+}

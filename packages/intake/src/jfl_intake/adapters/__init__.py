@@ -11,19 +11,35 @@ from collections.abc import Iterable
 
 from jfl_intake.adapters.ashby import AshbyAdapter
 from jfl_intake.adapters.base import BoardAdapter, FetchResult, InvalidBoardKeyError
+from jfl_intake.adapters.breezy import BreezyAdapter
 from jfl_intake.adapters.greenhouse import GreenhouseAdapter
 from jfl_intake.adapters.lever import LeverAdapter
+from jfl_intake.adapters.personio import PersonioAdapter
+from jfl_intake.adapters.pinpoint import PinpointAdapter
+from jfl_intake.adapters.recruitee import RecruiteeAdapter
+from jfl_intake.adapters.rippling import RipplingAdapter
+from jfl_intake.adapters.smartrecruiters import SmartRecruitersAdapter
+from jfl_intake.adapters.teamtailor import TeamtailorAdapter
+from jfl_intake.adapters.workable import WorkableAdapter
 from jfl_intake.adapters.workday import WorkdayAdapter
 
 __all__ = [
     "AdapterRegistry",
     "AshbyAdapter",
     "BoardAdapter",
+    "BreezyAdapter",
     "FetchResult",
     "GreenhouseAdapter",
     "InvalidBoardKeyError",
     "LeverAdapter",
+    "PersonioAdapter",
+    "PinpointAdapter",
+    "RecruiteeAdapter",
+    "RipplingAdapter",
+    "SmartRecruitersAdapter",
+    "TeamtailorAdapter",
     "UnsupportedPlatformError",
+    "WorkableAdapter",
     "WorkdayAdapter",
     "default_registry",
 ]
@@ -52,4 +68,19 @@ class AdapterRegistry:
 
 
 def default_registry() -> AdapterRegistry:
-    return AdapterRegistry([GreenhouseAdapter(), AshbyAdapter(), LeverAdapter(), WorkdayAdapter()])
+    return AdapterRegistry(
+        [
+            GreenhouseAdapter(),
+            AshbyAdapter(),
+            LeverAdapter(),
+            WorkdayAdapter(),
+            SmartRecruitersAdapter(),
+            RipplingAdapter(),
+            BreezyAdapter(),
+            TeamtailorAdapter(),
+            PersonioAdapter(),
+            RecruiteeAdapter(),
+            PinpointAdapter(),
+            WorkableAdapter(),
+        ]
+    )

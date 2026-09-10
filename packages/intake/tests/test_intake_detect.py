@@ -53,6 +53,47 @@ NVIDIA = {"tenant": "nvidia", "wd": "wd5", "site": "NVIDIAExternalCareerSite"}
             "workday",
             {"tenant": "adobe", "wd": "wd5", "site": "external_experienced"},
         ),
+        (
+            "https://jobs.smartrecruiters.com/BoschGroup",
+            "smartrecruiters",
+            {"company_id": "BoschGroup"},
+        ),
+        (
+            "https://careers.smartrecruiters.com/BoschGroup",
+            "smartrecruiters",
+            {"company_id": "BoschGroup"},
+        ),
+        ("https://ats.rippling.com/rippling", "rippling", {"slug": "rippling"}),
+        ("https://ats.rippling.com/rippling/jobs", "rippling", {"slug": "rippling"}),
+        ("https://breezy.breezy.hr", "breezy", {"company": "breezy"}),
+        ("https://Breezy.breezy.hr", "breezy", {"company": "breezy"}),
+        (
+            "https://career.teamtailor.com/jobs.rss",
+            "teamtailor",
+            {"site": "career.teamtailor.com"},
+        ),
+        (
+            "https://personio.jobs.personio.de/xml",
+            "personio",
+            {"company": "personio", "tld": "de"},
+        ),
+        (
+            "https://personio.jobs.personio.com/xml",
+            "personio",
+            {"company": "personio", "tld": "com"},
+        ),
+        ("https://make.recruitee.com/o/delivery-lead-3", "recruitee", {"company": "make"}),
+        (
+            "https://sunking.pinpointhq.com/en/postings/d73a7468",
+            "pinpoint",
+            {"company": "sunking"},
+        ),
+        ("https://apply.workable.com/huggingface", "workable", {"subdomain": "huggingface"}),
+        (
+            "https://apply.workable.com/huggingface/j/9E2A4C02C7",
+            "workable",
+            {"subdomain": "huggingface"},
+        ),
     ],
 )
 def test_each_supported_platform_is_detected(url: str, platform: str, key: dict[str, str]) -> None:
@@ -96,6 +137,21 @@ def test_linkedin_and_indeed_are_rejected_with_a_clear_message(url: str) -> None
         "https://nvidia.wd5.myworkdayjobs.com/",
         "https://nvidia.wd5.myworkdayjobs.com/en-US/",
         "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/x/jobs",
+        # A Teamtailor board on the employer's own custom domain cannot be
+        # recognised by pattern -- nothing in the URL says "Teamtailor".
+        "https://careers.example.com/jobs.rss",
+        "https://jobs.smartrecruiters.com/",
+        "https://careers.smartrecruiters.com",
+        "https://ats.rippling.com/",
+        "https://breezy.hr",  # no subdomain
+        "https://.breezy.hr",
+        "https://teamtailor.com",  # no subdomain
+        "https://personio.jobs.personio.net/xml",  # tld must be de or com
+        "https://jobs.personio.de/xml",  # no company subdomain
+        "https://recruitee.com/api/offers/",
+        "https://pinpointhq.com/postings.json",
+        "https://apply.workable.com/",
+        "https://apply.workable.com",
     ],
 )
 def test_unsupported_urls_are_rejected_rather_than_guessed(url: str) -> None:

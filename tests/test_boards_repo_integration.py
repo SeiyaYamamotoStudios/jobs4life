@@ -13,6 +13,7 @@ import datetime as dt
 import os
 import uuid
 from collections.abc import Iterator
+from typing import get_args
 
 import pytest
 from jfl_core.db.tables import (
@@ -23,7 +24,7 @@ from jfl_core.db.tables import (
     users,
     watched_boards,
 )
-from jfl_core.models import BoardCheck, BoardJobEvent, CheckPlan, ObservedJob
+from jfl_core.models import BoardCheck, BoardJobEvent, BoardPlatform, CheckPlan, ObservedJob
 from jfl_core.storage.boards import (
     BoardNotFoundError,
     PostgresBoardRepository,
@@ -536,3 +537,24 @@ def test_the_scheduler_claims_due_boards_across_tenants_and_moves_them_on(
     assert scheduler.claim_due(now=soon, limit=10, only_owners=set()) == []
     only_carol = scheduler.claim_due(now=soon, limit=10, only_owners={carol})
     assert [d.board_id for d in only_carol] == [carols]
+
+
+# -- the platform CHECK constraint, all twelve --------------------------------------------
+
+
+def test_a_board_on_each_of_the_twelve_platforms_can_be_inserted(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    """`ck_watched_boards_platform` (migration 3c540957b0d2) must accept every
+    platform `BoardPlatform` and `default_registry()` know about -- not just
+    the original four. A board on any of the eight added for slice C used to
+    fail this INSERT with no adapter-side signal that anything was wrong.
+    """
+    repo = PostgresBoardRepository(conn, alice)
+    for platform in get_args(BoardPlatform):
+        board = repo.add_board(
+            platform=platform,
+            board_url=f"https://example.invalid/{platform}",
+            board_key={"token": platform},
+        )
+        assert board.platform == platform

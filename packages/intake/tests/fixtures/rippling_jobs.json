@@ -1,0 +1,54 @@
+[
+  {
+    "uuid": "75ad50c6-778f-42ee-9c63-70d1cd687202",
+    "name": "Account Executive, Broker Channel (Austin & San Antonio)",
+    "department": {
+      "id": "Sales",
+      "label": "Sales"
+    },
+    "url": "https://ats.rippling.com/rippling/jobs/75ad50c6-778f-42ee-9c63-70d1cd687202",
+    "workLocation": {
+      "label": "Austin, TX",
+      "id": "Austin, TX"
+    }
+  },
+  {
+    "uuid": "94486f41-6474-446a-b67a-c164e11354ea",
+    "name": "Account Executive, Broker Channel (Pittsburgh or Cleveland)",
+    "department": {
+      "id": "Sales",
+      "label": "Sales"
+    },
+    "url": "https://ats.rippling.com/rippling/jobs/94486f41-6474-446a-b67a-c164e11354ea",
+    "workLocation": {
+      "label": "Cleveland, OH",
+      "id": "Cleveland, OH"
+    }
+  },
+  {
+    "uuid": "528f45e5-4c17-4fb7-affe-41e0c12c7c15",
+    "name": " Account Executive, Broker Channel (TOLA)",
+    "department": {
+      "id": "Sales",
+      "label": "Sales"
+    },
+    "url": "https://ats.rippling.com/rippling/jobs/528f45e5-4c17-4fb7-affe-41e0c12c7c15",
+    "workLocation": {
+      "label": "AR",
+      "id": "AR"
+    }
+  },
+  {
+    "uuid": "ff4cf289-6efe-482e-a4b0-678b7919bff0",
+    "name": "Account Executive, Enterprise (Bilingual English/French)",
+    "department": {
+      "id": "Sales",
+      "label": "Sales"
+    },
+    "url": "https://ats.rippling.com/rippling/jobs/ff4cf289-6efe-482e-a4b0-678b7919bff0",
+    "workLocation": {
+      "label": "Toronto, Canada",
+      "id": "Toronto, Canada"
+    }
+  }
+]

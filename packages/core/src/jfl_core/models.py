@@ -314,7 +314,27 @@ class ReclaimResult(BaseModel):
 # complete check may close a presence interval.
 # --------------------------------------------------------------------------
 
-BoardPlatform = Literal["greenhouse", "ashby", "lever", "workday"]
+BoardPlatform = Literal[
+    "greenhouse",
+    "ashby",
+    "lever",
+    "workday",
+    "smartrecruiters",
+    "rippling",
+    "breezy",
+    "teamtailor",
+    "personio",
+    "recruitee",
+    "pinpoint",
+    "workable",
+]
+# These must stay equal, by construction, to `_BOARD_PLATFORMS` in
+# `jfl_core.db.tables` and to `default_registry()`'s platforms in
+# `jfl_intake.adapters` -- see `test_board_platform_sources_agree` in
+# `packages/intake/tests/test_intake_adapters.py`, which fails the build if
+# the three ever drift again the way they did between 2026-09-10 and
+# 2026-09-11 (models.py listed twelve; the CHECK constraint and the table
+# constant still listed the original four; migration 3c540957b0d2 fixed it).
 BoardCheckStatus = Literal["complete", "incomplete", "truncated", "unreachable", "failed", "held"]
 # What an adapter can report. `held` is not in it: holding is the check engine's
 # decision about a complete fetch, never something a fetch can say about itself.
@@ -330,6 +350,10 @@ BoardCheckErrorCode = Literal[
     "unidentifiable_job",
     "count_mismatch",
     "page_cap_reached",
+    # A token-paged listing (Workable) handed back a posting id already
+    # collected in this check without exhausting its pages -- a failure to
+    # make progress, never a legitimate way to reach `complete`.
+    "duplicate_posting",
     "request_budget_exhausted",
     "deadline_exceeded",
     "listing_ceiling",

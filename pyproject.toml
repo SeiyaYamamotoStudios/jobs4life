@@ -67,3 +67,8 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["authlib.*"]
 ignore_missing_imports = true
+
+# defusedxml ships no type information either.
+[[tool.mypy.overrides]]
+module = ["defusedxml.*"]
+ignore_missing_imports = true

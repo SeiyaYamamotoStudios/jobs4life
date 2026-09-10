@@ -1,0 +1,104 @@
+{
+  "results": [
+    {
+      "id": 6074222,
+      "shortcode": "9E2A4C02C7",
+      "title": "Senior Machine Learning Engineer, Voice Agents - EMEA Remote",
+      "remote": true,
+      "location": {
+        "country": "France",
+        "countryCode": "FR",
+        "city": "Paris",
+        "region": "Île-de-France"
+      },
+      "locations": [
+        {
+          "country": "France",
+          "countryCode": "FR",
+          "city": "Paris",
+          "region": "Île-de-France",
+          "hidden": true
+        }
+      ],
+      "state": "published",
+      "isInternal": false,
+      "code": "",
+      "published": "2026-09-02T00:00:00.000Z",
+      "type": "full",
+      "language": "en",
+      "department": [
+        "Science"
+      ],
+      "accountUid": "940cf17f-c078-40ac-95e8-07704e754048",
+      "approvalStatus": "approved",
+      "workplace": "remote"
+    },
+    {
+      "id": 6000109,
+      "shortcode": "002470F128",
+      "title": "Low-Level Senior Software Engineer, Xet Storage - US Remote",
+      "remote": true,
+      "location": {
+        "country": "United States",
+        "countryCode": "US",
+        "city": "New York",
+        "region": "New York"
+      },
+      "locations": [
+        {
+          "country": "United States",
+          "countryCode": "US",
+          "city": "New York",
+          "region": "New York",
+          "hidden": true
+        }
+      ],
+      "state": "published",
+      "isInternal": false,
+      "code": "",
+      "published": "2026-07-30T00:00:00.000Z",
+      "type": "full",
+      "language": "en",
+      "department": [
+        "Product"
+      ],
+      "accountUid": "940cf17f-c078-40ac-95e8-07704e754048",
+      "approvalStatus": "approved",
+      "workplace": "remote"
+    },
+    {
+      "id": 6000148,
+      "shortcode": "F4C096B22E",
+      "title": "Low-level Senior Software Engineer, Xet Storage - EMEA Remote",
+      "remote": true,
+      "location": {
+        "country": "France",
+        "countryCode": "FR",
+        "city": "Paris",
+        "region": "Île-de-France"
+      },
+      "locations": [
+        {
+          "country": "France",
+          "countryCode": "FR",
+          "city": "Paris",
+          "region": "Île-de-France",
+          "hidden": true
+        }
+      ],
+      "state": "published",
+      "isInternal": false,
+      "code": "",
+      "published": "2026-07-30T00:00:00.000Z",
+      "type": "full",
+      "language": "en",
+      "department": [
+        "Product"
+      ],
+      "accountUid": "940cf17f-c078-40ac-95e8-07704e754048",
+      "approvalStatus": "approved",
+      "workplace": "remote"
+    }
+  ],
+  "total": 3
+}

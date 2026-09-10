@@ -10,6 +10,14 @@ A transport returns an `HttpResponse` for every HTTP status, including 4xx and
 it differs by platform. It raises `TransportError` only when there is no HTTP
 response at all (timeout, refused connection, DNS), and `RequestBudgetExceeded`
 when the politeness limits below say stop.
+
+`get_json` decodes the body as JSON, giving `None` when it is not (an adapter
+treats that as a malformed response, never an empty board -- see `HttpResponse`).
+`get_text` (added 2026-09-11, for Teamtailor and Personio's RSS/XML feeds)
+instead hands back the body as decoded text, verbatim, whatever it is. Neither
+method changes the failure semantics above: a timeout or connection error is
+still `TransportError` with a code, never exception text; a non-200 status
+still comes back as an `HttpResponse` for the adapter to classify.
 """
 
 from __future__ import annotations
@@ -57,13 +65,22 @@ class Transport(Protocol):
 
     def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse: ...
 
+    def get_text(self, url: str) -> HttpResponse: ...
 
-def _parse(response: httpx.Response) -> HttpResponse:
+
+def _parse_json(response: httpx.Response) -> HttpResponse:
     try:
         body = response.json()
     except ValueError:
         body = None
     return HttpResponse(status=response.status_code, body=body)
+
+
+def _parse_text(response: httpx.Response) -> HttpResponse:
+    # `.text` decodes using the response's declared or detected charset and
+    # does not raise for content that is not JSON -- unlike `.json()`, there
+    # is no "not text" case to fall back to `None` for.
+    return HttpResponse(status=response.status_code, body=response.text)
 
 
 class HttpxTransport:
@@ -75,15 +92,20 @@ class HttpxTransport:
         self._client = client
 
     def get_json(self, url: str) -> HttpResponse:
-        return self._send(lambda: self._client.get(url))
+        return self._send(lambda: self._client.get(url), _parse_json)
 
     def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse:
-        return self._send(lambda: self._client.post(url, json=dict(body)))
+        return self._send(lambda: self._client.post(url, json=dict(body)), _parse_json)
+
+    def get_text(self, url: str) -> HttpResponse:
+        return self._send(lambda: self._client.get(url), _parse_text)
 
     @staticmethod
-    def _send(call: Callable[[], httpx.Response]) -> HttpResponse:
+    def _send(
+        call: Callable[[], httpx.Response], parse: Callable[[httpx.Response], HttpResponse]
+    ) -> HttpResponse:
         try:
-            return _parse(call())
+            return parse(call())
         except httpx.TimeoutException:
             raise TransportError("timeout") from None
         except httpx.TransportError:
@@ -155,6 +177,10 @@ class PoliteTransport:
     def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse:
         self._before_request()
         return self._inner.post_json(url, body)
+
+    def get_text(self, url: str) -> HttpResponse:
+        self._before_request()
+        return self._inner.get_text(url)
 
     def _before_request(self) -> None:
         if self.requests >= self._budget.max_requests:

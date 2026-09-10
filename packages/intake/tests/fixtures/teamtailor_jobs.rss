@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Teamtailor</title>
+    <description>Current job openings</description>
+    <link>https://career.teamtailor.com/jobs</link>
+    <item>
+      <title>Group Financial Controller</title>
+      <description>Trimmed for the test fixture.</description>
+      <pubDate>Fri, 24 Jul 2026 13:57:16 +0200</pubDate>
+      <link>https://career.teamtailor.com/jobs/8124573-group-financial-controller</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>3ce2c88b-cbc6-4ae9-8ecb-000466c69037</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Stockholm</tt:name>
+          <tt:address>Östgötagatan 16</tt:address>
+          <tt:zip>116 21</tt:zip>
+          <tt:city>Stockholm</tt:city>
+          <tt:country>Sweden</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Finance</tt:department>
+      <tt:role/>
+      <tt:division/>
+    </item>
+<item>
+      <title>Account Executive - UK Enterprise</title>
+      <description>Trimmed for the test fixture.</description>
+      <pubDate>Mon, 06 Jul 2026 08:58:57 +0200</pubDate>
+      <link>https://career.teamtailor.com/jobs/8021334-account-executive-uk-enterprise</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>a79a10f6-9f69-49b0-9f6d-8bed3d6e3a4f</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>London</tt:name>
+          <tt:address>16 Laystall Court</tt:address>
+          <tt:zip>EC1R 4</tt:zip>
+          <tt:city>London</tt:city>
+          <tt:country>United Kingdom</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Sales</tt:department>
+      <tt:role>Account Executive</tt:role>
+      <tt:division/>
+    </item>
+<item>
+      <title>Senior Partnerships Manager - Toronto - Bilingual (French/ English)</title>
+      <description>Trimmed for the test fixture.</description>
+      <pubDate>Thu, 27 Aug 2026 15:51:17 +0200</pubDate>
+      <link>https://career.teamtailor.com/jobs/8280874-senior-partnerships-manager-toronto-bilingual-french-english</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>07f9a166-32f4-45f9-b0dd-8d52e0b31073</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name/>
+          <tt:address>WeWork Office Space &amp; Coworking</tt:address>
+          <tt:zip>M5H 4A6</tt:zip>
+          <tt:city>Toronto</tt:city>
+          <tt:country>Canada</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Partnerships</tt:department>
+      <tt:role>Partnerships Manager</tt:role>
+      <tt:division/>
+    </item>
+  </channel>
+</rss>

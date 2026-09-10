@@ -12,10 +12,12 @@ import copy
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import httpx
 import pytest
+from jfl_core.db.tables import _BOARD_PLATFORMS
+from jfl_core.models import BoardPlatform
 from jfl_intake.adapters import (
     AshbyAdapter,
     GreenhouseAdapter,
@@ -57,6 +59,9 @@ class FakeTransport:
 
     def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse:
         raise AssertionError("a one-request adapter never POSTs")
+
+    def get_text(self, url: str) -> HttpResponse:
+        raise AssertionError("none of these adapters fetch text")
 
 
 GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs"
@@ -260,10 +265,39 @@ def test_a_board_key_that_could_escape_its_path_is_refused(key: dict[str, str]) 
         GreenhouseAdapter().validate_key(key)
 
 
-def test_the_default_registry_has_exactly_the_four_verified_platforms() -> None:
+def test_the_default_registry_has_exactly_the_twelve_verified_platforms() -> None:
     registry = default_registry()
-    assert registry.platforms() == ("ashby", "greenhouse", "lever", "workday")
+    assert registry.platforms() == (
+        "ashby",
+        "breezy",
+        "greenhouse",
+        "lever",
+        "personio",
+        "pinpoint",
+        "recruitee",
+        "rippling",
+        "smartrecruiters",
+        "teamtailor",
+        "workable",
+        "workday",
+    )
     assert isinstance(registry.get("workday"), WorkdayAdapter)
+
+
+def test_board_platform_sources_agree() -> None:
+    """Three copies of the platform list have already drifted apart once,
+    silently: `BoardPlatform` (typing), `_BOARD_PLATFORMS` (the DB CHECK
+    constraint's source), and `default_registry()` (what actually runs) each
+    listed a different set between 2026-09-10 and 2026-09-11, and only the
+    third would have failed loudly -- at INSERT, in production, long after
+    the adapter code shipped and its tests passed. This test is what makes
+    that impossible to repeat unnoticed.
+    """
+    literal_platforms = frozenset(get_args(BoardPlatform))
+    table_platforms = frozenset(_BOARD_PLATFORMS)
+    registry_platforms = frozenset(default_registry().platforms())
+
+    assert literal_platforms == table_platforms == registry_platforms
 
 
 # -- transports -----------------------------------------------------------
@@ -307,6 +341,24 @@ def test_polite_transport_enforces_its_deadline() -> None:
     assert caught.value.code == "deadline_exceeded"
 
 
+def test_polite_transport_enforces_its_budget_on_get_text_too() -> None:
+    class _TextOnly:
+        def get_json(self, url: str) -> HttpResponse:
+            raise AssertionError("not used in this test")
+
+        def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse:
+            raise AssertionError("not used in this test")
+
+        def get_text(self, url: str) -> HttpResponse:
+            return HttpResponse(status=200, body="<rss></rss>")
+
+    polite = PoliteTransport(_TextOnly(), RequestBudget(max_requests=1), sleep=lambda _: None)
+    assert polite.get_text("u").body == "<rss></rss>"
+    with pytest.raises(RequestBudgetExceeded) as caught:
+        polite.get_text("u")
+    assert caught.value.code == "request_budget_exhausted"
+
+
 def _httpx(handler: Any) -> HttpxTransport:
     return HttpxTransport(httpx.Client(transport=httpx.MockTransport(handler)))
 
@@ -344,3 +396,40 @@ def test_httpx_transport_maps_no_response_to_a_code(error: Exception, code: str)
         _httpx(handler).get_json("https://api.lever.co/v0/postings/x?mode=json")
     assert caught.value.code == code
     assert str(caught.value) == code  # a code, never the exception's text
+
+
+def test_httpx_transport_get_text_returns_an_rss_body_intact() -> None:
+    """The gap Teamtailor and Personio hit: `get_json` discards a non-JSON
+    body as `None`. `get_text` must hand back the real body, unparsed --
+    proved here against `httpx.MockTransport`, not just a fake transport a
+    test built by hand, since the missing coverage was exactly this: nothing
+    tested the real transport against a non-JSON response.
+    """
+    rss = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<rss><channel><item><title>Engineer</title></item></channel></rss>"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=rss, headers={"content-type": "application/rss+xml"})
+
+    response = _httpx(handler).get_text("https://career.teamtailor.com/jobs.rss")
+    assert response.status == 200
+    assert response.body == rss  # not None, not re-encoded, not stripped
+
+
+def test_httpx_transport_get_text_on_a_non_200_still_returns_the_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, text="<html>not found</html>")
+
+    response = _httpx(handler).get_text("https://career.teamtailor.com/jobs.rss")
+    assert response == HttpResponse(status=404, body="<html>not found</html>")
+
+
+def test_httpx_transport_get_text_maps_no_response_to_a_code() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    with pytest.raises(TransportError) as caught:
+        _httpx(handler).get_text("https://career.teamtailor.com/jobs.rss")
+    assert caught.value.code == "timeout"

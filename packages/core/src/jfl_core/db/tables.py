@@ -719,7 +719,20 @@ tasks = Table(
 # own rows and their own history. Nothing here is shared across tenants.
 # --------------------------------------------------------------------------
 
-_BOARD_PLATFORMS = ("greenhouse", "ashby", "lever", "workday")
+_BOARD_PLATFORMS = (
+    "greenhouse",
+    "ashby",
+    "lever",
+    "workday",
+    "smartrecruiters",
+    "rippling",
+    "breezy",
+    "teamtailor",
+    "personio",
+    "recruitee",
+    "pinpoint",
+    "workable",
+)
 
 # `held` is a complete fetch the drop guard refused to apply; see
 # `jfl_intake.engine`. Every status but `complete` changes no job's state.

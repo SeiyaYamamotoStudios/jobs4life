@@ -4,10 +4,16 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 # Domain 3: watched job boards. Deterministic throughout -- no model call
 # anywhere in this package, and no `anthropic` dependency to make one with.
-#   jfl-core -- the domain models the check engine plans against and the
-#               repositories the scheduling helpers take
-#   httpx    -- the one real transport; every test uses a fake instead
-dependencies = ["jfl-core", "httpx>=0.27"]
+#   jfl-core    -- the domain models the check engine plans against and the
+#                  repositories the scheduling helpers take
+#   httpx       -- the one real transport; every test uses a fake instead
+#   defusedxml  -- Teamtailor and Personio answer with RSS/XML from servers we
+#                  do not control; parsed with this, never stdlib xml.etree.
+dependencies = [
+    "jfl-core",
+    "httpx>=0.27",
+    "defusedxml>=0.7.1",
+]
 
 [build-system]
 requires = ["hatchling"]

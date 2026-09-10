@@ -81,6 +81,9 @@ class FakeWorkday:
     def get_json(self, url: str) -> HttpResponse:
         raise AssertionError("Workday is POST only")
 
+    def get_text(self, url: str) -> HttpResponse:
+        raise AssertionError("Workday adapter never fetches text")
+
     def post_json(self, url: str, body: Mapping[str, Any]) -> HttpResponse:
         assert url.endswith("/jobs") and "/wday/cxs/" in url
         self.bodies.append(copy.deepcopy(dict(body)))

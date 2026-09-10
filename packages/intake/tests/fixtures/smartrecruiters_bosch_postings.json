@@ -1,0 +1,200 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 4,
+  "content": [
+    {
+      "id": "744000148872789",
+      "name": "ANALISTA DE LOGÍSTICA ",
+      "uuid": "2d1c61bf-88cc-41bf-a99a-b68af270071d",
+      "jobAdId": "b8bc4fa2-6d78-4bb3-8655-85394e71b5c8",
+      "defaultJobAd": true,
+      "refNumber": "REF295991U",
+      "company": {
+        "identifier": "BoschGroup",
+        "name": "Bosch Group"
+      },
+      "releasedDate": "2026-09-10T21:42:40.083Z",
+      "location": {
+        "city": "Itatiba",
+        "region": "SP",
+        "country": "br",
+        "address": "Rodovia Dom Pedro I",
+        "remote": false,
+        "hybrid": false,
+        "latitude": "-22.9984615",
+        "longitude": "-46.7848692",
+        "fullLocation": "Itatiba, SP, Brazil"
+      },
+      "industry": {
+        "id": "consumer_goods",
+        "label": "Consumer Goods"
+      },
+      "department": {},
+      "function": {
+        "id": "supply_chain",
+        "label": "Supply Chain"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "executive",
+        "label": "Executive"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000148872789",
+      "language": {
+        "code": "pt-BR",
+        "label": "Portuguese (Brazil)",
+        "labelNative": "português (Brasil)"
+      }
+    },
+    {
+      "id": "744000148872479",
+      "name": "LÍDER DE LOGÍSTICA",
+      "uuid": "ae5ced3a-146c-48a0-9d19-b499687abc33",
+      "jobAdId": "adbb1f96-9cfe-40c7-ba2b-ed295dd757be",
+      "defaultJobAd": true,
+      "refNumber": "REF295990S",
+      "company": {
+        "identifier": "BoschGroup",
+        "name": "Bosch Group"
+      },
+      "releasedDate": "2026-09-10T21:40:36.533Z",
+      "location": {
+        "city": "Itatiba",
+        "region": "SP",
+        "country": "br",
+        "address": "Rodovia Dom Pedro I",
+        "remote": false,
+        "hybrid": false,
+        "latitude": "-22.9984615",
+        "longitude": "-46.7848692",
+        "fullLocation": "Itatiba, SP, Brazil"
+      },
+      "industry": {
+        "id": "consumer_goods",
+        "label": "Consumer Goods"
+      },
+      "department": {},
+      "function": {
+        "id": "supply_chain",
+        "label": "Supply Chain"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "executive",
+        "label": "Executive"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000148872479",
+      "language": {
+        "code": "pt-BR",
+        "label": "Portuguese (Brazil)",
+        "labelNative": "português (Brasil)"
+      }
+    },
+    {
+      "id": "744000148872239",
+      "name": "OPERADOR DE LOGÍSTICA ",
+      "uuid": "cb886b97-48ca-4591-a7ca-349bc96cf10a",
+      "jobAdId": "2c9386fa-6f0b-4c88-b8b1-d8785a2e5262",
+      "defaultJobAd": true,
+      "refNumber": "REF295989A",
+      "company": {
+        "identifier": "BoschGroup",
+        "name": "Bosch Group"
+      },
+      "releasedDate": "2026-09-10T21:38:56.238Z",
+      "location": {
+        "city": "Itatiba",
+        "region": "SP",
+        "country": "br",
+        "address": "Rodovia Dom Pedro I",
+        "remote": false,
+        "hybrid": false,
+        "latitude": "-22.9984615",
+        "longitude": "-46.7848692",
+        "fullLocation": "Itatiba, SP, Brazil"
+      },
+      "industry": {
+        "id": "consumer_goods",
+        "label": "Consumer Goods"
+      },
+      "department": {},
+      "function": {
+        "id": "supply_chain",
+        "label": "Supply Chain"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "executive",
+        "label": "Executive"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000148872239",
+      "language": {
+        "code": "pt-BR",
+        "label": "Portuguese (Brazil)",
+        "labelNative": "português (Brasil)"
+      }
+    },
+    {
+      "id": "744000148870039",
+      "name": "Proposal Engineer - Special-Purpose Machinery",
+      "uuid": "82028b90-3faa-4304-82d8-64ac2bbc36da",
+      "jobAdId": "31e3d2c6-6378-4be1-9531-003166de6e9d",
+      "defaultJobAd": true,
+      "refNumber": "REF295630Z",
+      "company": {
+        "identifier": "BoschGroup",
+        "name": "Bosch Group"
+      },
+      "releasedDate": "2026-09-10T21:21:21.342Z",
+      "location": {
+        "city": "Charleston",
+        "region": "SC",
+        "country": "us",
+        "address": "8101 Dorchester Road",
+        "postalCode": "29418",
+        "remote": false,
+        "hybrid": true,
+        "latitude": "32.9046061",
+        "longitude": "-80.0986076",
+        "fullLocation": "Charleston, SC, United States"
+      },
+      "industry": {
+        "id": "mechanical_engineering",
+        "label": "Mechanical Or Industrial Engineering"
+      },
+      "department": {},
+      "function": {
+        "id": "engineering",
+        "label": "Engineering"
+      },
+      "typeOfEmployment": {
+        "id": "permanent",
+        "label": "Full-time"
+      },
+      "experienceLevel": {
+        "id": "mid_senior_level",
+        "label": "Mid-Senior Level"
+      },
+      "visibility": "PUBLIC",
+      "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000148870039",
+      "language": {
+        "code": "en",
+        "label": "English",
+        "labelNative": "English (US)"
+      }
+    }
+  ]
+}
