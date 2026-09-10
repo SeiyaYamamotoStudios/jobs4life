@@ -21,7 +21,7 @@ once the next one exists, it is sliced wrong.
 |---|---|---|
 | **A** | Google login, enforced tenancy, per-user API key custody, application tracker | The list of live applications, with real timestamps |
 | **B** | Queue, quick-actions, paste-an-ad, two scores, the engine behind a UI | Paste an ad and get it scored, drafted and gated without a terminal |
-| **C** | Intake: ATS APIs, forwarding address, scored on arrival | Roles arriving without being hunted for |
+| **C** | Watched job boards: adapters, our own history, what changed | A personal catalogue of employers showing what appeared, vanished and came back |
 | **D** | Interview prep, and rejection feedback into a plan | A closed loop from rejection to citable evidence |
 
 ---
@@ -185,15 +185,132 @@ anyone but the owner. Markdown upload through the existing ingestion, spans stor
 per-user. "Markdown is the source of truth" holds: uploads are stored and re-ingestible,
 never only indexed.
 
-## Slice C — intake
+## Slice C — watching job boards
 
-ATS APIs open by design — **Greenhouse, Lever, Ashby, Workable** — for employers the user
-names, plus RSS. **No LinkedIn or Indeed scraping**, unchanged and not negotiable.
+Revised 2026-09-10. The owner's words: *"perhaps the one I would find most useful
+myself"* — LinkedIn has become largely useless, so this builds a personal catalogue of
+employers he is interested in and shows what changed. **The input is one line; the
+aggregation, history and comparison are the product.**
 
-Email intake is a **dedicated forwarding address**, not an inbox integration. Reaffirmed
-2026-09-07; Gmail restricted scopes need an annual CASA assessment.
+**Sequencing: C1–C6 come before B4.** They need no model calls and nothing from B4, and
+this is the feature the owner has said he would use most.
 
-Arriving roles are scored on the same two axes as B4.
+### C1 — sources
+
+One adapter per ATS, each normalising to a thin record — platform, external id, title,
+location, URL. Full descriptions are fetched lazily, only for jobs the user opens.
+
+The user pastes the board's URL and the adapter is chosen by URL pattern — deterministic.
+Nothing tries to discover a company's ATS from its name; web search may *suggest* boards
+later (C8).
+
+Verified live 2026-09-10 — public, unauthenticated, real jobs returned: **Greenhouse,
+Ashby, Lever, Rippling, SmartRecruiters, Breezy, Teamtailor (RSS), Personio (XML),
+Workday**. Endpoint answered but the test board was empty: Recruitee, Workable.
+Unconfirmed (no real tenant found): Pinpoint, BambooHR. Everything else is an AI-parsed
+careers page (C8) or a paste.
+
+**Workday is included** despite an undocumented endpoint — see CLAUDE.md, 2026-09-10.
+
+### C2 — the history is ours, never the source's
+
+Every job's timeline comes from our own checks: first seen, last seen, and **presence
+intervals**. Source dates are not trusted, because they are not consistent — Greenhouse
+gives real timestamps, Workday gives prose (`"Posted Today"` on all 20 of a sample).
+
+Presence is stored as intervals, not per-check sightings: a job continuously present is
+one row, and vanishing then returning opens a second. That represents exactly the events
+that matter — appeared, disappeared, came back — and stays compact, where per-check
+sightings for one 2,600-job board checked daily would be ~950k rows a year.
+
+**Store everything, filter the view.** A company's hiring velocity, or whether its
+engineering-manager roles keep churning, is signal even when the jobs are not for you —
+and history that was not kept cannot be recovered, whereas a filter is cheap to change.
+
+### C3 — a check is authoritative, or it changes nothing
+
+The rule the whole feature rests on: **only a complete, successful check may close a
+presence interval.** A job absent from a check is gone only if that check provably saw the
+whole board. Unreachable, errored, partial and truncated checks are recorded as such and
+change no job's state.
+
+This is not theoretical. Workday, verified 2026-09-10 against NVIDIA and Adobe:
+
+- **A page size over 20 fails, inconsistently.** NVIDIA returns HTTP 200 with zero jobs
+  and no `total` key — silent. Adobe returns HTTP 400. Same mistake, one loud and one
+  silent; both are failures and neither may ever read as "empty board".
+- **An unfiltered listing exposes at most 2,000 jobs, then wraps.** Offset 2000 returns
+  page 0 exactly, and offsets 2500–8000 keep returning full pages. NVIDIA really has
+  2,630 (its facet counts sum to that), so 630 are invisible to paging.
+- **It wraps past the end even under the ceiling.** Adobe (730) returns a short page of 10
+  at offset 720, then page 0 again at 740.
+- **`total` reads 0 on intermediate pages**, so it cannot be used to stop.
+
+So Workday pagination stops on the first of: a short page, a job id already seen in this
+check (wrap), or the offset reaching page 0's `total`. A board at the 2,000 ceiling is
+split by a facet whose values partition it with every slice under the ceiling — NVIDIA's
+`jobFamilyGroup`, 15 values, largest 1,725 — and the union is **verified against the
+partition's summed count**. No such facet: the check is marked truncated. Unique ids short
+of the expected total: the check is incomplete.
+
+**A drop guard**, from an observed pattern rather than an invented one: a "successful"
+check returning far fewer jobs than the last complete one holds intervals open and flags
+the board. The silent 200-with-zero-jobs above is exactly what a broken adapter looks
+like, and it is far likelier than a company closing every role overnight.
+
+### C4 — a baseline is not news
+
+The first check of a newly watched board is a **baseline**. Its jobs are "open when you
+started watching", never "new" — otherwise adding Anthropic's board announces 595 new jobs
+and the feed is noise from its first day. "New" means first seen by a check *after* the
+baseline.
+
+Likewise the UI says **"seen since 24 Jul"**, never "posted 24 Jul". We know when we saw a
+job, not when it was posted.
+
+### C5 — returned versus reposted
+
+Two different events, kept distinct:
+
+- **Returned** — the same external id vanishes and comes back. Read straight off the
+  presence intervals.
+- **Reposted** — a *different* external id with the same normalised title and location, at
+  the same board, appearing after an equivalent vanished. A deterministic fingerprint.
+
+Greenhouse's `internal_job_id` is **not** a repost signal — verified: one requisition is
+listed under two public ids with different titles ("Account Executive, AI Native" and
+"…Startups"). That is one requisition's variants, not a repost.
+
+Assumed until the owner says otherwise: a repost falls within 60 days of the
+disappearance. Configurable.
+
+### C6 — cadence
+
+Daily scheduled checks through the worker, staggered and rate-limited per platform, plus
+"check now". The deterministic path makes no model calls and costs nothing — but a
+2,630-job Workday board is 130+ requests a check, so politeness is a requirement, not a
+courtesy. Watches are per user in v1: simple, and tenant-safe by construction; sharing a
+board's fetch across users is an optimisation for later.
+
+### C7 — what you see
+
+**To be shaped with the owner before the UI is built** — the engine lands first. The
+working model: a "since you last looked" feed across every board (new, gone, returned,
+reposted); per board, the open count over time and each job's own timeline; and coverage
+stated rather than implied — boards watched, last checked, which failed or were truncated.
+That last is the owner's honest admission made concrete: we will miss companies and jobs,
+and the page should say exactly where.
+
+### C8 — later in slice C
+
+- **AI-parsed careers pages** — manual trigger, costs the user per check, and guarded
+  against SSRF, since it means fetching user-supplied URLs server-side.
+- **Suggested boards and companies** — labelled as model suggestions, with the skew named:
+  a model knows famous companies and least about precisely the small ones worth finding.
+  **No sponsorship and no adverts, ever.**
+- **The email forwarding address** as a source.
+- **Scoring on arrival** (B4's two axes) — only for jobs that pass the user's filter, never
+  every job on a 2,600-job board, since it spends the user's key.
 
 ## Slice D — the loops that close
 

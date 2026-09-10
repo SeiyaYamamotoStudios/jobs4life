@@ -74,6 +74,33 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
+**2026-09-10 — Watched job boards: the history is ours, and a check is authoritative or it
+changes nothing.** The owner named this the feature he would use most, since LinkedIn has
+become largely useless: a personal catalogue of employers' ATS boards, checked daily,
+showing what appeared, vanished, came back and was reposted. Design in `PLAN.md` slice C.
+
+**Workday is included despite an undocumented endpoint.** This is a judgement against the
+no-scraping rule, made deliberately: it calls the same unauthenticated JSON a public
+careers page requests for itself, at a polite rate, and parses structured data rather than
+markup — no authentication bypassed, no human-facing page scraped. It is where most large
+employers post, so leaving it out would gut the feature. It is labelled fragile, and its
+adapter must fail loudly rather than return an empty board when the shape changes.
+
+**History comes from our own observations, never from source dates.** They are not
+consistent across platforms: Greenhouse gives timestamps, Workday gives `"Posted Today"`.
+
+**Only a complete check may close a presence interval.** Verified 2026-09-10 against NVIDIA
+and Adobe, Workday answers an over-size page with HTTP 200 and zero jobs on one tenant and
+HTTP 400 on another; caps an unfiltered listing at 2,000 and then wraps to page 0; wraps
+past the end even under that ceiling; and reports `total: 0` mid-pagination. Handled
+naively, every one of those records a mass false disappearance — false signal written into
+exactly the history this feature exists to show. So unreachable, partial and truncated
+checks are recorded and change no job's state. This is the thesis applied to intake: the
+tool measures what is true, and a failed fetch is not evidence that jobs vanished.
+
+**A newly watched board's first check is a baseline, not news**, or adding one large board
+announces hundreds of "new" jobs and the feed is noise from its first day.
+
 **2026-09-07 — jobs4life becomes a hosted, logged-in, multi-user web app.** Supersedes
 "v1 is single-user with the seams left in", "CLI only in this iteration", and the demo /
 product split's claim that the live tool stays local. The reasoning is not that the
