@@ -587,6 +587,23 @@ client requires **both** the `e2e` marker **and** `JFL_ALLOW_REAL_API=1`. Either
 fails. Tests that install their own fake client are unaffected -- their monkeypatch
 runs after the fixture. Do not weaken this to one condition.
 
+**A second guard sits at the socket, for the same reason** — added 2026-09-10 with the
+board-watching engine, whose checks make real HTTP requests. An autouse fixture beside the
+Anthropic one refuses any Python-level TCP connection to a non-local address and refuses to
+resolve any name other than `localhost`, so a test that reaches for the internet fails
+loudly instead of being quietly recorded as an `unreachable` board. It lifts under exactly
+the API guard's two conditions — the `e2e` marker **and** `JFL_ALLOW_REAL_API=1` — and the
+same rule holds: do not weaken it to one. Loopback, the unspecified address and Unix sockets
+stay reachable; `httpx.MockTransport` and fake transports never open a socket at all.
+
+**Know its limits rather than overstate them.** It patches Python's `socket` module, so it
+covers httpx, urllib and anything built on Python sockets — but **not C libraries that do
+their own networking** (libpq, libcurl/pycurl), and not raw UDP. The database keeps working
+under it precisely because libpq bypasses it. An adapter that ever adopts a C-level HTTP
+client walks straight past this guard, so that change must bring its own isolation.
+`getaddrinfo` is only a pre-filter; enforcement is in `connect`, which checks the address it
+is actually given — so a name that resolves somewhere unexpected is still refused.
+
 The golden set and the Inspect harness live in `packages/evals`. This paragraph used to
 say there were none in v1; that was superseded by the 2026-08-24 decision above and the
 stale wording is corrected here. Standing rules, unchanged: the golden set is a **test
