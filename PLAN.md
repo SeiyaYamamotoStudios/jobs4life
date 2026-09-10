@@ -204,11 +204,17 @@ The user pastes the board's URL and the adapter is chosen by URL pattern — det
 Nothing tries to discover a company's ATS from its name; web search may *suggest* boards
 later (C8).
 
-Verified live 2026-09-10 — public, unauthenticated, real jobs returned: **Greenhouse,
-Ashby, Lever, Rippling, SmartRecruiters, Breezy, Teamtailor (RSS), Personio (XML),
-Workday**. Endpoint answered but the test board was empty: Recruitee, Workable.
-Unconfirmed (no real tenant found): Pinpoint, BambooHR. Everything else is an AI-parsed
-careers page (C8) or a paste.
+Verified live 2026-09-10 — public, unauthenticated, real jobs returned from a real
+employer's board: **Greenhouse, Ashby, Lever, Rippling, SmartRecruiters, Breezy,
+Teamtailor (RSS), Personio (XML), Workday, Workable, Recruitee, Pinpoint** — twelve.
+Unconfirmed: **BambooHR** — search surfaced only BambooHR's own careers page and
+aggregators, never a customer's board. Everything else is an AI-parsed careers page (C8)
+or a paste.
+
+Finding a real tenant mattered more than finding the endpoint. Guessed slugs failed for
+reasons that had nothing to do with the platform — Workable's own board is not
+`workable`, Pinpoint customers use their own subdomains — which is the same reason the
+input is a pasted board URL and not a company name.
 
 **Workday is included** despite an undocumented endpoint — see CLAUDE.md, 2026-09-10.
 
@@ -280,6 +286,16 @@ Two different events, kept distinct:
 Greenhouse's `internal_job_id` is **not** a repost signal — verified: one requisition is
 listed under two public ids with different titles ("Account Executive, AI Native" and
 "…Startups"). That is one requisition's variants, not a repost.
+
+**Jobs are keyed at the finest grain a platform exposes — the posting, not the
+requisition.** Adobe's Workday page 0 on 2026-09-10: 20 postings, 20 distinct
+requisitions, 5 carrying a posting suffix (`R171808` → posting `R171808-1`). Keying by
+requisition would throw that suffix away, so a role re-listed as `-2` would read as a job
+that never went down — hiding exactly the repost pattern this slice exists to show, in
+history that could never afterwards be re-keyed. `requisition_id` is stored alongside
+where a platform provides one (Workday, Greenhouse), but **no repost rule uses it yet**: a
+`-2` re-listing has not been observed, and rules come from observed patterns. Storing it is
+what lets that pattern be learned from real history later.
 
 Assumed until the owner says otherwise: a repost falls within 60 days of the
 disappearance. Configurable.

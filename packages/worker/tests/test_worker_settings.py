@@ -78,6 +78,13 @@ def test_the_model_is_read_from_the_environment() -> None:
     assert settings.model == "claude-sonnet-4-5"
 
 
+def test_the_board_scheduling_interval_defaults_to_fifteen_minutes_and_can_be_set() -> None:
+    base = {"JFL_DATABASE_URL": "postgresql+psycopg://x/y", "JFL_MASTER_KEY": _MASTER_KEY}
+    assert WorkerSettings.from_env(base).board_schedule_interval == 15 * 60.0
+    overridden = WorkerSettings.from_env({**base, "JFL_WORKER_BOARD_SCHEDULE_INTERVAL": "60"})
+    assert overridden.board_schedule_interval == 60.0
+
+
 def test_a_missing_master_key_fails_at_boot_not_at_the_first_extraction() -> None:
     """The worker now unseals users' API keys, so `JFL_MASTER_KEY` is as
     required as the database URL. Discovering it is absent one task into

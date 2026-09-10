@@ -9,6 +9,7 @@ members = [
     "jfl-evals",
     "jfl-gate",
     "jfl-generate",
+    "jfl-intake",
     "jfl-web",
     "jfl-worker",
     "job-for-life",
@@ -970,6 +971,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "jfl-intake"
+version = "0.1.0"
+source = { editable = "packages/intake" }
+dependencies = [
+    { name = "httpx" },
+    { name = "jfl-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "jfl-core", editable = "packages/core" },
+]
+
+[[package]]
 name = "jfl-web"
 version = "0.1.0"
 source = { editable = "packages/web" }
@@ -1005,12 +1021,14 @@ source = { editable = "packages/worker" }
 dependencies = [
     { name = "jfl-core" },
     { name = "jfl-generate" },
+    { name = "jfl-intake" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "jfl-core", editable = "packages/core" },
     { name = "jfl-generate", editable = "packages/generate" },
+    { name = "jfl-intake", editable = "packages/intake" },
 ]
 
 [[package]]
@@ -1070,6 +1088,7 @@ dependencies = [
     { name = "jfl-evals" },
     { name = "jfl-gate" },
     { name = "jfl-generate" },
+    { name = "jfl-intake" },
     { name = "jfl-web" },
     { name = "jfl-worker" },
 ]
@@ -1092,6 +1111,7 @@ requires-dist = [
     { name = "jfl-evals", editable = "packages/evals" },
     { name = "jfl-gate", editable = "packages/gate" },
     { name = "jfl-generate", editable = "packages/generate" },
+    { name = "jfl-intake", editable = "packages/intake" },
     { name = "jfl-web", editable = "packages/web" },
     { name = "jfl-worker", editable = "packages/worker" },
 ]

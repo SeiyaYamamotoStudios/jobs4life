@@ -1,0 +1,53 @@
+[
+ {
+  "categories": {
+   "commitment": "Full-time",
+   "location": "London, United Kingdom",
+   "team": "Administrative",
+   "allLocations": [
+    "London, United Kingdom"
+   ]
+  },
+  "createdAt": 1711403416463,
+  "id": "ac978161-6f46-4f6b-ad9e-a258e642751c",
+  "text": "Administrative Business Partner",
+  "country": "GB",
+  "workplaceType": "hybrid",
+  "hostedUrl": "https://jobs.lever.co/palantir/ac978161-6f46-4f6b-ad9e-a258e642751c",
+  "applyUrl": "https://jobs.lever.co/palantir/ac978161-6f46-4f6b-ad9e-a258e642751c/apply"
+ },
+ {
+  "categories": {
+   "commitment": "Full-time",
+   "location": "London, United Kingdom",
+   "team": "Dev",
+   "allLocations": [
+    "London, United Kingdom"
+   ]
+  },
+  "createdAt": 1710188707256,
+  "id": "10dfc8bc-99ad-4ca2-ab76-853cb90a92c2",
+  "text": "Backend Software Engineer - Application Development",
+  "country": "GB",
+  "workplaceType": "hybrid",
+  "hostedUrl": "https://jobs.lever.co/palantir/10dfc8bc-99ad-4ca2-ab76-853cb90a92c2",
+  "applyUrl": "https://jobs.lever.co/palantir/10dfc8bc-99ad-4ca2-ab76-853cb90a92c2/apply"
+ },
+ {
+  "categories": {
+   "commitment": "Full-time",
+   "location": "New York, NY",
+   "team": "Dev",
+   "allLocations": [
+    "New York, NY"
+   ]
+  },
+  "createdAt": 1710191082166,
+  "id": "ab7e3425-81d5-4705-a7b5-cd60c8a45cdb",
+  "text": "Backend Software Engineer - Application Development",
+  "country": "US",
+  "workplaceType": "hybrid",
+  "hostedUrl": "https://jobs.lever.co/palantir/ab7e3425-81d5-4705-a7b5-cd60c8a45cdb",
+  "applyUrl": "https://jobs.lever.co/palantir/ab7e3425-81d5-4705-a7b5-cd60c8a45cdb/apply"
+ }
+]

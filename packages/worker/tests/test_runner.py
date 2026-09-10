@@ -23,7 +23,7 @@ from jfl_core.models import ReclaimResult, Task
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import TaskEnqueuer, TaskQueue
 from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
-from jfl_worker.runner import PURGE_SESSIONS_KIND, Worker
+from jfl_worker.runner import BOARD_SCHEDULE_KIND, PURGE_SESSIONS_KIND, Worker
 from jfl_worker.settings import WorkerSettings
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -416,17 +416,47 @@ def test_the_session_purge_is_enqueued_on_a_ticker_not_every_poll(engine: Engine
     settings = WorkerSettings(database_url="x", purge_interval=3600.0)
     worker, enqueuer = build_worker(engine, registry, queue, settings=settings)
 
+    def purges(calls: list[str]) -> list[str]:
+        # The loop has a second recurring kind (the watched-board scheduling
+        # pass) on its own ticker; this test is about the purge's.
+        return [kind for kind in calls if kind == PURGE_SESSIONS_KIND]
+
     assert worker.run_once() == 1  # enqueued, then claimed and run
-    assert enqueuer.calls == [PURGE_SESSIONS_KIND]
+    assert purges(enqueuer.calls) == [PURGE_SESSIONS_KIND]
 
     worker.run_once()  # same instant: the ticker is not due again
-    assert enqueuer.calls == [PURGE_SESSIONS_KIND]
+    assert purges(enqueuer.calls) == [PURGE_SESSIONS_KIND]
 
     two_hours_on, later_enqueuer = build_worker(
         engine, registry, queue, settings=settings, clock=NOW + dt.timedelta(hours=2)
     )
     two_hours_on.run_once()
-    assert later_enqueuer.calls == [PURGE_SESSIONS_KIND]
+    assert purges(later_enqueuer.calls) == [PURGE_SESSIONS_KIND]
+
+
+def test_the_board_scheduling_pass_is_enqueued_on_its_own_ticker(engine: Engine) -> None:
+    """Every fifteen minutes by default, through `enqueue_unique` like the purge:
+    a worker that was down for a day restarts into one scheduling pass.
+    """
+    queue = FakeQueue()
+    registry = HandlerRegistry()
+    registry.register(BOARD_SCHEDULE_KIND, lambda ctx: None, calls_model=False)
+    settings = WorkerSettings(database_url="x", board_schedule_interval=900.0)
+    worker, enqueuer = build_worker(engine, registry, queue, settings=settings)
+
+    def ticks() -> int:
+        return enqueuer.calls.count(BOARD_SCHEDULE_KIND)
+
+    worker._run_maintenance(NOW)
+    assert ticks() == 1
+    worker._run_maintenance(NOW + dt.timedelta(minutes=10))
+    assert ticks() == 1  # not due yet
+    worker._run_maintenance(NOW + dt.timedelta(minutes=15))
+    assert ticks() == 2
+
+    # Only one is ever queued at a time: the second tick found the first pending.
+    scheduled = [t for t in queue.tasks.values() if t.kind == BOARD_SCHEDULE_KIND]
+    assert len(scheduled) == 1
 
 
 def test_reclaim_uses_the_visibility_timeout_as_its_cutoff(engine: Engine) -> None:

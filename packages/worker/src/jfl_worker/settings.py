@@ -63,6 +63,7 @@ DEFAULT_RETRY_FACTOR = 2.0
 DEFAULT_RETRY_CAP = 10 * 60.0
 DEFAULT_KILL_SWITCH_RETRY_DELAY = 60.0
 DEFAULT_PURGE_INTERVAL = 60 * 60.0
+DEFAULT_BOARD_SCHEDULE_INTERVAL = 15 * 60.0
 DEFAULT_ERROR_BACKOFF = 10.0
 
 
@@ -127,6 +128,12 @@ class WorkerSettings:
     # is housekeeping rather than a security boundary.
     purge_interval: float = DEFAULT_PURGE_INTERVAL
 
+    # How often the watched-board scheduling pass is enqueued. Fifteen minutes:
+    # each board has its own daily slot (`jfl_intake.scheduling`), so this is
+    # the most a check runs late, and a newly added board gets its baseline
+    # within this long. The pass is one indexed query when nothing is due.
+    board_schedule_interval: float = DEFAULT_BOARD_SCHEDULE_INTERVAL
+
     # After an unexpected loop-level error (Postgres down, say). Longer than the
     # poll interval so a database outage does not become a log flood.
     error_backoff: float = DEFAULT_ERROR_BACKOFF
@@ -171,6 +178,9 @@ class WorkerSettings:
             retry_base=_seconds(source, "JFL_WORKER_RETRY_BASE", DEFAULT_RETRY_BASE),
             retry_cap=_seconds(source, "JFL_WORKER_RETRY_CAP", DEFAULT_RETRY_CAP),
             purge_interval=_seconds(source, "JFL_WORKER_PURGE_INTERVAL", DEFAULT_PURGE_INTERVAL),
+            board_schedule_interval=_seconds(
+                source, "JFL_WORKER_BOARD_SCHEDULE_INTERVAL", DEFAULT_BOARD_SCHEDULE_INTERVAL
+            ),
         )
 
     def retry_delay(self, attempts: int) -> dt.timedelta:

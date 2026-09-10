@@ -11,7 +11,12 @@ requires-python = ">=3.12,<3.13"
 # the user's own key. The guarantee moved rather than went away -- what stops an
 # accidental model call now is `calls_model=True` at registration and the
 # `JFL_DISABLE_MODEL_CALLS` switch that acts on it.
-dependencies = ["jfl-core", "jfl-generate"]
+#
+# `jfl-intake` for the watched-board handlers (`check_board`,
+# `schedule_board_checks`): adapters, the check engine and the schedule. It
+# brings `httpx` and no model client -- both handlers register
+# `calls_model=False`, and that is true.
+dependencies = ["jfl-core", "jfl-generate", "jfl-intake"]
 
 [project.scripts]
 jfl-worker = "jfl_worker.main:main"
@@ -26,3 +31,4 @@ packages = ["src/jfl_worker"]
 [tool.uv.sources]
 jfl-core = { workspace = true }
 jfl-generate = { workspace = true }
+jfl-intake = { workspace = true }

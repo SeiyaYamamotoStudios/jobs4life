@@ -3,7 +3,8 @@
 Shape of one iteration:
 
   1. maintenance, if due -- reclaim rows a dead worker left `running`, and
-     enqueue the recurring session purge;
+     enqueue the two recurring tasks: the session purge and the watched-board
+     scheduling pass;
   2. claim up to `batch_size` due tasks of the kinds this worker can run;
   3. dispatch each one, recording success or failure;
   4. if nothing was claimed, sleep for `poll_interval`.
@@ -41,6 +42,7 @@ import uuid
 from collections.abc import Callable, Mapping
 
 from jfl_core.models import Task
+from jfl_intake.scheduling import SCHEDULE_BOARD_CHECKS_KIND
 from sqlalchemy.engine import Engine
 
 from jfl_worker.log import LOGGER_NAME, log_event
@@ -49,6 +51,7 @@ from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
 from jfl_worker.settings import WorkerSettings, model_calls_disabled
 
 PURGE_SESSIONS_KIND = "purge_expired_sessions"
+BOARD_SCHEDULE_KIND = SCHEDULE_BOARD_CHECKS_KIND
 
 
 def _utcnow() -> dt.datetime:
@@ -91,6 +94,7 @@ class Worker:
         # away, which is exactly the moment both are most likely to be needed.
         self._next_reclaim_at: dt.datetime | None = None
         self._next_purge_at: dt.datetime | None = None
+        self._next_board_schedule_at: dt.datetime | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -156,6 +160,11 @@ class Worker:
         if self._next_purge_at is None or now >= self._next_purge_at:
             self._enqueue_purge(now)
             self._next_purge_at = now + dt.timedelta(seconds=self._settings.purge_interval)
+        if self._next_board_schedule_at is None or now >= self._next_board_schedule_at:
+            self._enqueue_recurring(BOARD_SCHEDULE_KIND, now)
+            self._next_board_schedule_at = now + dt.timedelta(
+                seconds=self._settings.board_schedule_interval
+            )
 
     def _reclaim(self, now: dt.datetime) -> None:
         cutoff = now - dt.timedelta(seconds=self._settings.visibility_timeout)
@@ -188,11 +197,20 @@ class Worker:
         `enqueue_unique` so a worker that was down for six hours enqueues one
         purge on restart, not a backlog of six.
         """
+        self._enqueue_recurring(PURGE_SESSIONS_KIND, now)
+
+    def _enqueue_recurring(self, kind: str, now: dt.datetime) -> None:
+        """One recurring task, through the queue, at most one queued at a time.
+
+        Shared by the session purge (above) and the watched-board scheduling
+        pass, which enqueues each due board's `check_board` itself -- so a
+        worker down for a day restarts into one scheduling pass, not ninety-six.
+        """
         # `scheduled_at=now`, not the server's `now()` default: the loop has
         # already fixed `now` for this iteration, and a row scheduled a
         # millisecond later than that would not be due until the next poll.
         with self._enqueuer_scope() as enqueuer:
-            task = enqueuer.enqueue_unique(kind=PURGE_SESSIONS_KIND, scheduled_at=now)
+            task = enqueuer.enqueue_unique(kind=kind, scheduled_at=now)
         if task is not None:
             log_event(
                 self._log, logging.INFO, "queue.enqueued", task_id=str(task.id), kind=task.kind

@@ -6,7 +6,13 @@ from collections.abc import Mapping
 
 import pytest
 from jfl_core.crypto.envelope import MasterKey
-from jfl_worker.handlers import EXTRACT_JOB_AD, PURGE_EXPIRED_SESSIONS, build_registry
+from jfl_worker.handlers import (
+    CHECK_BOARD,
+    EXTRACT_JOB_AD,
+    PURGE_EXPIRED_SESSIONS,
+    SCHEDULE_BOARD_CHECKS,
+    build_registry,
+)
 from jfl_worker.registry import DuplicateHandlerError, HandlerRegistry, TaskContext
 from jfl_worker.settings import WorkerSettings
 
@@ -57,7 +63,9 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     settings = WorkerSettings(database_url="x", master_key=MasterKey.generate())
     registry = build_registry(settings)
 
-    assert registry.kinds() == (EXTRACT_JOB_AD, PURGE_EXPIRED_SESSIONS)
+    assert registry.kinds() == tuple(
+        sorted((CHECK_BOARD, EXTRACT_JOB_AD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+    )
 
     purge = registry.get(PURGE_EXPIRED_SESSIONS)
     assert purge is not None and purge.calls_model is False
@@ -65,5 +73,13 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     extract = registry.get(EXTRACT_JOB_AD)
     assert extract is not None and extract.calls_model is True
 
-    # And the switch actually removes it from what a worker will claim.
-    assert registry.runnable_kinds(allow_model_calls=False) == (PURGE_EXPIRED_SESSIONS,)
+    # Watched boards call public ATS APIs and pure rules -- no model, no spend --
+    # so the kill switch must not stop them, and they must say so.
+    for kind in (CHECK_BOARD, SCHEDULE_BOARD_CHECKS):
+        spec = registry.get(kind)
+        assert spec is not None and spec.calls_model is False
+
+    # And the switch actually removes only the model-calling kind.
+    assert registry.runnable_kinds(allow_model_calls=False) == tuple(
+        sorted((CHECK_BOARD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+    )

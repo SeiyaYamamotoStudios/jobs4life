@@ -36,17 +36,18 @@ COPY packages/cli/pyproject.toml packages/cli/
 COPY packages/evals/pyproject.toml packages/evals/
 COPY packages/web/pyproject.toml packages/web/
 COPY packages/worker/pyproject.toml packages/worker/
+COPY packages/intake/pyproject.toml packages/intake/
 
 # Sources must exist for the workspace members to build; stub them so the
 # dependency layer can resolve before real source is copied.
 RUN mkdir -p packages/core/src/jfl_core packages/gate/src/jfl_gate \
       packages/generate/src/jfl_generate packages/cli/src/jfl_cli \
       packages/evals/src/jfl_evals packages/web/src/jfl_web \
-      packages/worker/src/jfl_worker \
+      packages/worker/src/jfl_worker packages/intake/src/jfl_intake \
  && touch packages/core/src/jfl_core/__init__.py packages/gate/src/jfl_gate/__init__.py \
       packages/generate/src/jfl_generate/__init__.py packages/cli/src/jfl_cli/__init__.py \
       packages/evals/src/jfl_evals/__init__.py packages/web/src/jfl_web/__init__.py \
-      packages/worker/src/jfl_worker/__init__.py
+      packages/worker/src/jfl_worker/__init__.py packages/intake/src/jfl_intake/__init__.py
 
 RUN uv sync --frozen --no-dev --package jfl-web --package jfl-worker --no-install-workspace
 

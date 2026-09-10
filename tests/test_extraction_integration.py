@@ -22,6 +22,7 @@ import io
 import json
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import anthropic
@@ -36,6 +37,7 @@ from jfl_core.db.tables import users as users_table
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_intake.http import Transport
 from jfl_worker.handlers import EXTRACT_JOB_AD, build_registry
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import postgres_enqueuer_scope, postgres_queue_scope
@@ -47,6 +49,17 @@ from sqlalchemy.engine import Engine
 pytestmark = pytest.mark.integration
 
 DATABASE_URL = "postgresql+psycopg://jfl:jfl@localhost:5433/jfl"
+
+
+@contextmanager
+def _never_fetch_a_board() -> Iterator[Transport]:
+    """`check_board`'s transport in this file. Nothing here watches a job board,
+    so being asked to open one means a board check from elsewhere was claimed --
+    fail loudly rather than fetch it. (The root conftest refuses the socket too.)
+    """
+    raise AssertionError("a worker test tried to fetch a job board")
+    yield  # pragma: no cover
+
 
 # Shaped like a real key and obviously not one. Every test that stores a
 # credential uses this exact string, which is what the leak test greps for.
@@ -215,7 +228,10 @@ def run_worker(
         database_url=DATABASE_URL, system_user_id=user_id, master_key=master_key
     )
     worker = Worker(
-        registry=build_registry(settings),
+        # The real registry, unable to reach a job board: see `_never_fetch_a_board`.
+        registry=build_registry(
+            settings, board_transport=_never_fetch_a_board, board_owners={user_id}
+        ),
         settings=settings,
         queue_scope=postgres_queue_scope(engine),
         enqueuer_scope=postgres_enqueuer_scope(engine, user_id),

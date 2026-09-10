@@ -1,0 +1,20 @@
+[project]
+name = "jfl-intake"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# Domain 3: watched job boards. Deterministic throughout -- no model call
+# anywhere in this package, and no `anthropic` dependency to make one with.
+#   jfl-core -- the domain models the check engine plans against and the
+#               repositories the scheduling helpers take
+#   httpx    -- the one real transport; every test uses a fake instead
+dependencies = ["jfl-core", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jfl_intake"]
+
+[tool.uv.sources]
+jfl-core = { workspace = true }

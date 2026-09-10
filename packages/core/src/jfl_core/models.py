@@ -306,3 +306,219 @@ class ReclaimResult(BaseModel):
 
     def __bool__(self) -> bool:
         return bool(self.requeued or self.failed)
+
+
+# --------------------------------------------------------------------------
+# Watched job boards (domain 3, intake). See `jfl_core.db.tables.watched_boards`
+# for the schema and `jfl_intake.engine` for the rule these rest on: only a
+# complete check may close a presence interval.
+# --------------------------------------------------------------------------
+
+BoardPlatform = Literal["greenhouse", "ashby", "lever", "workday"]
+BoardCheckStatus = Literal["complete", "incomplete", "truncated", "unreachable", "failed", "held"]
+# What an adapter can report. `held` is not in it: holding is the check engine's
+# decision about a complete fetch, never something a fetch can say about itself.
+FetchStatus = Literal["complete", "incomplete", "truncated", "unreachable", "failed"]
+BoardCheckErrorCode = Literal[
+    "not_found",
+    "http_client_error",
+    "rate_limited",
+    "server_error",
+    "timeout",
+    "connection_error",
+    "malformed_response",
+    "unidentifiable_job",
+    "count_mismatch",
+    "page_cap_reached",
+    "request_budget_exhausted",
+    "deadline_exceeded",
+    "listing_ceiling",
+    "unsupported_board",
+    "drop_guard",
+]
+# `reposted` is reported INSTEAD of `new`, not as well: a reposted job is a new
+# external id, and saying both would count it twice. `returned` is the same
+# external id reopening, and never shares a code path with `reposted`.
+BoardJobEventKind = Literal["new", "reposted", "returned", "gone"]
+
+
+class WatchedBoard(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    platform: BoardPlatform
+    board_url: str
+    board_key: dict[str, str]
+    label: str | None = None
+    created_at: dt.datetime
+    next_check_at: dt.datetime
+    last_check_id: uuid.UUID | None = None
+    consecutive_failures: int = 0
+    baseline_check_id: uuid.UUID | None = None
+    held_check_id: uuid.UUID | None = None
+    drop_accepted: bool = False
+
+
+class BoardCheck(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    board_id: uuid.UUID
+    started_at: dt.datetime
+    finished_at: dt.datetime
+    status: BoardCheckStatus
+    jobs_seen: int
+    expected_total: int | None = None
+    error_code: BoardCheckErrorCode | None = None
+    is_baseline: bool = False
+
+
+class BoardJob(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    board_id: uuid.UUID
+    external_id: str
+    requisition_id: str | None = None
+    title: str
+    location: str | None = None
+    url: str | None = None
+    fingerprint: str
+    first_seen_check_id: uuid.UUID
+    first_seen_at: dt.datetime
+    last_seen_at: dt.datetime
+    reposted_from_job_id: uuid.UUID | None = None
+
+
+class BoardJobPresence(BaseModel):
+    """One interval of continuous presence. Open while `closed_at` is None."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    job_id: uuid.UUID
+    opened_check_id: uuid.UUID
+    opened_at: dt.datetime
+    closed_check_id: uuid.UUID | None = None
+    closed_at: dt.datetime | None = None
+
+
+class BoardJobEvent(BaseModel):
+    """One thing that happened to a job, derived from the intervals -- there is
+    no events table. `new`/`reposted` come from `board_jobs.first_seen_check_id`
+    (never a baseline check), `returned` from an interval opened by a later check
+    than the job's first, and `gone` from an interval's close.
+    """
+
+    kind: BoardJobEventKind
+    board_id: uuid.UUID
+    check_id: uuid.UUID
+    at: dt.datetime
+    job: BoardJob
+
+
+class ObservedJob(BaseModel):
+    """One job as an adapter saw it, normalised, before any history is applied.
+
+    `fingerprint` is computed when the record is built
+    (`jfl_intake.normalise.fingerprint`), so every consumer compares the same
+    string rather than re-deriving it.
+    """
+
+    model_config = {"frozen": True}
+
+    # The platform's id for this POSTING -- the finest grain the platform
+    # exposes, and the identity every diff keys on. For Workday that is the
+    # `externalPath` suffix (`R171808-1`), not the requisition (`R171808`):
+    # a role re-listed as `R171808-2` must read as a new posting, or reposts
+    # are invisible. History kept at a coarser grain can never be re-keyed.
+    external_id: str
+    title: str
+    location: str | None = None
+    url: str | None = None
+    fingerprint: str
+    # The employer's requisition, where the platform exposes one (Workday's
+    # `bulletFields[0]`, Greenhouse's `requisition_id`); None elsewhere.
+    # STORED ONLY. No rule reads it: a requisition re-listed under a new posting
+    # id has not been observed yet, and rules come from observed patterns. It is
+    # recorded so that pattern can be learned from real history later.
+    requisition_id: str | None = None
+
+
+class KnownBoardJob(BaseModel):
+    """What the check engine needs to know about a job already on record."""
+
+    job_id: uuid.UUID
+    external_id: str
+    fingerprint: str
+    is_open: bool
+    last_closed_at: dt.datetime | None = None
+    # Already the source of a repost. A closed posting can be reposted once;
+    # after that the repost is the thing that may be reposted again.
+    has_repost_successor: bool = False
+
+
+class BoardCheckState(BaseModel):
+    """A board's history as of a check, read under a row lock on the board.
+
+    `known_jobs` is not every job ever seen: it is every job with an open
+    interval, every job whose external id was just observed, and every job that
+    closed inside the repost window -- exactly the set the diff can touch.
+    """
+
+    board_id: uuid.UUID
+    baseline_check_id: uuid.UUID | None = None
+    held_check_id: uuid.UUID | None = None
+    drop_accepted: bool = False
+    known_jobs: list[KnownBoardJob] = Field(default_factory=list)
+
+
+class PlannedNewJob(BaseModel):
+    job: ObservedJob
+    reposted_from_job_id: uuid.UUID | None = None
+
+
+class PlannedSighting(BaseModel):
+    """An observed job that is already on record: `job_id` is its row."""
+
+    job_id: uuid.UUID
+    job: ObservedJob
+
+
+class CheckPlan(BaseModel):
+    """What one check means for a board's history. Produced by the pure
+    `jfl_intake.engine.plan_check`, applied by
+    `PostgresBoardRepository.apply_check_plan`. Every job list is empty unless
+    `status == "complete"`.
+    """
+
+    board_id: uuid.UUID
+    status: BoardCheckStatus
+    error_code: BoardCheckErrorCode | None = None
+    jobs_seen: int
+    expected_total: int | None = None
+    is_baseline: bool = False
+    new_jobs: list[PlannedNewJob] = Field(default_factory=list)
+    returned: list[PlannedSighting] = Field(default_factory=list)
+    still_open: list[PlannedSighting] = Field(default_factory=list)
+    gone_job_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @property
+    def changes_job_state(self) -> bool:
+        return self.status == "complete"
+
+    def summary(self) -> dict[str, int]:
+        """Counts for a log line. `new` excludes baseline jobs and reposts."""
+        reposted = sum(1 for n in self.new_jobs if n.reposted_from_job_id is not None)
+        return {
+            "baseline": len(self.new_jobs) if self.is_baseline else 0,
+            "new": 0 if self.is_baseline else len(self.new_jobs) - reposted,
+            "reposted": reposted,
+            "returned": len(self.returned),
+            "gone": len(self.gone_job_ids),
+        }
+
+
+class DueBoard(BaseModel):
+    """A board the scheduler found due, and whose it is. Ids only, by design --
+    see `jfl_core.storage.boards.PostgresBoardScheduler`.
+    """
+
+    board_id: uuid.UUID
+    user_id: uuid.UUID

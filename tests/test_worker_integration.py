@@ -20,6 +20,7 @@ import json
 import os
 import uuid
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 
 import pytest
 from jfl_core.crypto.envelope import MasterKey
@@ -27,6 +28,7 @@ from jfl_core.db.tables import sessions as sessions_table
 from jfl_core.db.tables import users
 from jfl_core.storage.accounts import PostgresSessionRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_intake.http import Transport
 from jfl_worker.handlers import PURGE_EXPIRED_SESSIONS, build_registry
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import postgres_enqueuer_scope, postgres_queue_scope
@@ -39,6 +41,16 @@ from sqlalchemy.engine import Engine
 pytestmark = pytest.mark.integration
 
 DATABASE_URL = os.environ.get("JFL_DATABASE_URL", "postgresql+psycopg://jfl:jfl@localhost:5433/jfl")
+
+
+@contextmanager
+def _never_fetch_a_board() -> Iterator[Transport]:
+    """`check_board`'s transport in this file. Nothing here watches a job board,
+    so being asked to open one means a board check from elsewhere was claimed --
+    fail loudly rather than fetch it. (The root conftest refuses the socket too.)
+    """
+    raise AssertionError("a worker test tried to fetch a job board")
+    yield  # pragma: no cover
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +82,12 @@ def _build_worker(
         database_url=DATABASE_URL, system_user_id=user_id, master_key=MasterKey.generate()
     )
     return Worker(
-        registry=registry or build_registry(settings),
+        # The real registry, minus its ability to reach a job board: `check_board`
+        # gets a transport that refuses, and the scheduling pass only sees this
+        # test's user -- so a database left dirty by a crashed run cannot turn
+        # this loop into a live request.
+        registry=registry
+        or build_registry(settings, board_transport=_never_fetch_a_board, board_owners={user_id}),
         settings=settings,
         queue_scope=postgres_queue_scope(engine),
         enqueuer_scope=postgres_enqueuer_scope(engine, user_id),

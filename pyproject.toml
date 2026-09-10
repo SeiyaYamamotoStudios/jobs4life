@@ -11,6 +11,7 @@ dependencies = [
   "jfl-evals",
   "jfl-web",
   "jfl-worker",
+  "jfl-intake",
 ]
 
 [tool.uv]
@@ -27,6 +28,7 @@ jfl-cli = { workspace = true }
 jfl-evals = { workspace = true }
 jfl-web = { workspace = true }
 jfl-worker = { workspace = true }
+jfl-intake = { workspace = true }
 
 [dependency-groups]
 dev = [

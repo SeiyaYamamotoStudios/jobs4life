@@ -1,0 +1,139 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/anthropic/jobs/4461450008",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 4147866008,
+   "location": {
+    "name": "New York City, NY; San Francisco, CA | New York City, NY"
+   },
+   "metadata": [
+    {
+     "id": 4036944008,
+     "name": "Location Type",
+     "value": "On-Site",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 4461450008,
+   "updated_at": "2026-08-21T21:32:54-04:00",
+   "requisition_id": "3356",
+   "title": "Account Executive, AI Native",
+   "company_name": "Anthropic",
+   "first_published": "2024-12-20T13:53:38-05:00",
+   "language": "en",
+   "application_deadline": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/anthropic/jobs/5391376008",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 4533087008,
+   "location": {
+    "name": "Singapore"
+   },
+   "metadata": [
+    {
+     "id": 4036944008,
+     "name": "Location Type",
+     "value": "On-Site",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 5391376008,
+   "updated_at": "2026-08-28T16:47:28-04:00",
+   "requisition_id": "266765",
+   "title": "Account Executive - DNB",
+   "company_name": "Anthropic",
+   "first_published": "2026-08-20T16:34:11-04:00",
+   "language": "en",
+   "application_deadline": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/anthropic/jobs/5391381008",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 4533090008,
+   "location": {
+    "name": "Singapore"
+   },
+   "metadata": [
+    {
+     "id": 4036944008,
+     "name": "Location Type",
+     "value": "On-Site",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 5391381008,
+   "updated_at": "2026-08-28T16:47:28-04:00",
+   "requisition_id": "266766",
+   "title": "Account Executive - Public Sector (ASEAN)",
+   "company_name": "Anthropic",
+   "first_published": "2026-08-20T16:55:45-04:00",
+   "language": "en",
+   "application_deadline": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/anthropic/jobs/5400138008",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 4147866008,
+   "location": {
+    "name": "San Francisco, CA | New York City, NY"
+   },
+   "metadata": [
+    {
+     "id": 4036944008,
+     "name": "Location Type",
+     "value": "On-Site",
+     "value_type": "single_select"
+    }
+   ],
+   "id": 5400138008,
+   "updated_at": "2026-08-24T16:19:13-04:00",
+   "requisition_id": "3356",
+   "title": "Account Executive, Startups",
+   "company_name": "Anthropic",
+   "first_published": "2026-08-24T16:19:13-04:00",
+   "language": "en",
+   "application_deadline": null
+  }
+ ],
+ "meta": {
+  "total": 4
+ }
+}
