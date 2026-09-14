@@ -342,3 +342,52 @@ def test_updated_at_is_bumped_by_a_notes_edit_too(repo: PostgresApplicationRepos
     before = application.updated_at
     updated = repo.update_notes(application.id, "edited")
     assert updated.updated_at >= before
+
+
+# --- archive (soft delete) ----------------------------------------------------
+
+
+def test_archiving_hides_an_application_without_touching_its_status_or_timeline(
+    repo: PostgresApplicationRepository,
+) -> None:
+    """Archive is housekeeping, not an outcome: a test entry must leave the list
+    without being recorded as withdrawn, and nothing is deleted."""
+    kept = repo.create_application(title="Real role")
+    junk = repo.create_application(title="Test entry")
+    repo.change_status(junk.id, to_status="applied")
+    before = repo.get_application(junk.id)
+    assert before is not None
+
+    archived = repo.archive(junk.id)
+
+    assert archived.archived_at is not None
+    assert archived.status == "applied"
+    assert archived.updated_at == before.application.updated_at
+    assert [a.id for a in repo.list_applications()] == [kept.id]
+    assert [a.id for a in repo.list_applications(archived=True)] == [junk.id]
+    after = repo.get_application(junk.id)
+    assert after is not None
+    assert len(after.events) == len(before.events)
+
+
+def test_unarchiving_restores_an_application_to_the_live_list(
+    repo: PostgresApplicationRepository,
+) -> None:
+    application = repo.create_application(title="Brought back")
+    repo.archive(application.id)
+
+    restored = repo.unarchive(application.id)
+
+    assert restored.archived_at is None
+    assert [a.id for a in repo.list_applications()] == [application.id]
+    assert repo.list_applications(archived=True) == []
+
+
+def test_a_user_cannot_archive_another_users_application(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    theirs = PostgresApplicationRepository(conn, alice).create_application(title="Alice's")
+    with pytest.raises(ApplicationNotFoundError):
+        PostgresApplicationRepository(conn, bob).archive(theirs.id)
+    with pytest.raises(ApplicationNotFoundError):
+        PostgresApplicationRepository(conn, bob).unarchive(theirs.id)

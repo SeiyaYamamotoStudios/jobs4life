@@ -54,31 +54,35 @@ that mattered was found that way and none by review.
 
 ## Next
 
-### Resume here — end of session, 2026-09-11
+### Resume here — end of session, 2026-09-15
 
-- **Deployed and healthy: `451f50a`** — the watched-boards engine with Greenhouse, Ashby,
-  Lever and Workday adapters, presence intervals, completeness rules and the socket-level
-  network guard. Zero boards in production; the scheduler is running and inert.
-- **Committed, not yet deployed:** eight more adapters — SmartRecruiters, Rippling, Breezy,
-  Teamtailor, Personio, Recruitee, Pinpoint, Workable — and the three fixes that make them
-  work: a **new** migration `3c540957b0d2` widening `ck_watched_boards_platform` to all
-  twelve (the deployed `f07cdd619c07` is untouched), text support in `jfl_intake/http.py` so
-  Teamtailor RSS and Personio XML can succeed live, and Rippling's locations merged
-  deterministically (its board is 648 rows but 347 jobs). Independently verified: ruff and
-  format, mypy, unit, integration, tenancy, intake, and alembic up / down / up.
-- **Known bug — fix before deploying these adapters.** `duplicate_posting` is in
-  `BoardCheckErrorCode` in `models.py`, but not in `_BOARD_CHECK_ERROR_CODES` in `tables.py`
-  or in `ck_board_checks_error_code`. A Workable check that detects a repeated id will fail
-  at INSERT. It is the same bug class as the platform list just fixed: a `Literal`, a tuple
-  and a CHECK constraint holding one list and drifting apart. Fix it with a new migration,
-  and **generalise the platform drift test to every `Literal` that backs a CHECK
-  constraint**, so the whole class is caught rather than one list at a time.
-- **Then:** deploy; build the minimal "add a board, see my boards" screen, since history
-  cannot be backfilled and every day unwatched is lost (owner to confirm); and settle the
-  four display questions before the comparison feed is built — since-last-looked vs fixed
-  windows, how long gone jobs stay on the main screen, one global filter vs per board, and
-  whether "Track as application" reads the ad with the model.
-- **22 commits were unpushed** at the end of this session.
+- **Deployed and healthy:** twelve board platforms; the **Boards** screen (add a board by
+  URL, check now, stop watching, per-board settings); and the **Jobs** page — one
+  aggregated, filtered list of every open job across all watched boards.
+- **Filters:** a saved workplace set, title includes and excludes, optional location; a
+  per-board "include jobs whose workplace isn't stated" setting (default on for Greenhouse,
+  Rippling, Workday and Personio); and per-board exceptions in the owner's own words, e.g.
+  Anthropic on-site roles in London. Workplace comes from platform fields, Greenhouse
+  custom metadata, or the literal words remote or hybrid in location text — never from a
+  country name.
+- **Half-built: archive (soft delete) for applications.** Done and deployed:
+  `applications.archived_at` (migration `e5396ef31c67`), `archive` and `unarchive` on the
+  repository, `list_applications` hiding archived ones by default (`archived=True` lists
+  them), all tested. **Not built: the UI** — an Archive button with a confirm step on the
+  application page, an "Archived (N)" link and view on the list, and Restore. The owner
+  has a test application showing as withdrawn that should be archived once this exists.
+- **Decide:** 38 of Anthropic's jobs are labelled On-Site in Greenhouse metadata while
+  their location text says "Remote-Friendly". Metadata wins, so a remote-only filter hides
+  them and does not count them as unstated. A board exception on location "remote friendly"
+  brings them back; the open question is whether a metadata-versus-text conflict should be
+  shown instead.
+- **This session hit a Claude Code safeguard block** (`reasoning_extraction`, request
+  `req_011Cf4DtdrzD637cpQwC9B4r`) during routine work, most likely helped along by a very
+  long context full of eval and labelling material. Start fresh sessions rather than
+  resuming this one.
+- **Still open with the owner:** the "what changed" feed (new / gone / returned /
+  reposted) and its display questions; B4 scoring; the prompt-defect batch and its ~$2
+  eval re-run; error references; slice D.
 
 **Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
 quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,

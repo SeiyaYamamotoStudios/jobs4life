@@ -561,6 +561,12 @@ applications = Table(
     # guess: extraction may replace a provisional title and may not replace any
     # other kind, and once it has, the title stops being provisional.
     Column("title_is_provisional", Boolean, nullable=False, server_default=text("false")),
+    # Soft delete. Archiving takes an application off the owner's lists without
+    # touching its status or its event timeline, so a test entry or a duplicate can
+    # disappear without being recorded as something the owner did -- "withdrawn" is
+    # a real outcome of a real process and must stay reserved for one. NULL means
+    # live. Nothing is ever deleted; restoring clears it.
+    _ts("archived_at"),
     _ts("created_at", nullable=False, server_default=func.now()),
     # `onupdate` is a Core-level default: SQLAlchemy adds `updated_at = now()`
     # to any UPDATE built from this table that does not itself set the column

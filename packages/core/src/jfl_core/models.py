@@ -202,6 +202,8 @@ class Application(BaseModel):
     # True while `title` is a placeholder taken from the ad's first line. See
     # `jfl_core.db.tables.applications` for why this is a column and not a guess.
     title_is_provisional: bool = False
+    # Soft delete: set when archived, cleared when restored. See tables.py.
+    archived_at: dt.datetime | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
 

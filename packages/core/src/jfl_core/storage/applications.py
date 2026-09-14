@@ -76,6 +76,7 @@ _APPLICATION_COLUMNS = (
     applications_table.c.extraction_error_code,
     applications_table.c.extracted_at,
     applications_table.c.title_is_provisional,
+    applications_table.c.archived_at,
     applications_table.c.created_at,
     applications_table.c.updated_at,
 )
@@ -120,6 +121,7 @@ def _application_from_row(row: Any) -> Application:
         extraction_error_code=row.extraction_error_code,
         extracted_at=row.extracted_at,
         title_is_provisional=row.title_is_provisional,
+        archived_at=row.archived_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -197,11 +199,24 @@ class PostgresApplicationRepository(TenantScopedRepository):
         )
         return _application_from_row(row)
 
-    def list_applications(self, *, status: ApplicationStatus | None = None) -> list[Application]:
-        """Most recently updated first -- the primary screen's ordering."""
+    def list_applications(
+        self, *, status: ApplicationStatus | None = None, archived: bool = False
+    ) -> list[Application]:
+        """Most recently updated first -- the primary screen's ordering.
+
+        Live applications by default; `archived=True` lists only archived ones.
+        Anything that later feeds an owner's application history to a model must
+        read through this default, so an archived test entry is never presented as
+        part of their real record.
+        """
         query = (
             select(*_APPLICATION_COLUMNS)
             .where(applications_table.c.user_id == self._user_id)
+            .where(
+                applications_table.c.archived_at.is_not(None)
+                if archived
+                else applications_table.c.archived_at.is_(None)
+            )
             # `created_at` and `id` break ties, and they are not decoration.
             # Postgres `now()` is transaction-start time, so two rows written in
             # one transaction share a timestamp exactly; ordering by `updated_at`
@@ -281,6 +296,35 @@ class PostgresApplicationRepository(TenantScopedRepository):
                 note=note,
             )
         )
+        return _application_from_row(row)
+
+    def archive(self, application_id: uuid.UUID) -> Application:
+        """Take an application off the owner's lists. Status and timeline are untouched."""
+        return self._set_archived(application_id, archived=True)
+
+    def unarchive(self, application_id: uuid.UUID) -> Application:
+        """Restore an archived application to the owner's lists."""
+        return self._set_archived(application_id, archived=False)
+
+    def _set_archived(self, application_id: uuid.UUID, *, archived: bool) -> Application:
+        row = self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(
+                archived_at=func.now() if archived else None,
+                # Explicitly keep `updated_at`, overriding the column's onupdate.
+                # Archiving is housekeeping, not progress on the application, so it
+                # must not reorder the list or show as the application's latest
+                # activity.
+                updated_at=applications_table.c.updated_at,
+            )
+            .returning(*_APPLICATION_COLUMNS)
+        ).first()
+        if row is None:
+            raise ApplicationNotFoundError(application_id)
         return _application_from_row(row)
 
     def update_notes(self, application_id: uuid.UUID, notes: str | None) -> Application:
