@@ -752,6 +752,7 @@ _BOARD_CHECK_ERROR_CODES = (
     "unidentifiable_job",  # a listed job with no usable id, so it cannot be tracked
     "count_mismatch",  # saw a different number of jobs than the board said it had
     "page_cap_reached",  # the pagination safety net fired
+    "duplicate_posting",  # a token-paged listing repeated an id without finishing
     "request_budget_exhausted",
     "deadline_exceeded",
     "listing_ceiling",  # Workday board over its listing ceiling with no usable facet
