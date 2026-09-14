@@ -8,8 +8,12 @@ requires-python = ">=3.12,<3.13"
 #   itsdangerous -- signs the short-lived OAuth transaction cookie (Starlette's
 #                   SessionMiddleware); the real session is a Postgres row
 #   anthropic    -- one optional key-validation call at the settings form
+#   jfl-intake   -- the boards screen (slice C): `detect_board` and
+#                   `enqueue_board_check` only. No network call of its own --
+#                   the fetch belongs to the worker, never to a request here.
 dependencies = [
   "jfl-core",
+  "jfl-intake",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
   "jinja2>=3.1",
@@ -29,3 +33,4 @@ packages = ["src/jfl_web"]
 
 [tool.uv.sources]
 jfl-core = { workspace = true }
+jfl-intake = { workspace = true }

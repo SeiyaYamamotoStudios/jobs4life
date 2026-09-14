@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ board.label or board.board_url }} — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ board.label or board.board_url }}</h1>
+  <a href="/boards">Back to boards</a>
+</div>
+
+<dl class="facts">
+  <dt>Platform</dt><dd>{{ platform_label }}</dd>
+  <dt>URL</dt><dd><a href="{{ board.board_url }}">{{ board.board_url }}</a></dd>
+  <dt>Added</dt>
+  <dd title="{{ board.created_at.isoformat() }}">{{ board.created_at | humanize_dt }}</dd>
+  <dt>Open jobs</dt>
+  <dd>{% if open_jobs is none %}first check pending{% else %}{{ open_jobs | length }}{% endif %}</dd>
+</dl>
+
+{% if checked_status == "queued" %}
+<p class="ok" role="status">Check queued.</p>
+{% elif checked_status == "already_queued" %}
+<p class="note" role="status">A check is already queued for this board.</p>
+{% endif %}
+
+{% if held %}
+<p class="error" role="alert">
+  Held: the last check saw far fewer open jobs than this board currently has on
+  record, so it was recorded and not applied — the open jobs above are still
+  the true count from before the drop. It clears on the next check that comes
+  back above the threshold.
+</p>
+{% endif %}
+
+<div class="quick-actions">
+  <form method="post" action="/boards/{{ board.id }}/check">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="next" value="detail">
+    <button type="submit">Check now</button>
+  </form>
+  <details class="confirm-remove">
+    <summary>Stop watching</summary>
+    <form method="post" action="/boards/{{ board.id }}/remove">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="secondary">Yes, stop watching</button>
+    </form>
+  </details>
+</div>
+
+<section>
+  <h2>Open jobs</h2>
+  {% if open_jobs is none %}
+  <p class="note">First check pending — a board that has not been checked yet is
+    not an empty board.</p>
+  {% elif open_jobs %}
+  <ul class="requirements">
+    {% for job in open_jobs %}
+    <li>
+      <div>
+        {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
+        {% if job.location %}<span class="note"> — {{ job.location }}</span>{% endif %}
+      </div>
+      <span class="note" title="{{ job.first_seen_at.isoformat() }}">
+        seen since {{ job.first_seen_at | humanize_dt }}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No jobs currently open.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Recent checks</h2>
+  {% if checks %}
+  <ul class="timeline">
+    {% for check in checks %}
+    <li>
+      <span class="status-badge status-{{ check.status }}">{{ check.status }}</span>
+      {% if check.status != "complete" and check.error_code %}
+      <span class="note">{{ check.error_code | board_error_message }}</span>
+      {% endif %}
+      <time title="{{ check.finished_at.isoformat() }}">{{ check.finished_at | humanize_dt }}</time>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No checks yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

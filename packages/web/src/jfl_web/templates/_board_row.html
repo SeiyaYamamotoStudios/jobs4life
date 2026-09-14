@@ -1,0 +1,47 @@
+{# One row of the boards table. Included from boards_list.html.
+   Needs in context: session, row (board, platform_label, last_check,
+   open_job_count, held). #}
+<tr id="board-{{ row.board.id }}">
+  <td class="col-board">
+    <a href="/boards/{{ row.board.id }}">{{ row.board.label or row.board.board_url }}</a>
+    <div class="note">{{ row.platform_label }}</div>
+  </td>
+  <td class="col-check">
+    {% if row.held %}
+    <span class="status-badge status-held">held</span>
+    <div class="note">Open job count dropped sharply — held rather than applied.</div>
+    {% elif row.last_check %}
+    <span class="status-badge status-{{ row.last_check.status }}">{{ row.last_check.status }}</span>
+      {% if row.last_check.status != "complete" and row.last_check.error_code %}
+      <div class="note">{{ row.last_check.error_code | board_error_message }}</div>
+      {% endif %}
+    {% else %}
+    <span class="note">first check pending</span>
+    {% endif %}
+  </td>
+  <td class="col-updated">
+    {% if row.last_check %}
+    <span title="{{ row.last_check.finished_at.isoformat() }}">{{ row.last_check.finished_at | humanize_dt }}</span>
+    {% else %}—{% endif %}
+  </td>
+  <td class="col-updated" title="{{ row.board.created_at.isoformat() }}">
+    {{ row.board.created_at | humanize_dt }}
+  </td>
+  <td class="col-open-jobs">
+    {% if row.open_job_count is none %}first check pending{% else %}{{ row.open_job_count }}{% endif %}
+  </td>
+  <td class="col-actions">
+    <form method="post" action="/boards/{{ row.board.id }}/check">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="next" value="list">
+      <button type="submit" class="link">Check now</button>
+    </form>
+    <details class="confirm-remove">
+      <summary>Stop watching</summary>
+      <form method="post" action="/boards/{{ row.board.id }}/remove">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="secondary">Yes, stop watching</button>
+      </form>
+    </details>
+  </td>
+</tr>

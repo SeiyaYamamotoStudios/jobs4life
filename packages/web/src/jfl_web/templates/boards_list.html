@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Boards — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Boards</h1>
+</div>
+<p class="lede">
+  A personal catalogue of employers' ATS boards, checked daily. History starts the
+  day a board is added — it cannot be filled in retroactively, so the sooner one is
+  watched, the more its history shows.
+</p>
+
+<section>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/boards" class="board-add-row">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="url" class="visually-hidden">Board URL</label>
+    <input type="url" id="url" name="url" required autofocus
+           placeholder="https://boards.greenhouse.io/..."
+           value="{{ url_value or '' }}">
+    <button type="submit">Add</button>
+  </form>
+  <p class="note">
+    Paste the careers/jobs page URL of an employer on Greenhouse, Ashby, Lever,
+    Workday, SmartRecruiters, Rippling, Breezy, Teamtailor, Personio, Recruitee,
+    Pinpoint or Workable.
+  </p>
+</section>
+
+{% if checked_status == "added" %}
+<p class="ok" role="status">Board added — its first check is queued now, and that
+  first check is a baseline rather than news: nothing on it will be reported as
+  new until the check after.</p>
+{% elif checked_status == "already_watched" %}
+<p class="note" role="status">That board is already watched.</p>
+{% elif checked_status == "queued" %}
+<p class="ok" role="status">Check queued.</p>
+{% elif checked_status == "already_queued" %}
+<p class="note" role="status">A check is already queued for that board.</p>
+{% elif checked_status == "removed" %}
+<p class="ok" role="status">Stopped watching. Its history goes with it.</p>
+{% endif %}
+
+{% if boards %}
+<div class="table-wrap">
+  <table class="boards">
+    <thead>
+      <tr>
+        <th>Board</th><th>Last check</th><th>Last checked</th><th>Added</th>
+        <th>Open jobs</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in boards %}
+        {% include "_board_row.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="note">No boards watched yet. Paste one above to start its history.</p>
+{% endif %}
+{% endblock %}

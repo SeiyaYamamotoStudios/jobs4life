@@ -20,6 +20,7 @@ from jfl_core.storage.accounts import (
     PostgresUserRepository,
 )
 from jfl_core.storage.applications import PostgresApplicationRepository
+from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from sqlalchemy.engine import Connection
@@ -131,6 +132,14 @@ def task_repo(session: SessionDep, conn: ConnDep) -> PostgresTaskRepository:
 
 
 TaskRepoDep = Annotated[PostgresTaskRepository, Depends(task_repo)]
+
+
+def board_repo(session: SessionDep, conn: ConnDep) -> PostgresBoardRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresBoardRepository(conn, session.user.id)
+
+
+BoardRepoDep = Annotated[PostgresBoardRepository, Depends(board_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

@@ -14,6 +14,7 @@ from fastapi import Request
 from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
+from jfl_web.boards import check_error_message
 from jfl_web.timeformat import humanize
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -24,6 +25,9 @@ _templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 # `{{ value | humanize_dt }}` -> "Tue 8 Sep 2026, 3 days ago". See
 # jfl_web.timeformat for the thresholds.
 _templates.env.filters["humanize_dt"] = humanize
+# `{{ check.error_code | board_error_message }}` -> plain English for a
+# BoardCheckErrorCode. See jfl_web.boards.
+_templates.env.filters["board_error_message"] = check_error_message
 
 
 def _asset_url(name: str) -> str:
