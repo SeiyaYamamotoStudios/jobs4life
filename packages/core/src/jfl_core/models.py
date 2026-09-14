@@ -364,6 +364,12 @@ BoardCheckErrorCode = Literal[
 # external id, and saying both would count it twice. `returned` is the same
 # external id reopening, and never shares a code path with `reposted`.
 BoardJobEventKind = Literal["new", "reposted", "returned", "gone"]
+# How a posting says the work is done. `unknown` is a real answer, not a gap in
+# the data model: many platforms (Greenhouse, Workday, Rippling, Personio) carry
+# no structured field at all, and a job whose workplace is not stated must never
+# be presented as on-site -- or silently hidden by a "remote only" filter. How
+# each platform's field maps onto these is `jfl_intake.workplace`'s docstring.
+Workplace = Literal["remote", "hybrid", "onsite", "unknown"]
 
 
 class WatchedBoard(BaseModel):
@@ -380,6 +386,8 @@ class WatchedBoard(BaseModel):
     baseline_check_id: uuid.UUID | None = None
     held_check_id: uuid.UUID | None = None
     drop_accepted: bool = False
+    # None = the platform default (`jfl_intake.workplace.include_unstated_by_default`).
+    include_unstated_workplace: bool | None = None
 
 
 class BoardCheck(BaseModel):
@@ -405,6 +413,11 @@ class BoardJob(BaseModel):
     location: str | None = None
     url: str | None = None
     fingerprint: str
+    # Descriptive, refreshed on every applied sighting like `requisition_id`;
+    # never identity and never part of the fingerprint. See `ObservedJob`.
+    workplace: Workplace = "unknown"
+    workplace_label: str | None = None
+    locations: list[str] = Field(default_factory=list)
     first_seen_check_id: uuid.UUID
     first_seen_at: dt.datetime
     last_seen_at: dt.datetime
@@ -463,6 +476,20 @@ class ObservedJob(BaseModel):
     # id has not been observed yet, and rules come from observed patterns. It is
     # recorded so that pattern can be learned from real history later.
     requisition_id: str | None = None
+    # How the posting says the work is done, from the platform's structured
+    # field where one exists -- see `jfl_intake.workplace` for the mapping and
+    # the rule for platforms without one. Descriptive data, refreshed on every
+    # sighting; deliberately NOT part of the fingerprint, which stays
+    # `title|location` so repost detection over existing history is unchanged.
+    workplace: Workplace = "unknown"
+    # The employer's own words for it, verbatim, where they wrote some -- a
+    # Greenhouse custom field value such as "On-Site". None when the workplace
+    # came from a platform enum or boolean, which are not the employer's words.
+    workplace_label: str | None = None
+    # Every location the posting lists (primary first where the platform marks
+    # one), display strings, deduplicated in a stable order. `location` above is
+    # kept exactly as it was because the fingerprint is built from it.
+    locations: tuple[str, ...] = ()
 
 
 class KnownBoardJob(BaseModel):
@@ -537,6 +564,40 @@ class CheckPlan(BaseModel):
             "returned": len(self.returned),
             "gone": len(self.gone_job_ids),
         }
+
+
+class JobFilter(BaseModel):
+    """A user's saved lens over their watched boards' open jobs.
+
+    A lens, never a fetch parameter: boards are always watched whole and
+    filtered locally, so changing this can never make a job appear to vanish
+    from a board's history. Matching lives in `jfl_intake.filtering` (pure);
+    this is only what is stored. Empty text and an empty workplace set each
+    mean "no constraint".
+    """
+
+    workplaces: list[Workplace] = Field(default_factory=list)
+    title_includes: str = ""
+    title_excludes: str = ""
+    location: str = ""
+    updated_at: dt.datetime | None = None
+
+
+class BoardFilterException(BaseModel):
+    """A per-board "also include" rule, OR'd with the saved `JobFilter`.
+
+    Widens workplace and location only -- the saved filter's title includes and
+    excludes still apply to every job it lets through. `note` is the owner's own
+    words, verbatim. Empty `workplaces` / `location` mean "any".
+    """
+
+    id: uuid.UUID
+    board_id: uuid.UUID
+    workplaces: list[Workplace] = Field(default_factory=list)
+    location: str = ""
+    note: str = ""
+    created_at: dt.datetime
+    updated_at: dt.datetime
 
 
 class DueBoard(BaseModel):

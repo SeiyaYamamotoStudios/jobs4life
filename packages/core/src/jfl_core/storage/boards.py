@@ -84,6 +84,7 @@ _BOARD_COLUMNS = (
     boards_table.c.baseline_check_id,
     boards_table.c.held_check_id,
     boards_table.c.drop_accepted,
+    boards_table.c.include_unstated_workplace,
 )
 
 _CHECK_COLUMNS = (
@@ -109,6 +110,9 @@ _JOB_COLUMNS = (
     jobs_table.c.location,
     jobs_table.c.url,
     jobs_table.c.fingerprint,
+    jobs_table.c.workplace,
+    jobs_table.c.workplace_label,
+    jobs_table.c.locations,
     jobs_table.c.first_seen_check_id,
     jobs_table.c.first_seen_at,
     jobs_table.c.last_seen_at,
@@ -153,6 +157,7 @@ def _board_from_row(row: Any) -> WatchedBoard:
         baseline_check_id=row.baseline_check_id,
         held_check_id=row.held_check_id,
         drop_accepted=row.drop_accepted,
+        include_unstated_workplace=row.include_unstated_workplace,
     )
 
 
@@ -182,6 +187,9 @@ def _job_from_row(row: Any) -> BoardJob:
         location=row.location,
         url=row.url,
         fingerprint=row.fingerprint,
+        workplace=row.workplace,
+        workplace_label=row.workplace_label,
+        locations=list(row.locations),
         first_seen_check_id=row.first_seen_check_id,
         first_seen_at=row.first_seen_at,
         last_seen_at=row.last_seen_at,
@@ -287,6 +295,19 @@ class PostgresBoardRepository(TenantScopedRepository):
                 boards_table.c.held_check_id.is_not(None),
             )
             .values(drop_accepted=True)
+            .returning(boards_table.c.id)
+        ).first()
+        return row is not None
+
+    def set_include_unstated_workplace(self, board_id: uuid.UUID, value: bool | None) -> bool:
+        """Whether the saved job filter lets this board's jobs with no stated
+        workplace through. None returns the board to its platform default. False,
+        writing nothing, if the board is not this user's.
+        """
+        row = self._conn.execute(
+            update(boards_table)
+            .where(boards_table.c.id == board_id, boards_table.c.user_id == self._user_id)
+            .values(include_unstated_workplace=value)
             .returning(boards_table.c.id)
         ).first()
         return row is not None
@@ -464,6 +485,9 @@ class PostgresBoardRepository(TenantScopedRepository):
                 "location": n.job.location,
                 "url": n.job.url,
                 "fingerprint": n.job.fingerprint,
+                "workplace": n.job.workplace,
+                "workplace_label": n.job.workplace_label,
+                "locations": list(n.job.locations),
                 "first_seen_check_id": check_id,
                 "first_seen_at": at,
                 "last_seen_at": at,
@@ -520,6 +544,10 @@ class PostgresBoardRepository(TenantScopedRepository):
                     url=bindparam("b_url"),
                     fingerprint=bindparam("b_fingerprint"),
                     requisition_id=bindparam("b_requisition_id"),
+                    # Descriptive, like the requisition: refreshed, never identity.
+                    workplace=bindparam("b_workplace"),
+                    workplace_label=bindparam("b_workplace_label"),
+                    locations=bindparam("b_locations", type_=ARRAY(Text)),
                     last_seen_at=at,
                 ),
                 [
@@ -530,6 +558,9 @@ class PostgresBoardRepository(TenantScopedRepository):
                         "b_url": s.job.url,
                         "b_fingerprint": s.job.fingerprint,
                         "b_requisition_id": s.job.requisition_id,
+                        "b_workplace": s.job.workplace,
+                        "b_workplace_label": s.job.workplace_label,
+                        "b_locations": list(s.job.locations),
                     }
                     for s in sightings
                 ],
@@ -614,6 +645,32 @@ class PostgresBoardRepository(TenantScopedRepository):
                 )
                 .exists()
             )
+        return [_job_from_row(r) for r in self._conn.execute(query).all()]
+
+    def list_open_jobs(self) -> list[BoardJob]:
+        """Every currently open job across all of this user's boards, newest
+        first by when we first saw it. A job is open only through an interval a
+        complete check opened, so a board with no complete check contributes
+        nothing here -- callers name such boards rather than let them vanish.
+        """
+        query = (
+            select(*_JOB_COLUMNS)
+            .where(
+                jobs_table.c.user_id == self._user_id,
+                select(presence_table.c.id)
+                .where(
+                    presence_table.c.job_id == jobs_table.c.id,
+                    presence_table.c.user_id == self._user_id,
+                    presence_table.c.closed_check_id.is_(None),
+                )
+                .exists(),
+            )
+            .order_by(
+                jobs_table.c.first_seen_at.desc(),
+                jobs_table.c.board_id.asc(),
+                jobs_table.c.external_id.asc(),
+            )
+        )
         return [_job_from_row(r) for r in self._conn.execute(query).all()]
 
     def list_presence(self, job_id: uuid.UUID) -> list[BoardJobPresence]:

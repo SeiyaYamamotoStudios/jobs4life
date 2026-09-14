@@ -19,6 +19,14 @@
 <p class="ok" role="status">Check queued.</p>
 {% elif checked_status == "already_queued" %}
 <p class="note" role="status">A check is already queued for this board.</p>
+{% elif checked_status == "setting_saved" %}
+<p class="ok" role="status">Setting saved.</p>
+{% elif checked_status == "exception_added" %}
+<p class="ok" role="status">Exception added.</p>
+{% elif checked_status == "exception_saved" %}
+<p class="ok" role="status">Exception saved.</p>
+{% elif checked_status == "exception_removed" %}
+<p class="ok" role="status">Exception removed.</p>
 {% endif %}
 
 {% if held %}
@@ -57,6 +65,7 @@
       <div>
         {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
         {% if job.location %}<span class="note"> — {{ job.location }}</span>{% endif %}
+        <span class="note"> · {{ job | workplace_display }}</span>
       </div>
       <span class="note" title="{{ job.first_seen_at.isoformat() }}">
         seen since {{ job.first_seen_at | humanize_dt }}
@@ -67,6 +76,86 @@
   {% else %}
   <p class="note">No jobs currently open.</p>
   {% endif %}
+</section>
+
+<section id="job-filter">
+  <h2>On the Jobs page</h2>
+  <form method="post" action="/boards/{{ board.id }}/unstated">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <fieldset>
+      <legend>Jobs whose workplace isn't stated</legend>
+      <label class="inline">
+        <input type="radio" name="setting" value="default" {% if unstated.value is none %}checked{% endif %}>
+        Platform default ({% if unstated.default %}include them — {{ platform_label }} has no workplace field{% else %}hide them, and say how many — {{ platform_label }} states workplace{% endif %})
+      </label>
+      <label class="inline">
+        <input type="radio" name="setting" value="include" {% if unstated.value is true %}checked{% endif %}>
+        Include them, badged "workplace not stated"
+      </label>
+      <label class="inline">
+        <input type="radio" name="setting" value="hide" {% if unstated.value is false %}checked{% endif %}>
+        Hide them when the filter picks workplaces, and say how many
+      </label>
+    </fieldset>
+    <p class="note">Currently: {% if unstated.effective %}included{% else %}hidden and counted{% endif %}. Title and location filters apply either way.</p>
+    <button type="submit" class="secondary">Save setting</button>
+  </form>
+
+  <h3>Exceptions</h3>
+  <p class="note">
+    Also include this board's jobs with these workplaces and locations, whatever
+    your filter says about workplace and location. Your title includes and
+    excludes still apply. The employer's own workplace label is always shown
+    unchanged, with your note as the reason.
+  </p>
+  {% for exception in exceptions %}
+  <div class="exception" id="exception-{{ exception.id }}">
+    <form method="post" action="/boards/{{ board.id }}/exceptions/{{ exception.id }}">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <fieldset class="workplace-choices">
+        <legend>Workplace</legend>
+        {% for value, name in workplace_names.items() %}
+        <label class="inline">
+          <input type="checkbox" name="workplace" value="{{ value }}" {% if value in exception.workplaces %}checked{% endif %}>
+          {{ name }}
+        </label>
+        {% endfor %}
+      </fieldset>
+      <label for="location-{{ exception.id }}">Location</label>
+      <input type="text" id="location-{{ exception.id }}" name="location" maxlength="{{ max_filter_text }}" value="{{ exception.location }}">
+      <label for="note-{{ exception.id }}">Note, in your words</label>
+      <input type="text" id="note-{{ exception.id }}" name="note" maxlength="{{ max_note_text }}" value="{{ exception.note }}">
+      <button type="submit" class="secondary">Save exception</button>
+    </form>
+    <details class="confirm-remove">
+      <summary>Remove exception</summary>
+      <form method="post" action="/boards/{{ board.id }}/exceptions/{{ exception.id }}/remove">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="secondary">Yes, remove it</button>
+      </form>
+    </details>
+  </div>
+  {% endfor %}
+  <details class="add-exception" {% if not exceptions %}open{% endif %}>
+    <summary>Add an exception</summary>
+    <form method="post" action="/boards/{{ board.id }}/exceptions">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <fieldset class="workplace-choices">
+        <legend>Workplace</legend>
+        {% for value, name in workplace_names.items() %}
+        <label class="inline">
+          <input type="checkbox" name="workplace" value="{{ value }}"> {{ name }}
+        </label>
+        {% endfor %}
+        <div class="note">None ticked means any workplace.</div>
+      </fieldset>
+      <label for="new-exception-location">Location</label>
+      <input type="text" id="new-exception-location" name="location" maxlength="{{ max_filter_text }}" placeholder="london">
+      <label for="new-exception-note">Note, in your words</label>
+      <input type="text" id="new-exception-note" name="note" maxlength="{{ max_note_text }}" placeholder="Accepts ~25% in office — 1 day a week in London">
+      <button type="submit" class="secondary">Add exception</button>
+    </form>
+  </details>
 </section>
 
 <section>

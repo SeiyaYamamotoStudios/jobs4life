@@ -14,8 +14,10 @@ Location is namespaced: `tt:locations/tt:location/tt:name`. **Observed
 quirk**: on one real item `tt:name` was present but empty while `tt:city`
 carried the actual value ("Toronto") -- a blank name is not the same as no
 location, so `tt:name` is preferred and `tt:city` is the fallback, never the
-other way round. Only the first `tt:location` is used; no item checked here
-listed more than one.
+other way round. Only the first `tt:location` is used for `location` (and so
+the fingerprint); `locations` lists every one -- live on 2026-09-15 one item
+listed Sydney and Melbourne. Workplace is `<remoteStatus>`; see
+`jfl_intake.workplace`.
 
 A feed that is not well-formed XML, or is well-formed but has no `<channel>`
 to find items under, is `failed`/`malformed_response` -- never an empty
@@ -28,25 +30,47 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from jfl_core.models import BoardPlatform
+from jfl_core.models import BoardPlatform, Workplace
 
 from jfl_intake.adapters.base import FetchResult, require_key
 from jfl_intake.adapters.single import MalformedResponseError, Parsed
 from jfl_intake.adapters.xml_single import fetch_single_xml, parse_xml
 from jfl_intake.http import Transport
-from jfl_intake.normalise import clean_text
+from jfl_intake.normalise import clean_text, normalise
+from jfl_intake.workplace import dedupe_locations, from_location_text
 
 API = "https://{site}/jobs.rss"
 _NS = {"tt": "https://teamtailor.com/locations"}
 
 
-def _location(item: Any) -> str | None:
-    loc = item.find("tt:locations/tt:location", _NS)
-    if loc is None:
-        return None
+def _location_name(loc: Any) -> str | None:
     return clean_text(loc.findtext("tt:name", namespaces=_NS)) or clean_text(
         loc.findtext("tt:city", namespaces=_NS)
     )
+
+
+def _location(item: Any) -> str | None:
+    loc = item.find("tt:locations/tt:location", _NS)
+    return None if loc is None else _location_name(loc)
+
+
+# `<remoteStatus>`. `none` (observed live) is Teamtailor's "not remote" and also
+# what an unset job carries, so it is not a statement of on-site; `temporary` is
+# remote for now, which is not a workplace. Both are unknown, and final.
+_REMOTE_STATUS: dict[str, Workplace] = {
+    "fully": "remote",
+    "remote": "remote",
+    "hybrid": "hybrid",
+    "none": "unknown",
+    "temporary": "unknown",
+}
+
+
+def _workplace(item: Any, locations: tuple[str, ...]) -> Workplace:
+    status = normalise(item.findtext("remoteStatus"))
+    if status in _REMOTE_STATUS:
+        return _REMOTE_STATUS[status]
+    return from_location_text(locations)
 
 
 def parse(text: str) -> Parsed:
@@ -56,11 +80,16 @@ def parse(text: str) -> Parsed:
         raise MalformedResponseError
     parsed = Parsed()
     for item in channel.findall("item"):
+        locations = dedupe_locations(
+            _location_name(loc) for loc in item.findall("tt:locations/tt:location", _NS)
+        )
         parsed.add(
             item.findtext("guid"),
             item.findtext("title"),
             _location(item),
             item.findtext("link"),
+            workplace=_workplace(item, locations),
+            locations=locations,
         )
     return parsed
 

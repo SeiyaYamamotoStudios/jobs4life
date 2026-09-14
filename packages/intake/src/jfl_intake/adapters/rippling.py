@@ -40,6 +40,7 @@ from jfl_intake.adapters.base import FetchResult, require_key
 from jfl_intake.adapters.single import MalformedResponseError, Parsed, fetch_single
 from jfl_intake.http import Transport
 from jfl_intake.normalise import clean_text, fingerprint
+from jfl_intake.workplace import dedupe_locations, from_location_text
 
 API = "https://api.rippling.com/platform/api/ats/v1/board/{slug}/jobs"
 
@@ -86,6 +87,7 @@ def parse(body: Any) -> Parsed:
         assert title is not None  # guaranteed by the filter above
         locations = sorted({loc for e in entries if (loc := _location(e)) is not None})
         location_text = "; ".join(locations) if locations else None
+        merged = dedupe_locations(locations)
         parsed.jobs.append(
             ObservedJob(
                 external_id=ext_id,
@@ -93,6 +95,9 @@ def parse(body: Any) -> Parsed:
                 location=location_text,
                 url=clean_text(first.get("url")),
                 fingerprint=fingerprint(title, location_text),
+                # No structured workplace field: the text rule only.
+                workplace=from_location_text(merged),
+                locations=merged,
             )
         )
     return parsed

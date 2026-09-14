@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from jfl_web.boards import check_error_message
+from jfl_web.jobfilter import workplace_display
 from jfl_web.timeformat import humanize
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -28,6 +29,9 @@ _templates.env.filters["humanize_dt"] = humanize
 # `{{ check.error_code | board_error_message }}` -> plain English for a
 # BoardCheckErrorCode. See jfl_web.boards.
 _templates.env.filters["board_error_message"] = check_error_message
+# `{{ job | workplace_display }}` -> the employer's own label where one was
+# given ("On-Site"), else our word. See jfl_web.jobfilter.
+_templates.env.filters["workplace_display"] = workplace_display
 
 
 def _asset_url(name: str) -> str:

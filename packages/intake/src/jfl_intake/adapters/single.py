@@ -10,15 +10,16 @@ for everything), and, where the platform declares a total (Greenhouse's
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from jfl_core.models import ObservedJob
+from jfl_core.models import ObservedJob, Workplace
 
 from jfl_intake.adapters.base import FetchResult, dedupe, failure, from_http_failure
 from jfl_intake.http import RequestBudgetExceeded, Transport, TransportError
 from jfl_intake.normalise import clean_text, fingerprint
+from jfl_intake.workplace import dedupe_locations
 
 
 class MalformedResponseError(Exception):
@@ -39,9 +40,14 @@ class Parsed:
         url: object,
         *,
         requisition_id: object = None,
+        workplace: Workplace = "unknown",
+        workplace_label: str | None = None,
+        locations: Iterable[object] | None = None,
     ) -> None:
         """Record one listed job. `requisition_id` is for platforms that expose
-        one; it is stored and never used to identify the job.
+        one; it is stored and never used to identify the job. `workplace` and
+        `locations` are descriptive (see `jfl_intake.workplace`); `locations`
+        defaults to the single `location` when an adapter gives no list.
         """
         ext = _external_id(external_id)
         clean_title = clean_text(title)
@@ -57,6 +63,9 @@ class Parsed:
                 url=clean_text(url),
                 fingerprint=fingerprint(clean_title, clean_location),
                 requisition_id=_external_id(requisition_id),
+                workplace=workplace,
+                workplace_label=workplace_label,
+                locations=dedupe_locations([clean_location] if locations is None else locations),
             )
         )
 

@@ -1,6 +1,6 @@
 {# One row of the boards table. Included from boards_list.html.
    Needs in context: session, row (board, platform_label, last_check,
-   open_job_count, held). #}
+   open_job_count, held, match_count). #}
 <tr id="board-{{ row.board.id }}">
   <td class="col-board">
     <a href="/boards/{{ row.board.id }}">{{ row.board.label or row.board.board_url }}</a>
@@ -29,6 +29,9 @@
   </td>
   <td class="col-open-jobs">
     {% if row.open_job_count is none %}first check pending{% else %}{{ row.open_job_count }}{% endif %}
+  </td>
+  <td class="col-matching">
+    {% if row.open_job_count is none %}—{% elif row.match_count %}<a href="/jobs">{{ row.match_count.matching }} of {{ row.match_count.open_total }} match</a>{% else %}0 of 0 match{% endif %}
   </td>
   <td class="col-actions">
     <form method="post" action="/boards/{{ row.board.id }}/check">

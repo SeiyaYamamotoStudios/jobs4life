@@ -81,6 +81,7 @@ from jfl_intake.adapters.base import (
 )
 from jfl_intake.http import RequestBudgetExceeded, Transport, TransportError
 from jfl_intake.normalise import clean_text, fingerprint
+from jfl_intake.workplace import dedupe_locations, from_location_text
 
 PAGE_SIZE = 20
 LISTING_CEILING = 2000
@@ -367,6 +368,11 @@ class _WorkdayCheck:
             location=location,
             url=url,
             fingerprint=fingerprint(title, location),
+            # No structured workplace field in the listing: the text rule only.
+            # `locationsText` is stored as given -- a multi-location posting reads
+            # "2 Locations", and the individual places are never invented.
+            workplace=from_location_text([location]),
+            locations=dedupe_locations([location]),
         )
 
     # -- verdict -----------------------------------------------------------

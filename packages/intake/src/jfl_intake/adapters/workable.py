@@ -32,12 +32,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from jfl_core.models import BoardCheckErrorCode, BoardPlatform, FetchStatus, ObservedJob
+from jfl_core.models import BoardCheckErrorCode, BoardPlatform, FetchStatus, ObservedJob, Workplace
 
 from jfl_intake.adapters.base import FetchResult, dedupe, require_key, status_failure
 from jfl_intake.adapters.single import as_int
 from jfl_intake.http import RequestBudgetExceeded, Transport, TransportError
 from jfl_intake.normalise import clean_text, fingerprint
+from jfl_intake.workplace import as_bool, dedupe_locations, from_enum, from_location_text
 
 API = "https://apply.workable.com/api/v3/accounts/{subdomain}/jobs"
 BASE_BODY: dict[str, Any] = {
@@ -65,6 +66,37 @@ def _location(location: object) -> str | None:
     parts = [clean_text(location.get(k)) for k in ("city", "country")]
     joined = ", ".join(p for p in parts if p)
     return joined or None
+
+
+def _locations(job: Mapping[str, Any], primary: str | None) -> tuple[str, ...]:
+    """Every `locations[]` entry as "city, region, country". Entries flagged
+    `hidden` are kept: the API returns them, and the single `location` the
+    fingerprint uses is built from the same data regardless.
+    """
+    listed = job.get("locations")
+    names: list[str] = []
+    for entry in listed if isinstance(listed, list) else []:
+        if not isinstance(entry, Mapping):
+            continue
+        parts = [clean_text(entry.get(k)) for k in ("city", "region", "country")]
+        names.append(", ".join(p for p in parts if p))
+    return dedupe_locations(names or [primary])
+
+
+def _workplace(job: Mapping[str, Any], locations: tuple[str, ...]) -> Workplace:
+    """`workplace` (`remote`/`hybrid`/`on_site`) first; failing that the `remote`
+    boolean, whose `false` is unknown rather than on-site; only when neither is
+    present does the location text decide.
+    """
+    stated = from_enum(job.get("workplace"))
+    if stated is not None:
+        return stated
+    remote = as_bool(job, "remote")
+    if remote is True:
+        return "remote"
+    if remote is False:
+        return "unknown"
+    return from_location_text(locations)
 
 
 def _external_id(value: object) -> str | None:
@@ -137,6 +169,7 @@ class _WorkableCheck:
     def _record(self, job: Mapping[str, Any]) -> tuple[str, ObservedJob | None]:
         title = clean_text(job.get("title"))
         location_text = _location(job.get("location"))
+        locations = _locations(job, location_text)
         ext_id = _external_id(job.get("id"))
         shortcode = clean_text(job.get("shortcode"))
         key = ext_id or f"untracked:{title}|{location_text}"
@@ -149,6 +182,8 @@ class _WorkableCheck:
             location=location_text,
             url=url,
             fingerprint=fingerprint(title, location_text),
+            workplace=_workplace(job, locations),
+            locations=locations,
         )
 
     def _verdict(self, expected: int) -> FetchResult:

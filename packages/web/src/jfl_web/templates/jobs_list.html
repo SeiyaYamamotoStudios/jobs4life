@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Jobs — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Jobs</h1>
+  <a href="/boards">Boards</a>
+</div>
+<p class="lede">
+  Every open job on every board you watch, through your filter. Boards are always
+  checked whole — the filter only changes what this page shows, never what is
+  recorded.
+</p>
+
+<section class="job-filter">
+  <form method="post" action="/jobs/filter">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <fieldset class="workplace-choices">
+      <legend>Workplace</legend>
+      {% for value, name in workplace_names.items() %}
+      <label class="inline">
+        <input type="checkbox" name="workplace" value="{{ value }}"
+               {% if value in saved.workplaces %}checked{% endif %}>
+        {{ name }}
+      </label>
+      {% endfor %}
+      <div class="note">None ticked means any workplace.</div>
+    </fieldset>
+    <div class="filter-fields">
+      <div>
+        <label for="title_includes">Title includes</label>
+        <input type="text" id="title_includes" name="title_includes"
+               maxlength="{{ max_filter_text }}" value="{{ saved.title_includes }}"
+               placeholder="engineering manager, head of engineering">
+      </div>
+      <div>
+        <label for="title_excludes">Title excludes</label>
+        <input type="text" id="title_excludes" name="title_excludes"
+               maxlength="{{ max_filter_text }}" value="{{ saved.title_excludes }}"
+               placeholder="intern, sales">
+      </div>
+      <div>
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location"
+               maxlength="{{ max_filter_text }}" value="{{ saved.location }}"
+               placeholder="london, united kingdom">
+      </div>
+    </div>
+    <p class="note">
+      Commas separate alternatives; an alternative matches when all of its words
+      appear as whole words, in any order — "engineering manager" matches
+      "Manager, Engineering" but not "Engineer". Location matches any one of a
+      job's listed locations. Workday lists multi-location postings only as
+      "2 Locations", so a location filter cannot match those.
+    </p>
+    <button type="submit">Save filter</button>
+  </form>
+  {% if checked_status == "saved" %}<p class="ok" role="status">Filter saved.</p>{% endif %}
+</section>
+
+<section>
+  <p class="summary" role="status">
+    <strong>{{ result.matches | length }} matching</strong>{% if has_exceptions or result.via_unstated %} ({% if has_exceptions %}{{ result.via_exception }} via board exceptions{% endif %}{% if has_exceptions and result.via_unstated %}, {% endif %}{% if result.via_unstated %}{{ result.via_unstated }} with workplace not stated, included by board setting{% endif %}){% endif %}
+    of {{ result.open_total }} open jobs across {{ checked_board_count }} board{% if checked_board_count != 1 %}s{% endif %}.
+  </p>
+
+  {% if result.hidden_unstated %}
+  <p class="note hidden-unstated">
+    {{ result.hidden_unstated }} more job{% if result.hidden_unstated != 1 %}s{% endif %}
+    would match but {% if result.hidden_unstated == 1 %}its{% else %}their{% endif %}
+    workplace isn't stated.
+    <a href="/jobs?show_unstated=1">Show them</a> (this view only).
+  </p>
+  {% elif show_unstated %}
+  <p class="note">Showing jobs whose workplace isn't stated too, for this view only.
+    <a href="/jobs">Back to the saved filter</a>.</p>
+  {% endif %}
+
+  {% if pending_boards %}
+  <p class="note">
+    Not included yet — first check pending:
+    {% for b in pending_boards %}<a href="/boards/{{ b.id }}">{{ b.label or b.board_url }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+  </p>
+  {% endif %}
+  {% if held_boards %}
+  <p class="note">
+    Held — the last check saw a sharp drop and was not applied, so these boards'
+    jobs are as of their last applied check:
+    {% for b in held_boards %}<a href="/boards/{{ b.id }}">{{ b.label or b.board_url }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+  </p>
+  {% endif %}
+
+  {% if capped %}
+  <p class="note">Showing the first {{ cap }} of {{ result.matches | length }} matching jobs, newest first. Narrow the filter to see the rest.</p>
+  {% endif %}
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="boards jobs">
+      <thead>
+        <tr><th>Job</th><th>Board</th><th>Workplace</th><th>Locations</th><th>Seen since</th></tr>
+      </thead>
+      <tbody>
+        {% for match in rows %}
+        {% set job = match.job %}
+        {% set board = board_by_id[job.board_id] %}
+        <tr>
+          <td class="col-job">
+            {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
+          </td>
+          <td class="col-board">
+            <a href="/boards/{{ board.id }}">{{ board.label or board.board_url }}</a>
+            <div class="note">{{ platform_label(board.platform) }}</div>
+          </td>
+          <td class="col-workplace">
+            {% if job.workplace == "unknown" %}
+            <span class="status-badge workplace-unstated">workplace not stated</span>
+            {% else %}
+            <span class="status-badge workplace-badge">{{ job | workplace_display }}</span>
+            {% endif %}
+            {% if match.reason == "exception" %}
+            <div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if match.exception.note %}: {{ match.exception.note }}{% endif %}</div>
+            {% elif match.reason == "unstated" %}
+            <div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
+            {% endif %}
+          </td>
+          <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
+          <td class="col-updated" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif result.open_total %}
+  <p class="note">No open jobs match this filter.</p>
+  {% else %}
+  <p class="note">No open jobs on record yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

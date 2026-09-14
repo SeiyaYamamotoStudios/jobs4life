@@ -17,11 +17,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from jfl_core.models import BoardPlatform
+from jfl_core.models import BoardPlatform, Workplace
 
 from jfl_intake.adapters.base import FetchResult, require_key
 from jfl_intake.adapters.single import MalformedResponseError, Parsed, fetch_single
 from jfl_intake.http import Transport
+from jfl_intake.workplace import as_bool, dedupe_locations, from_location_text
 
 API = "https://{company}.breezy.hr/json"
 
@@ -35,11 +36,30 @@ def parse(body: Any) -> Parsed:
             parsed.unidentified += 1
             continue
         location = job.get("location")
+        primary = location.get("name") if isinstance(location, dict) else None
+        listed = job.get("locations")
+        names = [
+            entry.get("name")
+            for entry in (listed if isinstance(listed, list) else [])
+            if isinstance(entry, dict)
+        ]
+        locations = dedupe_locations(names or [primary])
+        is_remote = as_bool(location, "is_remote") if isinstance(location, dict) else None
+        # True is remote; false is NOT on-site -- Breezy does not tell hybrid
+        # from on-site -- so it is unknown, and the text is not consulted.
+        if is_remote is True:
+            workplace: Workplace = "remote"
+        elif is_remote is False:
+            workplace = "unknown"
+        else:
+            workplace = from_location_text(locations)
         parsed.add(
             job.get("id"),
             job.get("name"),
-            location.get("name") if isinstance(location, dict) else None,
+            primary,
             job.get("url"),
+            workplace=workplace,
+            locations=locations,
         )
     return parsed
 

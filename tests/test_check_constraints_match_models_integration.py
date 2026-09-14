@@ -28,6 +28,9 @@ CONSTRAINED_COLUMNS = [
     ("watched_boards", "platform", tables._BOARD_PLATFORMS),
     ("board_checks", "status", tables._BOARD_CHECK_STATUSES),
     ("board_checks", "error_code", tables._BOARD_CHECK_ERROR_CODES),
+    ("board_jobs", "workplace", tables._WORKPLACES),
+    ("job_filters", "workplaces", tables._WORKPLACES),
+    ("board_filter_exceptions", "workplaces", tables._WORKPLACES),
 ]
 
 
@@ -46,9 +49,11 @@ def _allowed_values(table: str, column: str) -> set[str]:
             .scalars()
             .all()
         )
-    # Postgres stores `x in ('a','b')` as `(x = ANY (ARRAY['a'::text, 'b'::text]))`.
-    # Match the column exactly, so `status` does not also pick up `extraction_status`.
-    pattern = re.compile(rf"(?<![a-z_]){re.escape(column)} = ANY \(ARRAY\[(.*?)\]")
+    # Postgres stores `x in ('a','b')` as `(x = ANY (ARRAY['a'::text, 'b'::text]))`,
+    # and an array column's subset check `xs <@ array['a','b']::text[]` as
+    # `(xs <@ ARRAY['a'::text, 'b'::text])`. Match the column exactly, so `status`
+    # does not also pick up `extraction_status`.
+    pattern = re.compile(rf"(?<![a-z_]){re.escape(column)} (?:= ANY \(|<@ )ARRAY\[(.*?)\]")
     matches = [m.group(1) for d in defs if (m := pattern.search(d))]
     assert len(matches) == 1, (
         f"expected one value-list CHECK on {table}.{column}, found {len(matches)}"

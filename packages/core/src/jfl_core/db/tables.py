@@ -760,6 +760,11 @@ _BOARD_CHECK_ERROR_CODES = (
     "drop_guard",  # complete, but a sudden collapse -- held, not applied
 )
 
+# How a posting says the work is done (`jfl_core.models.Workplace`). `unknown`
+# is a first-class value: most platforms state nothing, and "not stated" must
+# never be stored as on-site. See `jfl_intake.workplace`.
+_WORKPLACES = ("remote", "hybrid", "onsite", "unknown")
+
 watched_boards = Table(
     "watched_boards",
     metadata,
@@ -808,6 +813,12 @@ watched_boards = Table(
     # the next complete check is applied whatever its count. Cleared by any
     # applied check.
     Column("drop_accepted", Boolean, nullable=False, server_default=text("false")),
+    # Whether the saved job filter lets this board's jobs with an unstated
+    # workplace through a workplace constraint. NULL means the platform default
+    # (`jfl_intake.workplace.include_unstated_by_default`: on for platforms with
+    # no structured workplace field, off for those that state it), so a board
+    # nobody has touched follows that default; true/false is the owner's choice.
+    Column("include_unstated_workplace", Boolean),
     CheckConstraint(
         "platform in ('" + "','".join(_BOARD_PLATFORMS) + "')",
         name="platform",
@@ -901,6 +912,19 @@ board_jobs = Table(
     # Normalised title + location (`jfl_intake.normalise.fingerprint`). Identity
     # for "a different posting of the same role" -- the repost signal.
     Column("fingerprint", Text, nullable=False),
+    # Descriptive, refreshed on every applied sighting like `requisition_id`, and
+    # never part of identity or the fingerprint. `workplace` comes from the
+    # platform's structured field where one exists (`jfl_intake.workplace`);
+    # `locations` is every location the posting lists, in a stable order, while
+    # `location` above stays the single string the fingerprint was built from.
+    # Rows written before these columns existed read `unknown` and `{}` until
+    # their next sighting.
+    Column("workplace", Text, nullable=False, server_default="unknown"),
+    # The employer's own words for the workplace, where they wrote some (a
+    # Greenhouse custom field's value, e.g. "On-Site"), kept verbatim so the
+    # page shows what the employer published rather than our mapping of it.
+    Column("workplace_label", Text),
+    Column("locations", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     Column(
         "first_seen_check_id",
         UUID(as_uuid=True),
@@ -916,6 +940,10 @@ board_jobs = Table(
         "reposted_from_job_id",
         UUID(as_uuid=True),
         ForeignKey("board_jobs.id", ondelete="SET NULL"),
+    ),
+    CheckConstraint(
+        "workplace in ('" + "','".join(_WORKPLACES) + "')",
+        name="workplace",
     ),
     UniqueConstraint("board_id", "external_id"),
     Index("ix_board_jobs_board_id_fingerprint", "board_id", "fingerprint"),
@@ -967,6 +995,69 @@ board_job_presence = Table(
     # "What changed since" -- returned and gone.
     Index("ix_board_job_presence_user_id_opened_at", "user_id", "opened_at"),
     Index("ix_board_job_presence_user_id_closed_at", "user_id", "closed_at"),
+)
+
+# One saved job filter per user: a lens over the open jobs of every board they
+# watch. **Never applied at the source** -- boards are fetched whole and this is
+# matched locally (`jfl_intake.filtering`), so editing it cannot make a job look
+# as though it vanished. Text fields are stored exactly as typed (comma-separated
+# alternatives); normalisation happens at match time, so the rule can change
+# without rewriting what the user wrote. Empty means "no constraint".
+job_filters = Table(
+    "job_filters",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+    # A subset of `_WORKPLACES`. Empty = any workplace.
+    Column("workplaces", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("title_includes", Text, nullable=False, server_default=""),
+    Column("title_excludes", Text, nullable=False, server_default=""),
+    Column("location", Text, nullable=False, server_default=""),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "workplaces <@ array['" + "','".join(_WORKPLACES) + "']::text[]",
+        name="workplaces",
+    ),
+)
+
+# Per-board "also include" rules, OR'd with the saved filter: the owner knows
+# something about an employer the board does not say ("accepts ~25% in office").
+# An exception widens WORKPLACE and LOCATION only; the saved filter's title
+# includes/excludes still apply to anything it lets through, so it can never
+# widen the role. `note` is the owner's own words, stored verbatim -- no model
+# touches it, and the page shows it beside the employer's unaltered label.
+board_filter_exceptions = Table(
+    "board_filter_exceptions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "board_id",
+        UUID(as_uuid=True),
+        ForeignKey("watched_boards.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    # A subset of `_WORKPLACES`. Empty = any workplace.
+    Column("workplaces", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("location", Text, nullable=False, server_default=""),
+    Column("note", Text, nullable=False, server_default=""),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "workplaces <@ array['" + "','".join(_WORKPLACES) + "']::text[]",
+        name="workplaces",
+    ),
+    Index("ix_board_filter_exceptions_user_id_board_id", "user_id", "board_id"),
+    Index("ix_board_filter_exceptions_board_id", "board_id"),
 )
 
 # --------------------------------------------------------------------------

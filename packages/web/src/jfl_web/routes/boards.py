@@ -45,7 +45,15 @@ from jfl_intake.detect import BoardRef, BoardUrlError, detect_board
 from jfl_intake.scheduling import enqueue_board_check
 
 from jfl_web.boards import default_label, platform_label
-from jfl_web.deps import BoardRepoDep, CsrfDep, SessionDep, TaskRepoDep
+from jfl_web.deps import BoardRepoDep, CsrfDep, JobFilterRepoDep, SessionDep, TaskRepoDep
+from jfl_web.jobfilter import (
+    MAX_FILTER_TEXT,
+    MAX_NOTE_TEXT,
+    WORKPLACE_NAMES,
+    BoardMatchCount,
+    match_counts_by_board,
+    unstated_setting_view,
+)
 from jfl_web.templating import render
 
 router = APIRouter()
@@ -69,7 +77,11 @@ def _existing_board(boards: PostgresBoardRepository, ref: BoardRef) -> WatchedBo
     return None
 
 
-def _board_view(boards: PostgresBoardRepository, board: WatchedBoard) -> dict[str, object]:
+def _board_view(
+    boards: PostgresBoardRepository,
+    board: WatchedBoard,
+    match_count: BoardMatchCount | None = None,
+) -> dict[str, object]:
     """Everything one row (or the detail page's header) needs about one board.
 
     `open_job_count` is None, not 0, when the board has no baseline yet --
@@ -78,6 +90,9 @@ def _board_view(boards: PostgresBoardRepository, board: WatchedBoard) -> dict[st
     board is held: a held check changes no job's state, so `list_jobs` already
     reflects reality; `held` is reported alongside as its own flag rather than
     substituted for the count.
+
+    `match_count` is "N of M match" under the saved job filter -- the same
+    computation /jobs uses, so the two pages can never disagree.
     """
     checks = boards.list_checks(board.id, limit=1)
     open_job_count = (
@@ -89,22 +104,33 @@ def _board_view(boards: PostgresBoardRepository, board: WatchedBoard) -> dict[st
         "last_check": checks[0] if checks else None,
         "open_job_count": open_job_count,
         "held": board.held_check_id is not None,
+        "match_count": match_count,
     }
 
 
 def _list_context(
-    request: Request, session: SessionDep, boards: PostgresBoardRepository, **extra: object
+    request: Request,
+    session: SessionDep,
+    boards: PostgresBoardRepository,
+    filters: JobFilterRepoDep,
+    **extra: object,
 ) -> dict[str, object]:
+    all_boards = boards.list_boards()
+    counts = match_counts_by_board(
+        boards.list_open_jobs(), filters.get_filter(), all_boards, filters.list_exceptions()
+    )
     return {
         "session": session,
         "user": session.user,
-        "boards": [_board_view(boards, b) for b in boards.list_boards()],
+        "boards": [_board_view(boards, b, counts.get(b.id)) for b in all_boards],
         **extra,
     }
 
 
 @router.get("/boards")
-def list_boards(request: Request, session: SessionDep, boards: BoardRepoDep) -> Response:
+def list_boards(
+    request: Request, session: SessionDep, boards: BoardRepoDep, filters: JobFilterRepoDep
+) -> Response:
     return render(
         request,
         "boards_list.html",
@@ -112,6 +138,7 @@ def list_boards(request: Request, session: SessionDep, boards: BoardRepoDep) -> 
             request,
             session,
             boards,
+            filters,
             checked_status=request.query_params.get("status"),
         ),
     )
@@ -122,6 +149,7 @@ def add_board(
     request: Request,
     session: SessionDep,
     boards: BoardRepoDep,
+    filters: JobFilterRepoDep,
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
     url: Annotated[str, Form()],
@@ -139,7 +167,7 @@ def add_board(
         return render(
             request,
             "boards_list.html",
-            _list_context(request, session, boards, error=str(exc), url_value=url),
+            _list_context(request, session, boards, filters, error=str(exc), url_value=url),
             status_code=400,
         )
 
@@ -162,7 +190,11 @@ def add_board(
 
 @router.get("/boards/{board_id}")
 def board_detail(
-    request: Request, board_id: uuid.UUID, session: SessionDep, boards: BoardRepoDep
+    request: Request,
+    board_id: uuid.UUID,
+    session: SessionDep,
+    boards: BoardRepoDep,
+    filters: JobFilterRepoDep,
 ) -> Response:
     board = boards.get_board(board_id)
     if board is None:
@@ -188,6 +220,11 @@ def board_detail(
             "open_jobs": open_jobs,
             "checks": checks,
             "checked_status": request.query_params.get("status"),
+            "unstated": unstated_setting_view(board),
+            "exceptions": filters.list_exceptions(board_id),
+            "workplace_names": WORKPLACE_NAMES,
+            "max_filter_text": MAX_FILTER_TEXT,
+            "max_note_text": MAX_NOTE_TEXT,
         },
     )
 

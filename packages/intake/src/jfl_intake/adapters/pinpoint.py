@@ -29,6 +29,7 @@ from jfl_core.models import BoardPlatform
 from jfl_intake.adapters.base import FetchResult, require_key
 from jfl_intake.adapters.single import MalformedResponseError, Parsed, fetch_single
 from jfl_intake.http import Transport
+from jfl_intake.workplace import dedupe_locations, from_enum, resolve
 
 API = "https://{company}.pinpointhq.com/postings.json"
 
@@ -43,12 +44,16 @@ def parse(body: Any) -> Parsed:
             continue
         location = posting.get("location")
         job = posting.get("job")
+        name = location.get("name") if isinstance(location, dict) else None
+        locations = dedupe_locations([name])
         parsed.add(
             posting.get("id"),
             posting.get("title"),
-            location.get("name") if isinstance(location, dict) else None,
+            name,
             posting.get("url"),
             requisition_id=job.get("id") if isinstance(job, dict) else None,
+            workplace=resolve(from_enum(posting.get("workplace_type")), locations),
+            locations=locations,
         )
     return parsed
 

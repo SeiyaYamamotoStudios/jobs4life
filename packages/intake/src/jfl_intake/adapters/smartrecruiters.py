@@ -33,12 +33,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from jfl_core.models import BoardCheckErrorCode, BoardPlatform, FetchStatus, ObservedJob
+from jfl_core.models import BoardCheckErrorCode, BoardPlatform, FetchStatus, ObservedJob, Workplace
 
 from jfl_intake.adapters.base import FetchResult, dedupe, require_key, status_failure
 from jfl_intake.adapters.single import as_int
 from jfl_intake.http import RequestBudgetExceeded, Transport, TransportError
 from jfl_intake.normalise import clean_text, fingerprint
+from jfl_intake.workplace import as_bool, dedupe_locations, from_location_text
 
 API = "https://api.smartrecruiters.com/v1/companies/{company_id}/postings"
 REQUEST_LIMIT = 100
@@ -65,6 +66,23 @@ def _location(location: Mapping[str, Any]) -> str | None:
     parts = [clean_text(location.get(k)) for k in ("city", "region", "country")]
     joined = ", ".join(p for p in parts if p)
     return joined or None
+
+
+def _workplace(location: Mapping[str, Any], locations: tuple[str, ...]) -> Workplace:
+    """`remote` true is remote, `hybrid` true is hybrid. Both false is unknown,
+    NOT on-site: the API has no on-site value, only two independent booleans,
+    so "neither" is the absence of a claim. Both absent lets the text decide.
+    See `jfl_intake.workplace` for the live evidence.
+    """
+    remote = as_bool(location, "remote")
+    hybrid = as_bool(location, "hybrid")
+    if remote is None and hybrid is None:
+        return from_location_text(locations)
+    if remote and not hybrid:
+        return "remote"
+    if hybrid and not remote:
+        return "hybrid"
+    return "unknown"
 
 
 class _SmartRecruitersCheck:
@@ -129,6 +147,8 @@ class _SmartRecruitersCheck:
         title = clean_text(posting.get("name"))
         location = posting.get("location")
         location_text = _location(location) if isinstance(location, dict) else None
+        full = location.get("fullLocation") if isinstance(location, dict) else None
+        locations = dedupe_locations([full] if clean_text(full) else [location_text])
         ext_id = _external_id(posting.get("id"))
         key = ext_id or f"untracked:{title}|{location_text}"
         if ext_id is None or title is None:
@@ -141,6 +161,10 @@ class _SmartRecruitersCheck:
             location=location_text,
             url=url,
             fingerprint=fingerprint(title, location_text),
+            workplace=(
+                _workplace(location, locations) if isinstance(location, dict) else "unknown"
+            ),
+            locations=locations,
         )
 
     def _verdict(self, expected: int) -> FetchResult:

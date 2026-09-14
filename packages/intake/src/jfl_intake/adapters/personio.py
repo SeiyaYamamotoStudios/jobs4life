@@ -6,9 +6,10 @@ the smallest tenant checked across all twelve platforms). The root element is
 completeness is the single feed itself, parsed without error.
 
 The external id is `<id>`; the title is `<name>`; the location is the
-primary `<office>` (a `<position>` can also list `<additionalOffices>`, which
-is not read -- the primary office is the one the platform itself treats as
-the listing's place).
+primary `<office>` -- the one the platform itself treats as the listing's
+place, and the one the fingerprint uses. `locations` adds every
+`<additionalOffices>/<office>`. No structured workplace field: the text rule
+in `jfl_intake.workplace` only.
 
 **No URL is recorded.** Unlike the RSS platforms here, Personio's XML feed
 carries no link field, and a guessed `https://{company}.jobs.personio.de/job/{id}`
@@ -37,6 +38,7 @@ from jfl_intake.adapters.base import FetchResult, InvalidBoardKeyError, require_
 from jfl_intake.adapters.single import MalformedResponseError, Parsed
 from jfl_intake.adapters.xml_single import fetch_single_xml, parse_xml
 from jfl_intake.http import Transport
+from jfl_intake.workplace import dedupe_locations, from_location_text
 
 API = "https://{company}.jobs.personio.{tld}/xml"
 
@@ -47,11 +49,19 @@ def parse(text: str) -> Parsed:
         raise MalformedResponseError
     parsed = Parsed()
     for position in root.findall("position"):
+        locations = dedupe_locations(
+            [
+                position.findtext("office"),
+                *(o.text for o in position.findall("additionalOffices/office")),
+            ]
+        )
         parsed.add(
             position.findtext("id"),
             position.findtext("name"),
             position.findtext("office"),
             None,
+            workplace=from_location_text(locations),
+            locations=locations,
         )
     return parsed
 

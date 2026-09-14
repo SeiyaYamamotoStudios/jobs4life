@@ -30,6 +30,9 @@ VALUE_SETS = [
     (models.BoardPlatform, tables._BOARD_PLATFORMS),
     (models.BoardCheckStatus, tables._BOARD_CHECK_STATUSES),
     (models.BoardCheckErrorCode, tables._BOARD_CHECK_ERROR_CODES),
+    # One set, three constrained columns: board_jobs.workplace, and the
+    # workplace arrays on job_filters and board_filter_exceptions.
+    (models.Workplace, tables._WORKPLACES),
 ]
 
 

@@ -21,6 +21,7 @@ from jfl_core.models import BoardPlatform
 from jfl_intake.adapters.base import FetchResult, require_key
 from jfl_intake.adapters.single import MalformedResponseError, Parsed, fetch_single
 from jfl_intake.http import Transport
+from jfl_intake.workplace import dedupe_locations, from_enum, resolve
 
 API = "https://api.lever.co/v0/postings/{company}?mode=json"
 
@@ -34,11 +35,18 @@ def parse(body: Any) -> Parsed:
             parsed.unidentified += 1
             continue
         categories = posting.get("categories")
+        primary = categories.get("location") if isinstance(categories, dict) else None
+        all_locations = categories.get("allLocations") if isinstance(categories, dict) else None
+        locations = dedupe_locations(
+            all_locations if isinstance(all_locations, list) and all_locations else [primary]
+        )
         parsed.add(
             posting.get("id"),
             posting.get("text"),
-            categories.get("location") if isinstance(categories, dict) else None,
+            primary,
             posting.get("hostedUrl"),
+            workplace=resolve(from_enum(posting.get("workplaceType")), locations),
+            locations=locations,
         )
     return parsed
 
