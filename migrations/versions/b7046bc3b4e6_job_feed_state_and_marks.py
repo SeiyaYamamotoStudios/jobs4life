@@ -1,7 +1,7 @@
 """job feed state and marks
 
 Revision ID: b7046bc3b4e6
-Revises: e5396ef31c67
+Revises: 60e3dea4bda5
 
 The reader's side of the "what changed" feed (PLAN.md C7). Events stay derived
 from `board_jobs` and `board_job_presence`; nothing here duplicates them.
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = 'b7046bc3b4e6'
-down_revision = 'e5396ef31c67'
+down_revision = '60e3dea4bda5'
 branch_labels = None
 depends_on = None
 
