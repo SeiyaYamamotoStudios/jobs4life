@@ -501,3 +501,12 @@ table.changes .col-kind .note { white-space: normal; max-width: 12rem; }
 .title-suggestion-list li { margin: 0.15rem 0; }
 .title-suggestion-list .gloss { color: var(--ink-soft); font-size: 0.85rem; margin-left: 0.35rem; }
 .title-suggestion form { display: inline-block; margin: 0.3rem 0.4rem 0 0; }
+
+/* -- track as application -- */
+
+table.jobs .col-track { white-space: nowrap; }
+.track-form { margin: 0; }
+.track-form button.secondary { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
+.status-badge.status-tracked { color: var(--good); border-color: var(--good); }
+ul.requirements li .track-form { display: inline-block; margin-left: 0.6rem; }
+ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }

@@ -45,7 +45,14 @@ from jfl_intake.detect import BoardRef, BoardUrlError, detect_board
 from jfl_intake.scheduling import enqueue_board_check
 
 from jfl_web.boards import default_label, platform_label
-from jfl_web.deps import BoardRepoDep, CsrfDep, JobFilterRepoDep, SessionDep, TaskRepoDep
+from jfl_web.deps import (
+    ApplicationRepoDep,
+    BoardRepoDep,
+    CsrfDep,
+    JobFilterRepoDep,
+    SessionDep,
+    TaskRepoDep,
+)
 from jfl_web.jobfilter import (
     MAX_FILTER_TEXT,
     MAX_NOTE_TEXT,
@@ -195,6 +202,7 @@ def board_detail(
     session: SessionDep,
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
+    applications: ApplicationRepoDep,
 ) -> Response:
     board = boards.get_board(board_id)
     if board is None:
@@ -225,6 +233,11 @@ def board_detail(
             "workplace_names": WORKPLACE_NAMES,
             "max_filter_text": MAX_FILTER_TEXT,
             "max_note_text": MAX_NOTE_TEXT,
+            # Slice C7: "Track as application" renders as "Tracked" for a job
+            # that already has a live application from it.
+            "tracked": applications.tracked_board_jobs(
+                [j.id for j in open_jobs] if open_jobs else []
+            ),
         },
     )
 

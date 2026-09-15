@@ -40,6 +40,7 @@ from jfl_intake.normalise import normalise
 
 from jfl_web.boards import platform_label
 from jfl_web.deps import (
+    ApplicationRepoDep,
     BoardRepoDep,
     CredentialRepoDep,
     CsrfDep,
@@ -90,6 +91,7 @@ def list_jobs(
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
     suggestions: TitleSuggestionRepoDep,
+    applications: ApplicationRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -103,6 +105,7 @@ def list_jobs(
         exceptions,
         show_hidden_unstated=show_unstated,
     )
+    rows = result.matches[:JOBS_PAGE_CAP]
     return render(
         request,
         "jobs_list.html",
@@ -113,7 +116,7 @@ def list_jobs(
             "workplace_names": WORKPLACE_NAMES,
             "workplace_mode_names": WORKPLACE_MODE_NAMES,
             "result": result,
-            "rows": result.matches[:JOBS_PAGE_CAP],
+            "rows": rows,
             "capped": len(result.matches) > JOBS_PAGE_CAP,
             "cap": JOBS_PAGE_CAP,
             "board_by_id": board_by_id,
@@ -134,6 +137,9 @@ def list_jobs(
                 suggestions.get_by_phrase_key,
                 saved.title_includes,
             ),
+            # Slice C7: "Track as application" renders as "Tracked" for a job
+            # that already has a live application from it.
+            "tracked": applications.tracked_board_jobs([m.job.id for m in rows]),
         },
     )
 

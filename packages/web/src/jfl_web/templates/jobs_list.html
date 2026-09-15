@@ -118,7 +118,7 @@
   <div class="table-wrap">
     <table class="boards jobs">
       <thead>
-        <tr><th>Job</th><th>Board</th><th>Workplace</th><th>Locations</th><th>Seen since</th></tr>
+        <tr><th>Job</th><th>Board</th><th>Workplace</th><th>Locations</th><th>Seen since</th><th>Track</th></tr>
       </thead>
       <tbody>
         {% for match in rows %}
@@ -137,6 +137,7 @@
           </td>
           <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
           <td class="col-updated" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>
+          <td class="col-track">{% include "_track_button.html" %}</td>
         </tr>
         {% endfor %}
       </tbody>
