@@ -29,6 +29,11 @@ class _Rates(NamedTuple):
 _RATES: dict[str, _Rates] = {
     "claude-opus-5": _Rates(input_per_mtok=Decimal("5.00"), output_per_mtok=Decimal("25.00")),
     "claude-sonnet-5": _Rates(input_per_mtok=Decimal("2.00"), output_per_mtok=Decimal("10.00")),
+    # Not a product-model choice (see the module docstring's `MODEL` and
+    # CLAUDE.md's 2026-09-05 decision) -- this is the second, cheaper model
+    # `jfl_generate.titles.suggest_titles` calls explicitly for slice C7a's
+    # title-suggestion call, regardless of which model the user has configured.
+    "claude-haiku-4-5": _Rates(input_per_mtok=Decimal("1.00"), output_per_mtok=Decimal("5.00")),
 }
 
 _CACHE_READ_MULTIPLIER = Decimal("0.1")

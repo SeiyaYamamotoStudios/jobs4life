@@ -468,3 +468,16 @@ table.jobs .col-workplace { min-width: 10rem; }
 .exception form, .add-exception form { margin: 0.5rem 0; }
 .add-exception summary { cursor: pointer; color: var(--accent); }
 h3 { font-size: 0.98rem; margin: 1.6rem 0 0.4rem; font-weight: 650; }
+
+/* -- title suggestions -- */
+.title-suggestions { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.title-suggestion {
+  padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.title-suggestion-list { list-style: none; margin: 0.4rem 0; padding: 0; }
+.title-suggestion-list li { margin: 0.15rem 0; }
+.title-suggestion-list .gloss { color: var(--ink-soft); font-size: 0.85rem; margin-left: 0.35rem; }
+.title-suggestion form { display: inline-block; margin: 0.3rem 0.4rem 0 0; }

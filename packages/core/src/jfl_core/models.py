@@ -602,6 +602,51 @@ class BoardFilterException(BaseModel):
     updated_at: dt.datetime
 
 
+TitleSuggestionStatus = Literal["pending", "done", "failed"]
+
+# A subset of ExtractionErrorCode's codes -- the ones that can actually happen
+# on this call. No `no_job_ad` / `ad_too_long` (there is no ad here), see
+# `jfl_generate.titles.suggest_titles` and `jfl_worker.handlers.title_suggestions`.
+TitleSuggestionErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+]
+
+
+class SuggestedTitle(BaseModel):
+    """One adjacent title the model proposed, plus a very short note on how it
+    differs -- never a property named `reason`. See CLAUDE.md's 2026-09-02
+    decision and PLAN.md's C7a.
+    """
+
+    title: str
+    gloss: str = ""
+
+
+class TitleSuggestion(BaseModel):
+    """One saved filter phrase's suggestion state -- slice C7a.
+
+    One row per (user, phrase_key): the call runs once per phrase, ever, and is
+    cached here. `suggestions` is empty until `status == "done"`. Suggestions
+    are never added to the filter by this row existing -- see
+    `jfl_web.routes.title_suggestions`, where a tickbox is the only path onto
+    `JobFilter.title_includes`.
+    """
+
+    id: uuid.UUID
+    phrase: str
+    phrase_key: str
+    status: TitleSuggestionStatus
+    suggestions: list[SuggestedTitle] = Field(default_factory=list)
+    error_code: TitleSuggestionErrorCode | None = None
+    dismissed_at: dt.datetime | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 class DueBoard(BaseModel):
     """A board the scheduler found due, and whose it is. Ids only, by design --
     see `jfl_core.storage.boards.PostgresBoardScheduler`.

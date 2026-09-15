@@ -2,8 +2,11 @@
 name = "jfl-generate"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-# jfl-gate for MODEL/compute_cost_usd/format_corpus, reused rather than duplicated.
-dependencies = ["jfl-core", "jfl-gate", "anthropic>=0.40"]
+# jfl-gate for MODEL/compute_cost_usd/format_corpus, reused rather than
+# duplicated. jfl-intake for `parse_terms` -- `jfl_generate.titles` (slice C7a)
+# dedupes a suggested title against the filter's own matching semantics rather
+# than reimplementing them.
+dependencies = ["jfl-core", "jfl-gate", "jfl-intake", "anthropic>=0.40"]
 
 [build-system]
 requires = ["hatchling"]
@@ -15,3 +18,4 @@ packages = ["src/jfl_generate"]
 [tool.uv.sources]
 jfl-core = { workspace = true }
 jfl-gate = { workspace = true }
+jfl-intake = { workspace = true }

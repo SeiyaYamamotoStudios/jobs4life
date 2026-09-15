@@ -31,6 +31,8 @@ CONSTRAINED_COLUMNS = [
     ("board_jobs", "workplace", tables._WORKPLACES),
     ("job_filters", "workplaces", tables._WORKPLACES),
     ("board_filter_exceptions", "workplaces", tables._WORKPLACES),
+    ("title_suggestions", "status", tables._TITLE_SUGGESTION_STATUSES),
+    ("title_suggestions", "error_code", tables._TITLE_SUGGESTION_ERROR_CODES),
 ]
 
 

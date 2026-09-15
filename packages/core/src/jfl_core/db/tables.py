@@ -1066,6 +1066,52 @@ board_filter_exceptions = Table(
     Index("ix_board_filter_exceptions_board_id", "board_id"),
 )
 
+# Suggested title expansions -- slice C7a. One row per (user, phrase_key): the
+# model call runs once per phrase, ever, cached here. `phrase` is the text as
+# typed; `phrase_key` is `jfl_intake.normalise.normalise(phrase)`, which is what
+# the unique constraint is on -- re-saving the same phrase in different
+# capitalisation or spacing must not enqueue a second call. `suggestions` is a
+# JSONB list of `{title, gloss}`, empty until `status = 'done'`. Suggestions are
+# never written into `job_filters.title_includes` by anything in this table --
+# see `jfl_web.routes.title_suggestions`, where a tickbox is the only path.
+_TITLE_SUGGESTION_STATUSES = ("pending", "done", "failed")
+
+# A subset of `_EXTRACTION_ERROR_CODES` -- the ones this call can actually
+# produce. No `no_job_ad` / `ad_too_long`: there is no ad here.
+_TITLE_SUGGESTION_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+)
+
+title_suggestions = Table(
+    "title_suggestions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("phrase", Text, nullable=False),
+    Column("phrase_key", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("suggestions", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("error_code", Text),
+    _ts("dismissed_at"),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_TITLE_SUGGESTION_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('" + "','".join(_TITLE_SUGGESTION_ERROR_CODES) + "')",
+        name="error_code",
+    ),
+    UniqueConstraint("user_id", "phrase_key"),
+)
+
 # --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not

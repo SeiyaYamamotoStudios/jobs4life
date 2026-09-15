@@ -11,6 +11,7 @@ from jfl_worker.handlers import (
     EXTRACT_JOB_AD,
     PURGE_EXPIRED_SESSIONS,
     SCHEDULE_BOARD_CHECKS,
+    SUGGEST_TITLES,
     build_registry,
 )
 from jfl_worker.registry import DuplicateHandlerError, HandlerRegistry, TaskContext
@@ -64,7 +65,15 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     registry = build_registry(settings)
 
     assert registry.kinds() == tuple(
-        sorted((CHECK_BOARD, EXTRACT_JOB_AD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+        sorted(
+            (
+                CHECK_BOARD,
+                EXTRACT_JOB_AD,
+                PURGE_EXPIRED_SESSIONS,
+                SCHEDULE_BOARD_CHECKS,
+                SUGGEST_TITLES,
+            )
+        )
     )
 
     purge = registry.get(PURGE_EXPIRED_SESSIONS)
@@ -73,13 +82,18 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     extract = registry.get(EXTRACT_JOB_AD)
     assert extract is not None and extract.calls_model is True
 
+    # Slice C7a's title-suggestion call: one Anthropic call on the user's own
+    # key, same as extraction -- the kill switch must stop it too.
+    suggest = registry.get(SUGGEST_TITLES)
+    assert suggest is not None and suggest.calls_model is True
+
     # Watched boards call public ATS APIs and pure rules -- no model, no spend --
     # so the kill switch must not stop them, and they must say so.
     for kind in (CHECK_BOARD, SCHEDULE_BOARD_CHECKS):
         spec = registry.get(kind)
         assert spec is not None and spec.calls_model is False
 
-    # And the switch actually removes only the model-calling kind.
+    # And the switch actually removes only the model-calling kinds.
     assert registry.runnable_kinds(allow_model_calls=False) == tuple(
         sorted((CHECK_BOARD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
     )

@@ -1,0 +1,65 @@
+{# One phrase's suggestion state -- slice C7a. Rendered inline, in a loop, from
+   `_title_suggestions.html` (as `phrase`/`row`/`failure`/`visible`), and
+   standalone by GET /jobs/filter/titles/{id} for htmx polling. Both callers
+   build these four values the same way (`jfl_web.titlesuggestions`), so this
+   partial never has to guess which caller it is in.
+
+   `row` is None when no suggestion call was ever made for this phrase -- no
+   API key stored at save time. Suggestions are never added to the filter
+   silently: the only path onto it is the ticked checkboxes below. #}
+<div class="title-suggestion"
+     {% if row %}id="suggestion-{{ row.id }}"{% endif %}
+     {% if row and row.status == "pending" %}
+     hx-get="/jobs/filter/titles/{{ row.id }}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  {% if row is none %}
+  <p class="note">
+    Add your API key in <a href="/settings">Settings</a> to get suggested titles
+    adjacent to &ldquo;{{ phrase }}&rdquo;.
+  </p>
+
+  {% elif row.status == "pending" %}
+  <p class="note" role="status">Looking for titles adjacent to &ldquo;{{ phrase }}&rdquo;&hellip;</p>
+
+  {% elif row.status == "failed" %}
+  <p class="error" role="alert">{{ failure.message }}
+    {% if failure.fix_url %}<a href="{{ failure.fix_url }}">{{ failure.fix_label }}</a>.{% endif %}
+  </p>
+  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Dismiss</button>
+  </form>
+
+  {% elif row.status == "done" %}
+  {% if visible %}
+  <form method="post" action="/jobs/filter/titles/{{ row.id }}/accept">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <p class="note">Titles adjacent to &ldquo;{{ phrase }}&rdquo;:</p>
+    <ul class="title-suggestion-list">
+      {% for s in visible %}
+      <li>
+        <label>
+          <input type="checkbox" name="title" value="{{ s.title }}">
+          {{ s.title }}
+          {% if s.gloss %}<span class="gloss">{{ s.gloss }}</span>{% endif %}
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <button type="submit" class="secondary">Add ticked titles</button>
+  </form>
+  {% else %}
+  <p class="note">
+    No adjacent titles suggested for &ldquo;{{ phrase }}&rdquo; that aren't in your
+    filter already.
+  </p>
+  {% endif %}
+  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Dismiss</button>
+  </form>
+  {% endif %}
+</div>
