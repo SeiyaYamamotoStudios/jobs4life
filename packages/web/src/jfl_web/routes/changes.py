@@ -48,7 +48,14 @@ from jfl_intake.feed import (
 from jfl_intake.filtering import Match
 
 from jfl_web.boards import platform_label
-from jfl_web.deps import BoardRepoDep, CsrfDep, JobFeedRepoDep, JobFilterRepoDep, SessionDep
+from jfl_web.deps import (
+    ApplicationRepoDep,
+    BoardRepoDep,
+    CsrfDep,
+    JobFeedRepoDep,
+    JobFilterRepoDep,
+    SessionDep,
+)
 from jfl_web.jobfilter import filter_open_jobs
 from jfl_web.templating import render
 
@@ -79,6 +86,7 @@ def list_changes(
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
     feed: JobFeedRepoDep,
+    applications: ApplicationRepoDep,
 ) -> Response:
     now = dt.datetime.now(dt.UTC)
     show_unstated = request.query_params.get("show_unstated") == "1"
@@ -131,6 +139,9 @@ def list_changes(
             "previous_look": previous_look,
             "first_visit_days": FIRST_VISIT_LOOKBACK.days,
             "visible_hours": int(VISIBLE_FOR.total_seconds() // 3600),
+            # Slice C7: the same "Track as application" button /jobs shows, so a
+            # change is actionable where it is read.
+            "tracked": applications.tracked_board_jobs([r.event.job.id for r in rows]),
             "board_by_id": {b.id: b for b in all_boards},
             "board_count": len(all_boards),
             "platform_label": platform_label,

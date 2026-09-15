@@ -71,16 +71,7 @@
             {% endif %}
           </td>
           <td class="col-workplace">
-            {% if job.workplace == "unknown" %}
-            <span class="status-badge workplace-unstated">workplace not stated</span>
-            {% else %}
-            <span class="status-badge workplace-badge">{{ job | workplace_display }}</span>
-            {% endif %}
-            {% if row.match.reason == "exception" and board %}
-            <div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if row.match.exception.note %}: {{ row.match.exception.note }}{% endif %}</div>
-            {% elif row.match.reason == "unstated" %}
-            <div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
-            {% endif %}
+            {%- with match = row.match -%}{% include "_workplace_badge.html" %}{%- endwith -%}
           </td>
           <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
           <td class="col-updated">
@@ -90,7 +81,9 @@
             {% endif %}
           </td>
           <td class="col-actions">
-            {# Action slot: per-job actions ("Track as application") go before the dismiss form. #}
+            {# A job that has gone has no posting left to read, so it gets no
+               Track button -- the rest do. #}
+            {% if event.kind != "gone" %}{% include "_track_button.html" %}{% endif %}
             {% if row.mark %}
             <form method="post" action="/changes/{{ row.mark.id }}/dismiss">
               <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">

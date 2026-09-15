@@ -437,3 +437,27 @@ def test_the_saved_filter_applies_and_the_page_says_how_many_it_left_out(
             .all()
         )
     assert marked == ["new"]
+
+
+def test_a_change_can_be_tracked_from_the_feed_except_for_a_job_that_has_gone(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """The feed is where changes are read, so it is where they have to be
+    actionable -- the same Track button /jobs shows. A job that has gone has no
+    posting left to read, so it gets no button.
+    """
+    user_id = sign_in(client, google, subs, engine)
+    board_id = watched_board(engine, user_id)
+    later_check(engine, user_id, board_id)
+
+    html = client.get("/changes").text
+    track_ids = re.findall(r'action="/jobs/([0-9a-f-]+)/track"', html)
+    assert len(track_ids) == 2  # the two new jobs, not the one that went
+
+    response = client.post(
+        f"/jobs/{track_ids[0]}/track",
+        data={"csrf_token": csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "Tracked" in client.get("/changes").text
