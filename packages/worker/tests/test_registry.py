@@ -74,8 +74,6 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 SCHEDULE_BOARD_CHECKS,
                 SUGGEST_TITLES,
                 FETCH_JOB_DESCRIPTION,
-                PURGE_EXPIRED_SESSIONS,
-                SCHEDULE_BOARD_CHECKS,
             )
         )
     )
