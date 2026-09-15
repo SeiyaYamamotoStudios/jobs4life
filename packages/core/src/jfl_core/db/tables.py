@@ -1079,6 +1079,69 @@ board_filter_exceptions = Table(
     Index("ix_board_filter_exceptions_board_id", "board_id"),
 )
 
+# The "what changed" feed (PLAN.md C7). There is still no events table -- events
+# are derived from `board_jobs` and `board_job_presence` -- so these two tables
+# record only the READER's side: when this user last looked, and which derived
+# events they have seen or dismissed. An event's identity is (job, kind, check):
+# every event is produced by exactly one check, and one check can give a job at
+# most one event of a kind. Deleting a board cascades through its jobs and checks
+# and takes these marks with it.
+_BOARD_JOB_EVENT_KINDS = ("new", "reposted", "returned", "gone")
+
+job_feed_state = Table(
+    "job_feed_state",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+    # When the user last viewed the feed. NULL until the first view. Only ever
+    # moves forward, so an event that was once "before you last looked" can never
+    # become unseen again.
+    _ts("last_looked_at"),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+job_feed_marks = Table(
+    "job_feed_marks",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "job_id",
+        UUID(as_uuid=True),
+        ForeignKey("board_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "check_id",
+        UUID(as_uuid=True),
+        ForeignKey("board_checks.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("kind", Text, nullable=False),
+    # When the event happened (the check's finish), copied so the feed can find
+    # how far back to derive events without joining back through the history.
+    _ts("event_at", nullable=False),
+    # When this user was first shown it. The 24-hour visibility runs from here.
+    _ts("first_seen_at", nullable=False),
+    _ts("dismissed_at"),
+    CheckConstraint(
+        "kind in ('" + "','".join(_BOARD_JOB_EVENT_KINDS) + "')",
+        name="kind",
+    ),
+    # One mark per event per user, so two tabs viewing at once cannot mint two.
+    UniqueConstraint("user_id", "job_id", "kind", "check_id"),
+    Index("ix_job_feed_marks_user_id_first_seen_at", "user_id", "first_seen_at"),
+)
+
 # --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not

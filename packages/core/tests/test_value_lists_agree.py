@@ -34,6 +34,7 @@ VALUE_SETS = [
     # workplace arrays on job_filters and board_filter_exceptions.
     (models.Workplace, tables._WORKPLACES),
     (models.WorkplaceMode, tables._WORKPLACE_MODES),
+    (models.BoardJobEventKind, tables._BOARD_JOB_EVENT_KINDS),
 ]
 
 
