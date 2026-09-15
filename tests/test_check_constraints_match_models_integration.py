@@ -31,6 +31,7 @@ CONSTRAINED_COLUMNS = [
     ("board_jobs", "workplace", tables._WORKPLACES),
     ("job_filters", "workplaces", tables._WORKPLACES),
     ("board_filter_exceptions", "workplaces", tables._WORKPLACES),
+    ("job_feed_marks", "kind", tables._BOARD_JOB_EVENT_KINDS),
 ]
 
 

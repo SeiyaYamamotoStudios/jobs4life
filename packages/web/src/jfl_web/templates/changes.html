@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Changes — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Changes</h1>
+  <div class="page-header-actions">
+    <a href="/jobs">Jobs</a>
+    <a href="/boards">Boards</a>
+  </div>
+</div>
+<p class="lede">
+  What changed on the boards you watch since you last looked, through your filter.
+  A change stays here for {{ visible_hours }} hours after you first see it, or until
+  you dismiss it. A board's first check is never news, and a check that failed or
+  saw only part of a board changes nothing.
+</p>
+
+{% if status_message %}<p class="ok" role="status">{{ status_message }}</p>{% endif %}
+
+<section>
+  <p class="summary" role="status">
+    <strong>{{ rows | length }} change{% if rows | length != 1 %}s{% endif %} matching your filter</strong>
+    of {{ event_total }}.
+    {% if previous_look %}
+    <span class="note" title="{{ previous_look.isoformat() }}">You last looked {{ previous_look | humanize_dt }}.</span>
+    {% else %}
+    <span class="note">First visit — showing the last {{ first_visit_days }} days.</span>
+    {% endif %}
+  </p>
+
+  {% if hidden_unstated %}
+  <p class="note hidden-unstated">
+    {{ hidden_unstated }} more change{% if hidden_unstated != 1 %}s{% endif %}
+    would match but the job's workplace isn't stated.
+    <a href="/changes?show_unstated=1">Show them</a> (this view only).
+  </p>
+  {% elif show_unstated %}
+  <p class="note">Showing changes to jobs whose workplace isn't stated too, for this view only.
+    <a href="/changes">Back to the saved filter</a>.</p>
+  {% endif %}
+
+  {% if rows %}
+  <form method="post" action="/changes/dismiss-all" class="dismiss-all">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="link">Dismiss all shown</button>
+  </form>
+  <div class="table-wrap">
+    <table class="boards jobs changes">
+      <thead>
+        <tr><th>Change</th><th>Job</th><th>Board</th><th>Workplace</th><th>Locations</th><th>When</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set event = row.event %}
+        {% set job = event.job %}
+        {% set board = board_by_id.get(job.board_id) %}
+        <tr class="change-row">
+          <td class="col-kind">
+            <span class="status-badge change-kind change-{{ event.kind }}">{{ event.kind }}</span>
+            {% if event.kind == "reposted" %}
+            <div class="note">replaces an earlier posting of this role that went down</div>
+            {% endif %}
+          </td>
+          <td class="col-job">
+            {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
+          </td>
+          <td class="col-board">
+            {% if board %}
+            <a href="/boards/{{ board.id }}">{{ board.label or board.board_url }}</a>
+            <div class="note">{{ platform_label(board.platform) }}</div>
+            {% endif %}
+          </td>
+          <td class="col-workplace">
+            {% if job.workplace == "unknown" %}
+            <span class="status-badge workplace-unstated">workplace not stated</span>
+            {% else %}
+            <span class="status-badge workplace-badge">{{ job | workplace_display }}</span>
+            {% endif %}
+            {% if row.match.reason == "exception" and board %}
+            <div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if row.match.exception.note %}: {{ row.match.exception.note }}{% endif %}</div>
+            {% elif row.match.reason == "unstated" %}
+            <div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
+            {% endif %}
+          </td>
+          <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
+          <td class="col-updated">
+            <span title="{{ event.at.isoformat() }}">{{ event.at | humanize_dt }}</span>
+            {% if row.seen_before and row.mark %}
+            <div class="note" title="{{ row.mark.first_seen_at.isoformat() }}">first seen by you {{ row.mark.first_seen_at | humanize_dt }}</div>
+            {% endif %}
+          </td>
+          <td class="col-actions">
+            {# Action slot: per-job actions ("Track as application") go before the dismiss form. #}
+            {% if row.mark %}
+            <form method="post" action="/changes/{{ row.mark.id }}/dismiss">
+              <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+              <button type="submit" class="link">Dismiss</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif not board_count %}
+  <p class="note">You aren't watching any boards yet. <a href="/boards">Add a board</a> and its changes will appear here after its first check.</p>
+  {% elif event_total %}
+  <p class="note">None of the {{ event_total }} change{% if event_total != 1 %}s{% endif %} match your filter.</p>
+  {% elif previous_look %}
+  <p class="note">Nothing has changed on your boards since you last looked, {{ previous_look | humanize_dt }}.</p>
+  {% else %}
+  <p class="note">Nothing has changed on your boards in the last {{ first_visit_days }} days.</p>
+  {% endif %}
+</section>
+{% endblock %}

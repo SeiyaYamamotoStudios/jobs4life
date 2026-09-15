@@ -609,3 +609,19 @@ class DueBoard(BaseModel):
 
     board_id: uuid.UUID
     user_id: uuid.UUID
+
+
+class JobFeedMark(BaseModel):
+    """One user's record of one derived `BoardJobEvent` in the "what changed"
+    feed: when they were first shown it, and whether they dismissed it. The event
+    itself is not stored -- `(job_id, kind, check_id)` names it. See
+    `jfl_intake.feed` for how marks decide what the feed shows.
+    """
+
+    id: uuid.UUID
+    job_id: uuid.UUID
+    check_id: uuid.UUID
+    kind: BoardJobEventKind
+    event_at: dt.datetime
+    first_seen_at: dt.datetime
+    dismissed_at: dt.datetime | None = None

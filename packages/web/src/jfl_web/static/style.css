@@ -468,3 +468,12 @@ table.jobs .col-workplace { min-width: 10rem; }
 .exception form, .add-exception form { margin: 0.5rem 0; }
 .add-exception summary { cursor: pointer; color: var(--accent); }
 h3 { font-size: 0.98rem; margin: 1.6rem 0 0.4rem; font-weight: 650; }
+
+/* -- changes feed -- */
+.dismiss-all { margin: 0.5rem 0 0.75rem; text-align: right; }
+table.changes .col-kind { white-space: nowrap; }
+table.changes .col-kind .note { white-space: normal; max-width: 12rem; }
+.status-badge.change-new { color: var(--good); border-color: var(--good); }
+.status-badge.change-returned { color: var(--accent); border-color: var(--accent); }
+.status-badge.change-reposted { color: var(--warn); border-color: var(--warn); }
+.status-badge.change-gone { color: var(--muted); border-color: var(--rule); }
