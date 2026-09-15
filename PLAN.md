@@ -310,6 +310,11 @@ board's fetch across users is an optimisation for later.
 
 ### C7 — what you see, and what changed
 
+**Shipped 2026-09-15**, in one session by five parallel agents: the presets, the feed
+and Track as application are all live. What changed from the design below as it was
+built is recorded in `NEXT.md`.
+
+
 Settled with the owner on 2026-09-15. Built and deployed already: the Boards screen, and
 `/jobs` — one aggregated list of every open job across watched boards, through **one saved
 filter used everywhere**, with per-board exceptions in the owner's own words.
@@ -361,6 +366,9 @@ the user's own key only when they have decided a job is worth it, and supersedes
 "scoring on arrival".
 
 ### C7a — suggested title expansions, informed by what we know about the user
+
+**Shipped 2026-09-15.** Haiku 4.5, one call per phrase, cached, tickbox per suggestion.
+
 
 Agreed with the owner 2026-09-15. When the user adds a title phrase to the filter, a cheap
 model call (Claude Haiku 4.5, ~$0.001 per phrase; confirm on first real uses) **suggests

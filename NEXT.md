@@ -56,43 +56,31 @@ that mattered was found that way and none by review.
 
 ### Resume here — end of session, 2026-09-15
 
-- **Deployed and healthy:** twelve board platforms; the **Boards** screen (add a board by
-  URL, check now, stop watching, per-board settings); and the **Jobs** page — one
-  aggregated, filtered list of every open job across all watched boards.
-- **Filters:** a saved workplace set, title includes and excludes, optional location; a
-  per-board "include jobs whose workplace isn't stated" setting (default on for Greenhouse,
-  Rippling, Workday and Personio); and per-board exceptions in the owner's own words, e.g.
-  Anthropic on-site roles in London. Workplace comes from platform fields, Greenhouse
-  custom metadata, or the literal words remote or hybrid in location text — never from a
-  country name.
-- **Archive (soft delete) for applications: done and deployed.** An "Archive this
-  application" confirm on the application page, an "Archived (N)" link and view on the
-  list, Restore from either. Status and timeline are untouched. The confirmation banner
-  looks the title up by id and never echoes text from the URL. The owner's test
-  application showing as withdrawn can now be archived.
-- **Decide:** 38 of Anthropic's jobs are labelled On-Site in Greenhouse metadata while
-  their location text says "Remote-Friendly". Metadata wins, so a remote-only filter hides
-  them and does not count them as unstated. A board exception on location "remote friendly"
-  brings them back; the open question is whether a metadata-versus-text conflict should be
-  shown instead.
-- **This session hit a Claude Code safeguard block** (`reasoning_extraction`, request
-  `req_011Cf4DtdrzD637cpQwC9B4r`) during routine work, most likely helped along by a very
-  long context full of eval and labelling material. Start fresh sessions rather than
-  resuming this one.
-- **Agreed and written into PLAN.md (C7, C7a), not built — suggested order:**
-  1. **Remote only / remote friendly presets.** Remote only means zero on-site. Remote
-     friendly means remote plus hybrid up to about one day a week, and includes hybrid
-     whose days aren't stated, badged "Hybrid — days not stated" and refined over time.
-  2. **The "what changed" feed**, measured from when the *user* last looked; items stay
-     24 hours after first seen, or until dismissed. One filter everywhere.
-  3. **Track as application** from a job: fetch the description, then run B3 extraction,
-     just like a paste. **Scoring runs only on that explicit action**, never on arrival
-     (CLAUDE.md 2026-09-15; C8's scoring on arrival is superseded).
-  4. **Title expansion**: Haiku 4.5, about $0.001 per phrase, a tickbox per suggested
-     title, using the user's other title phrases and tracked application titles as
-     context.
-- **Still open:** B4 scoring itself; the prompt-defect batch and its ~$2 eval re-run;
-  error references; slice D.
+Slice C7 and C7a shipped this session, built by five parallel agents and merged here.
+
+- **Workplace presets.** `/jobs` has three modes: **remote only** (strict: the employer
+  says remote, and wording saying "Remote-Friendly" does not count), **remote friendly**
+  (remote plus hybrid, hybrid badged "— days not stated"), and **custom** (the old
+  checkboxes, unchanged). Anthropic's 38 On-Site jobs whose location reads
+  "Remote-Friendly" appear under remote friendly with the conflict shown on the row, per
+  the owner's ruling. A board can be marked "hybrid here is too heavy", which drops its
+  hybrid jobs from remote friendly. **Open for the owner:** remote only currently also
+  drops a job the board's own field calls Remote when its text says Remote-Friendly —
+  on the captured Anthropic fixture that is both of their remote jobs.
+- **The changes feed** at `/changes`: new / gone / returned / reposted since the user
+  last looked, each staying 24 hours after they first see it or until dismissed, through
+  the same saved filter. First visit looks back 7 days. Marks are never pruned (the table
+  only grows; a purge task is the obvious next step).
+- **Track as application** from `/jobs`, a board's page or the feed: fetches that one
+  posting's description (`jfl_intake.descriptions`, 11 of 12 platforms; **Breezy has no
+  public description source**, so it asks for a paste), then runs the existing B3
+  extraction. Nothing is fetched or read for jobs merely browsed.
+- **Suggested title expansions** (C7a): saving a new title phrase enqueues one Haiku call
+  on the user's own key, and each suggestion is offered with a tickbox. Context is the
+  user's other includes, their excludes and their live application titles.
+- **Not built: B4 scoring.** "Track as application" reads the ad; it does not score it.
+- **Watch for:** `runs` rows now include `stage='suggest_titles'` on `claude-haiku-4-5`;
+  the first real uses are what confirm the ~$0.001-per-phrase estimate.
 
 **Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
 quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,

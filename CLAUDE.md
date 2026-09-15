@@ -87,6 +87,19 @@ employer's own words ("Remote-Friendly"), a per-board exception in the owner's w
 later the days read from a posting. Claiming low commitment the label does not state would
 be the tool asserting something it cannot see; showing it flagged is not.
 
+**2026-09-15, later — one filter's words, one model call, and a feed measured against the
+reader.** Slice C7/C7a shipped: workplace presets, the changes feed, "Track as
+application", and Haiku-suggested title expansions. Three rules came out of building it
+and generalise. **A description is fetched for one posting, never for a board** -- the
+listing endpoints stay the only thing a check touches, so watching stays cheap and
+polite, and the per-posting call happens when a person asks for it. **Breezy has no
+public description source** (its bulk listing carries none, and the only other surface is
+the human-facing HTML page, which the no-scraping rule covers -- Workday's carve-out does
+not apply, because there is no structured-data argument), so tracking a Breezy job asks
+for a paste. And **a suggested title is never a match term until the user ticks it**:
+matching stays exact and free, and the model's guess never silently widens what the owner
+sees.
+
 **2026-09-10 — Watched job boards: the history is ours, and a check is authoritative or it
 changes nothing.** The owner named this the feature he would use most, since LinkedIn has
 become largely useless: a personal catalogue of employers' ATS boards, checked daily,
