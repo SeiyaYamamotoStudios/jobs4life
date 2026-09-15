@@ -74,6 +74,19 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
+**2026-09-15 — Scoring is spent only on jobs the user chooses; "remote friendly" needs
+evidence.** Two owner decisions, detailed in `PLAN.md` C7. **A job is scored only when the
+user turns it into an application**, never on arrival and never for jobs they merely
+browse — users pay for model calls with their own keys, so the model runs when a person has
+decided a job is worth it. And workplace filtering has two presets: **remote only**
+(strict) and **remote friendly** (remote plus low-commitment hybrid, up to about one day a
+week). Platforms label hybrid without the number of days, so **hybrid jobs are included in
+remote friendly but badged "days not stated"** — shown for the owner to judge, never
+presented as confirmed low commitment. The badge is refined over time by evidence: the
+employer's own words ("Remote-Friendly"), a per-board exception in the owner's words, or
+later the days read from a posting. Claiming low commitment the label does not state would
+be the tool asserting something it cannot see; showing it flagged is not.
+
 **2026-09-10 — Watched job boards: the history is ours, and a check is authoritative or it
 changes nothing.** The owner named this the feature he would use most, since LinkedIn has
 become largely useless: a personal catalogue of employers' ATS boards, checked daily,

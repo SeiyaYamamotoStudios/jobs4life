@@ -65,12 +65,11 @@ that mattered was found that way and none by review.
   Anthropic on-site roles in London. Workplace comes from platform fields, Greenhouse
   custom metadata, or the literal words remote or hybrid in location text — never from a
   country name.
-- **Half-built: archive (soft delete) for applications.** Done and deployed:
-  `applications.archived_at` (migration `e5396ef31c67`), `archive` and `unarchive` on the
-  repository, `list_applications` hiding archived ones by default (`archived=True` lists
-  them), all tested. **Not built: the UI** — an Archive button with a confirm step on the
-  application page, an "Archived (N)" link and view on the list, and Restore. The owner
-  has a test application showing as withdrawn that should be archived once this exists.
+- **Archive (soft delete) for applications: done and deployed.** An "Archive this
+  application" confirm on the application page, an "Archived (N)" link and view on the
+  list, Restore from either. Status and timeline are untouched. The confirmation banner
+  looks the title up by id and never echoes text from the URL. The owner's test
+  application showing as withdrawn can now be archived.
 - **Decide:** 38 of Anthropic's jobs are labelled On-Site in Greenhouse metadata while
   their location text says "Remote-Friendly". Metadata wins, so a remote-only filter hides
   them and does not count them as unstated. A board exception on location "remote friendly"
@@ -80,9 +79,20 @@ that mattered was found that way and none by review.
   `req_011Cf4DtdrzD637cpQwC9B4r`) during routine work, most likely helped along by a very
   long context full of eval and labelling material. Start fresh sessions rather than
   resuming this one.
-- **Still open with the owner:** the "what changed" feed (new / gone / returned /
-  reposted) and its display questions; B4 scoring; the prompt-defect batch and its ~$2
-  eval re-run; error references; slice D.
+- **Agreed and written into PLAN.md (C7, C7a), not built — suggested order:**
+  1. **Remote only / remote friendly presets.** Remote only means zero on-site. Remote
+     friendly means remote plus hybrid up to about one day a week, and includes hybrid
+     whose days aren't stated, badged "Hybrid — days not stated" and refined over time.
+  2. **The "what changed" feed**, measured from when the *user* last looked; items stay
+     24 hours after first seen, or until dismissed. One filter everywhere.
+  3. **Track as application** from a job: fetch the description, then run B3 extraction,
+     just like a paste. **Scoring runs only on that explicit action**, never on arrival
+     (CLAUDE.md 2026-09-15; C8's scoring on arrival is superseded).
+  4. **Title expansion**: Haiku 4.5, about $0.001 per phrase, a tickbox per suggested
+     title, using the user's other title phrases and tracked application titles as
+     context.
+- **Still open:** B4 scoring itself; the prompt-defect batch and its ~$2 eval re-run;
+  error references; slice D.
 
 **Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
 quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,

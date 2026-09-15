@@ -308,14 +308,83 @@ Daily scheduled checks through the worker, staggered and rate-limited per platfo
 courtesy. Watches are per user in v1: simple, and tenant-safe by construction; sharing a
 board's fetch across users is an optimisation for later.
 
-### C7 — what you see
+### C7 — what you see, and what changed
 
-**To be shaped with the owner before the UI is built** — the engine lands first. The
-working model: a "since you last looked" feed across every board (new, gone, returned,
-reposted); per board, the open count over time and each job's own timeline; and coverage
-stated rather than implied — boards watched, last checked, which failed or were truncated.
-That last is the owner's honest admission made concrete: we will miss companies and jobs,
-and the page should say exactly where.
+Settled with the owner on 2026-09-15. Built and deployed already: the Boards screen, and
+`/jobs` — one aggregated list of every open job across watched boards, through **one saved
+filter used everywhere**, with per-board exceptions in the owner's own words.
+
+**Workplace modes — two named presets, replacing loose checkboxes as the main control.**
+- **Remote only** — strict. Jobs the employer states are remote. Nothing labelled on-site
+  or hybrid, whatever the location text says. The owner's example: Primer, remote-first.
+- **Remote friendly** — remote only, **plus low-commitment hybrid: from a couple of days a
+  month up to one day a week.**
+
+**Hybrid is included in remote friendly, flagged rather than excluded** (owner,
+2026-09-15). Platforms say "Hybrid" without saying how many days, so a hybrid job appears
+under remote friendly **badged "Hybrid — days not stated"**, never presented as confirmed
+low commitment. The owner eyeballs these, and the badge is refined over time as evidence
+arrives:
+- the employer's own words — `remote-friendly`, `remote first` and similar, in a platform
+  field, Greenhouse custom metadata or location text — mark a job as stated low-commitment.
+  This resolves Anthropic's 38 jobs labelled On-Site in metadata whose location reads
+  "Remote-Friendly (Travel-Required)": excluded under remote only, included under remote
+  friendly, with the conflict visible on the row rather than silently resolved;
+- a per-board exception in the owner's words (e.g. "Anthropic: ~1 day a week") marks that
+  board's matching jobs as known low-commitment;
+- the owner can mark a board's hybrid as too heavy, taking it out of remote friendly;
+- later, the number of days read from a posting's description when it is fetched.
+
+A job labelled **on-site** is still excluded from remote friendly unless the employer's
+words or an exception say otherwise.
+
+Jobs whose workplace is unstated keep the existing per-board rule and hidden-count line.
+
+**The "what changed" feed.**
+- **Since the user last looked** — not since the service last checked. Each user has a
+  last-looked time, advanced when they view the feed.
+- An event (new, gone, returned, reposted) appears when it happens and **stays visible for
+  24 hours after the user first sees it, or until they dismiss it** — whichever comes first.
+  Dismissal is per user and per event.
+- The feed goes through the same saved filter and exceptions as `/jobs`.
+- A board's baseline check is never news (C4), and a failed or partial check produces no
+  events (C3).
+
+**"Track as application"** — a button on a job that turns it into an application. It uses
+the model exactly as a manual paste does: fetch the posting's description from the platform
+(lazily, only for this job), then run the existing B3 extraction through the queue. Nothing
+is extracted or scored for jobs the user only looks at.
+
+**Scoring happens only on an explicit action.** A job is scored when the user turns it into
+an application (B4), never on arrival and never for jobs they merely browse. This spends
+the user's own key only when they have decided a job is worth it, and supersedes C8's
+"scoring on arrival".
+
+### C7a — suggested title expansions, informed by what we know about the user
+
+Agreed with the owner 2026-09-15. When the user adds a title phrase to the filter, a cheap
+model call (Claude Haiku 4.5, ~$0.001 per phrase; confirm on first real uses) **suggests
+adjacent titles** — `engineering manager` → EM, SEM, senior engineering manager, engineering
+lead, software development manager. **Suggestions are offered with a tickbox each, never
+added silently;** only accepted ones become match terms, so matching stays exact and free.
+Runs once per phrase, through the queue, on the user's own key, under the model kill switch,
+and is cached.
+
+**Context makes the suggestions right, not generic.** Abbreviations are ambiguous — "SEM" is
+also Search Engine Marketing — so the call is given what the user has already told us:
+- their other title phrases, **including excludes** (excluding "marketing" settles SEM);
+- the titles of applications they are tracking (archived ones excluded);
+- later, once corpus upload exists (B6), a short excerpt of their current role and seniority
+  — **an excerpt, not the corpus**: minimum necessary data, and the call stays a fraction of
+  a penny.
+
+Context biases suggestions toward the user's current track, which is mostly what they want;
+the prompt should still allow a few adjacent-but-different titles, and the tickbox is the
+safeguard either way.
+
+Schema note, per CLAUDE.md 2026-09-02: return a list of titles, optionally with a very short
+gloss per title — **never a property named `reason`**, and no label-plus-reason-per-item
+shape, which is what tripped the `reasoning_extraction` classifier before.
 
 ### C8 — later in slice C
 
@@ -325,8 +394,8 @@ and the page should say exactly where.
   a model knows famous companies and least about precisely the small ones worth finding.
   **No sponsorship and no adverts, ever.**
 - **The email forwarding address** as a source.
-- **Scoring on arrival** (B4's two axes) — only for jobs that pass the user's filter, never
-  every job on a 2,600-job board, since it spends the user's key.
+- ~~Scoring on arrival~~ — **superseded 2026-09-15**: scoring happens only when the user
+  turns a job into an application (see C7).
 
 ## Slice D — the loops that close
 
