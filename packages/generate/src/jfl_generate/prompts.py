@@ -10,6 +10,7 @@ duplicated.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Literal
 
 from anthropic.types import TextBlockParam
@@ -225,6 +226,82 @@ def build_draft_system_blocks(
         kind_instructions=_KIND_INSTRUCTIONS[kind], corpus="{corpus}"
     )
     return _split_system_blocks(template, format_corpus(spans), cache=cache)
+
+
+########################################################################
+# Slice C7a: suggested title expansions. A short, cheap, standalone call --
+# no corpus, no system/message split to cache. See CLAUDE.md's "How to
+# develop the model-facing parts" (near-default judgement, no elaborate
+# scaffolding) and PLAN.md's C7a.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.TitleSuggestionsOutput.
+TITLE_SUGGESTIONS_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "titles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    # Never `reason` -- see CLAUDE.md's 2026-09-02 decision and
+                    # PLAN.md's C7a: a schema property named `reason`, combined
+                    # with a labelling system prompt, has tripped the API's
+                    # reverse-engineering/duplication classifier before.
+                    "gloss": {"type": "string"},
+                },
+                "required": ["title", "gloss"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["titles"],
+    "additionalProperties": False,
+}
+
+_TITLE_SUGGESTION_INSTRUCTIONS = """\
+You are suggesting adjacent job titles for jobs4life, a tool that helps someone search \
+job boards by title. The user has just added "{phrase}" to the title-matching phrases \
+on a saved job filter.
+
+Suggest other job titles that are the same role under a different name, or a close \
+abbreviation or expansion of it -- the kind of title variation different employers or \
+job boards use for what is really the same role. A few titles for adjacent-but-different \
+roles are fine too, where a reasonable person searching on "{phrase}" would plausibly want \
+them included as well.
+
+Abbreviations are ambiguous out of context -- "SEM" could mean "senior engineering \
+manager" or "search engine marketing" -- so use what is already known about this person \
+to judge which reading fits:
+
+- other title phrases already in their filter: {other_includes}
+- title phrases they have excluded from their filter: {excludes}
+- titles of roles they are currently tracking as applications: {application_titles}
+
+The current date and time is {now}.
+
+Return up to about 10 titles, each with a very short gloss noting anything worth \
+flagging -- for instance that it is a step up, a step down, or a different \
+specialisation, rather than a plain equivalent. Do not repeat "{phrase}" itself.
+"""
+
+
+def build_title_suggestion_prompt(
+    phrase: str,
+    *,
+    other_includes: Sequence[str],
+    excludes: Sequence[str],
+    application_titles: Sequence[str],
+    now: datetime,
+) -> str:
+    return _TITLE_SUGGESTION_INSTRUCTIONS.format(
+        phrase=phrase,
+        other_includes=", ".join(other_includes) or "(none)",
+        excludes=", ".join(excludes) or "(none)",
+        application_titles=", ".join(application_titles) or "(none)",
+        now=now.isoformat(),
+    )
 
 
 def _split_system_blocks(

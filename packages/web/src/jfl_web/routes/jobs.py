@@ -35,9 +35,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
+from jfl_intake.normalise import normalise
 
 from jfl_web.boards import platform_label
-from jfl_web.deps import BoardRepoDep, CsrfDep, JobFilterRepoDep, SessionDep
+from jfl_web.deps import (
+    BoardRepoDep,
+    CredentialRepoDep,
+    CsrfDep,
+    JobFilterRepoDep,
+    SessionDep,
+    TaskRepoDep,
+    TitleSuggestionRepoDep,
+)
 from jfl_web.jobfilter import (
     JOBS_PAGE_CAP,
     MAX_FILTER_TEXT,
@@ -51,8 +61,14 @@ from jfl_web.jobfilter import (
     parse_workplaces,
 )
 from jfl_web.templating import render
+from jfl_web.titlesuggestions import split_phrases, suggestion_rows
 
 router = APIRouter()
+
+# The worker's kind for "suggest titles adjacent to this phrase" -- slice C7a.
+# A string on both sides, same reason `applications.py`'s EXTRACT_JOB_AD_KIND
+# is: importing `jfl_worker` here would put the worker in the web container.
+SUGGEST_TITLES_KIND = "suggest_titles"
 
 _BOARD_NOT_FOUND = "No board found -- it may belong to another account."
 _EXCEPTION_NOT_FOUND = "No exception found -- it may belong to another account."
@@ -73,6 +89,7 @@ def list_jobs(
     session: SessionDep,
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
+    suggestions: TitleSuggestionRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -110,6 +127,13 @@ def list_jobs(
             "platform_label": platform_label,
             "checked_status": request.query_params.get("status"),
             "max_filter_text": MAX_FILTER_TEXT,
+            # C7a: one row per current include phrase, for the panel below the
+            # filter form. See jfl_web.titlesuggestions.suggestion_rows.
+            "title_suggestion_rows": suggestion_rows(
+                split_phrases(saved.title_includes),
+                suggestions.get_by_phrase_key,
+                saved.title_includes,
+            ),
         },
     )
 
@@ -119,6 +143,9 @@ def save_filter(
     request: Request,
     session: SessionDep,
     filters: JobFilterRepoDep,
+    suggestions: TitleSuggestionRepoDep,
+    credentials: CredentialRepoDep,
+    tasks: TaskRepoDep,
     _csrf: CsrfDep,
     workplace: Annotated[list[str] | None, Form()] = None,
     title_includes: Annotated[str, Form()] = "",
@@ -130,15 +157,28 @@ def save_filter(
     if mode is None:
         return _error(request, session, "That workplace choice is not one of the options.", 400)
     try:
+        checked_includes = checked_text(title_includes, MAX_FILTER_TEXT)
         filters.save_filter(
             workplace_mode=mode,
             workplaces=parse_workplaces(workplace or []),
-            title_includes=checked_text(title_includes, MAX_FILTER_TEXT),
+            title_includes=checked_includes,
             title_excludes=checked_text(title_excludes, MAX_FILTER_TEXT),
             location=checked_text(location, MAX_FILTER_TEXT),
         )
     except FormTooLongError as exc:
         return _error(request, session, str(exc), 400)
+
+    # C7a: a cheap suggestion call per NEW include phrase, through the queue, on
+    # the user's own key, only if one is stored -- otherwise nothing is
+    # enqueued and the panel says to add one. `create_pending` is a no-op for a
+    # phrase already seen (by `phrase_key`), so re-saving the same phrase never
+    # enqueues a second call, and removing a phrase leaves its cached row alone.
+    if credentials.summary(ANTHROPIC_API_KEY) is not None:
+        for phrase in split_phrases(checked_includes):
+            row = suggestions.create_pending(phrase=phrase, phrase_key=normalise(phrase))
+            if row is not None:
+                tasks.enqueue(kind=SUGGEST_TITLES_KIND, payload={"suggestion_id": str(row.id)})
+
     return RedirectResponse("/jobs?status=saved", status_code=303)
 
 

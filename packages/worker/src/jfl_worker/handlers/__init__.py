@@ -32,6 +32,8 @@ from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
 from jfl_worker.handlers.sessions import purge_expired_sessions
+from jfl_worker.handlers.title_suggestions import KIND as SUGGEST_TITLES
+from jfl_worker.handlers.title_suggestions import build_suggest_titles
 from jfl_worker.registry import HandlerRegistry
 from jfl_worker.settings import WorkerSettings
 
@@ -40,10 +42,12 @@ __all__ = [
     "EXTRACT_JOB_AD",
     "PURGE_EXPIRED_SESSIONS",
     "SCHEDULE_BOARD_CHECKS",
+    "SUGGEST_TITLES",
     "build_check_board",
     "build_extract_job_ad",
     "build_registry",
     "build_schedule_board_checks",
+    "build_suggest_titles",
     "purge_expired_sessions",
 ]
 
@@ -84,6 +88,14 @@ def build_registry(
         build_extract_job_ad(master_key=settings.master_key, model=settings.model),
         # True, and this is the line the kill switch acts on. Extraction is one
         # Anthropic call on the user's own key.
+        calls_model=True,
+    )
+    registry.register(
+        SUGGEST_TITLES,
+        # No `model=` -- `jfl_generate.titles.suggest_titles` always calls
+        # claude-haiku-4-5, never the deployment's configured model.
+        build_suggest_titles(master_key=settings.master_key),
+        # True: one Anthropic call on the user's own key, same as extraction.
         calls_model=True,
     )
     return registry

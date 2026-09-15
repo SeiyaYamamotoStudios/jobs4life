@@ -25,6 +25,7 @@ from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from sqlalchemy.engine import Connection
 
 from jfl_web.oauth import GoogleIdentityProvider
@@ -158,6 +159,16 @@ def job_feed_repo(session: SessionDep, conn: ConnDep) -> PostgresJobFeedReposito
 
 
 JobFeedRepoDep = Annotated[PostgresJobFeedRepository, Depends(job_feed_repo)]
+
+
+def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSuggestionRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresTitleSuggestionRepository(conn, session.user.id)
+
+
+TitleSuggestionRepoDep = Annotated[
+    PostgresTitleSuggestionRepository, Depends(title_suggestion_repo)
+]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

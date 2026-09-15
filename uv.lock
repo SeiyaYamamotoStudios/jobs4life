@@ -970,6 +970,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "jfl-core" },
     { name = "jfl-gate" },
+    { name = "jfl-intake" },
 ]
 
 [package.metadata]
@@ -977,6 +978,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "jfl-core", editable = "packages/core" },
     { name = "jfl-gate", editable = "packages/gate" },
+    { name = "jfl-intake", editable = "packages/intake" },
 ]
 
 [[package]]

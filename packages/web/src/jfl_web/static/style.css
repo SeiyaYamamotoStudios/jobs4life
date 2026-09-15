@@ -488,3 +488,16 @@ table.changes .col-kind .note { white-space: normal; max-width: 12rem; }
 .status-badge.change-returned { color: var(--accent); border-color: var(--accent); }
 .status-badge.change-reposted { color: var(--warn); border-color: var(--warn); }
 .status-badge.change-gone { color: var(--muted); border-color: var(--rule); }
+
+/* -- title suggestions -- */
+.title-suggestions { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.title-suggestion {
+  padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.title-suggestion-list { list-style: none; margin: 0.4rem 0; padding: 0; }
+.title-suggestion-list li { margin: 0.15rem 0; }
+.title-suggestion-list .gloss { color: var(--ink-soft); font-size: 0.85rem; margin-left: 0.35rem; }
+.title-suggestion form { display: inline-block; margin: 0.3rem 0.4rem 0 0; }

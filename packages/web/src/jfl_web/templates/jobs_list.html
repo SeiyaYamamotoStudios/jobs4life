@@ -70,7 +70,9 @@
     </p>
     <button type="submit">Save filter</button>
   </form>
+  {% include "_title_suggestions.html" %}
   {% if checked_status == "saved" %}<p class="ok" role="status">Filter saved.</p>{% endif %}
+  {% if checked_status == "titles_added" %}<p class="ok" role="status">Titles added to your filter.</p>{% endif %}
 </section>
 
 <section>

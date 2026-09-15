@@ -1,0 +1,16 @@
+{# Suggested title expansions for the saved filter's current include phrases --
+   slice C7a. One row per phrase, via `_title_suggestion_row.html`; a pending
+   row polls itself, mirroring `_extraction.html`'s trick. Nothing here writes
+   to the filter -- the row partial's tickbox-and-accept form is the only path
+   onto `title_includes`. #}
+{% if title_suggestion_rows %}
+<section class="title-suggestions" aria-label="Suggested title expansions">
+  {% for item in title_suggestion_rows %}
+  {% set phrase = item.phrase %}
+  {% set row = item.row %}
+  {% set failure = item.failure %}
+  {% set visible = item.visible %}
+  {% include "_title_suggestion_row.html" %}
+  {% endfor %}
+</section>
+{% endif %}

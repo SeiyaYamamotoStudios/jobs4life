@@ -65,3 +65,18 @@ class CoverageOutput(BaseModel):
 
 class DraftOutput(BaseModel):
     draft: str
+
+
+class SuggestedTitleItem(BaseModel):
+    """The wire shape one suggested title comes back as. Sanitised into
+    `jfl_core.models.SuggestedTitle` by `jfl_generate.titles.suggest_titles`
+    before anything downstream sees it -- this type exists only to give the
+    parsed response typed access, same split as every other model here.
+    """
+
+    title: str
+    gloss: str
+
+
+class TitleSuggestionsOutput(BaseModel):
+    titles: list[SuggestedTitleItem]
