@@ -36,7 +36,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
 from jfl_web.boards import platform_label
-from jfl_web.deps import BoardRepoDep, CsrfDep, JobFilterRepoDep, SessionDep
+from jfl_web.deps import ApplicationRepoDep, BoardRepoDep, CsrfDep, JobFilterRepoDep, SessionDep
 from jfl_web.jobfilter import (
     JOBS_PAGE_CAP,
     MAX_FILTER_TEXT,
@@ -70,6 +70,7 @@ def list_jobs(
     session: SessionDep,
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
+    applications: ApplicationRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -83,6 +84,7 @@ def list_jobs(
         exceptions,
         show_hidden_unstated=show_unstated,
     )
+    rows = result.matches[:JOBS_PAGE_CAP]
     return render(
         request,
         "jobs_list.html",
@@ -92,7 +94,7 @@ def list_jobs(
             "saved": saved,
             "workplace_names": WORKPLACE_NAMES,
             "result": result,
-            "rows": result.matches[:JOBS_PAGE_CAP],
+            "rows": rows,
             "capped": len(result.matches) > JOBS_PAGE_CAP,
             "cap": JOBS_PAGE_CAP,
             "board_by_id": board_by_id,
@@ -106,6 +108,9 @@ def list_jobs(
             "platform_label": platform_label,
             "checked_status": request.query_params.get("status"),
             "max_filter_text": MAX_FILTER_TEXT,
+            # Slice C7: "Track as application" renders as "Tracked" for a job
+            # that already has a live application from it.
+            "tracked": applications.tracked_board_jobs([m.job.id for m in rows]),
         },
     )
 

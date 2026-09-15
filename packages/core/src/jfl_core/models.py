@@ -183,6 +183,12 @@ ExtractionErrorCode = Literal[
     "model_refused",
     "model_error",
     "credential_unreadable",
+    # Slice C7: "Track as application" could not read the posting's description
+    # off the board -- unsupported platform, a 404, or a fetch that never came
+    # back after retrying. Distinct from `no_job_ad`, which is a genuinely empty
+    # `raw_job_text`; here there is no ad at all yet, and the fix is the same
+    # paste box a manual application starts from (`POST /applications/{id}/ad`).
+    "description_unavailable",
 ]
 
 
@@ -204,6 +210,12 @@ class Application(BaseModel):
     title_is_provisional: bool = False
     # Soft delete: set when archived, cleared when restored. See tables.py.
     archived_at: dt.datetime | None = None
+    # Slice C7: the watched-board job this application was created from, or
+    # None for one added by paste. ON DELETE SET NULL -- losing the board (or
+    # the job falling off it) must never take the tracked application with it,
+    # so this is a provenance pointer, never something the application's own
+    # life depends on.
+    board_job_id: uuid.UUID | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
 

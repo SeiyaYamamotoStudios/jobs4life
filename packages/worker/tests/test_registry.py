@@ -9,6 +9,7 @@ from jfl_core.crypto.envelope import MasterKey
 from jfl_worker.handlers import (
     CHECK_BOARD,
     EXTRACT_JOB_AD,
+    FETCH_JOB_DESCRIPTION,
     PURGE_EXPIRED_SESSIONS,
     SCHEDULE_BOARD_CHECKS,
     build_registry,
@@ -64,7 +65,15 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     registry = build_registry(settings)
 
     assert registry.kinds() == tuple(
-        sorted((CHECK_BOARD, EXTRACT_JOB_AD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+        sorted(
+            (
+                CHECK_BOARD,
+                EXTRACT_JOB_AD,
+                FETCH_JOB_DESCRIPTION,
+                PURGE_EXPIRED_SESSIONS,
+                SCHEDULE_BOARD_CHECKS,
+            )
+        )
     )
 
     purge = registry.get(PURGE_EXPIRED_SESSIONS)
@@ -74,12 +83,14 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     assert extract is not None and extract.calls_model is True
 
     # Watched boards call public ATS APIs and pure rules -- no model, no spend --
-    # so the kill switch must not stop them, and they must say so.
-    for kind in (CHECK_BOARD, SCHEDULE_BOARD_CHECKS):
+    # so the kill switch must not stop them, and they must say so. Slice C7's
+    # description fetch is the same story: an HTTP request to the board's own
+    # API, no `anthropic` on the path.
+    for kind in (CHECK_BOARD, SCHEDULE_BOARD_CHECKS, FETCH_JOB_DESCRIPTION):
         spec = registry.get(kind)
         assert spec is not None and spec.calls_model is False
 
     # And the switch actually removes only the model-calling kind.
     assert registry.runnable_kinds(allow_model_calls=False) == tuple(
-        sorted((CHECK_BOARD, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+        sorted((CHECK_BOARD, FETCH_JOB_DESCRIPTION, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
     )

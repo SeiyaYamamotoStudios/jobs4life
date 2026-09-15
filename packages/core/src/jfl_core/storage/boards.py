@@ -673,6 +673,19 @@ class PostgresBoardRepository(TenantScopedRepository):
         )
         return [_job_from_row(r) for r in self._conn.execute(query).all()]
 
+    def get_job(self, job_id: uuid.UUID) -> BoardJob | None:
+        """One board job, for slice C7's "Track as application": the route
+        needs it to build the application's title and employer, and the
+        `fetch_job_description` handler needs its platform-facing identity
+        (`external_id`, `url`) to fetch a description from.
+        """
+        row = self._conn.execute(
+            select(*_JOB_COLUMNS).where(
+                jobs_table.c.id == job_id, jobs_table.c.user_id == self._user_id
+            )
+        ).first()
+        return None if row is None else _job_from_row(row)
+
     def list_presence(self, job_id: uuid.UUID) -> list[BoardJobPresence]:
         """A job's intervals, oldest first."""
         rows = self._conn.execute(

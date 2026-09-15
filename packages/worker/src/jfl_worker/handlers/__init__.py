@@ -28,6 +28,8 @@ from jfl_worker.handlers.boards import (
     build_check_board,
     build_schedule_board_checks,
 )
+from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
+from jfl_worker.handlers.description import build_fetch_job_description
 from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
@@ -38,10 +40,12 @@ from jfl_worker.settings import WorkerSettings
 __all__ = [
     "CHECK_BOARD",
     "EXTRACT_JOB_AD",
+    "FETCH_JOB_DESCRIPTION",
     "PURGE_EXPIRED_SESSIONS",
     "SCHEDULE_BOARD_CHECKS",
     "build_check_board",
     "build_extract_job_ad",
+    "build_fetch_job_description",
     "build_registry",
     "build_schedule_board_checks",
     "purge_expired_sessions",
@@ -52,14 +56,16 @@ def build_registry(
     settings: WorkerSettings,
     *,
     board_transport: TransportFactory | None = None,
+    description_transport: TransportFactory | None = None,
     board_owners: Collection[uuid.UUID] | None = None,
 ) -> HandlerRegistry:
     """The worker's handlers. `main()` passes settings and nothing else.
 
-    The two keyword arguments exist so a test can run the REAL registry without
-    it being able to reach a job board: `board_transport` replaces the httpx
-    transport `check_board` would otherwise open, and `board_owners` confines the
-    scheduling pass to the test's own users. Both default to production.
+    The keyword arguments exist so a test can run the REAL registry without it
+    being able to reach a job board: `board_transport` replaces the httpx
+    transport `check_board` would otherwise open, `description_transport` does
+    the same for `fetch_job_description`, and `board_owners` confines the
+    scheduling pass to the test's own users. All default to production.
     """
     registry = HandlerRegistry()
     registry.register(
@@ -85,5 +91,13 @@ def build_registry(
         # True, and this is the line the kill switch acts on. Extraction is one
         # Anthropic call on the user's own key.
         calls_model=True,
+    )
+    registry.register(
+        FETCH_JOB_DESCRIPTION,
+        build_fetch_job_description(transport_factory=description_transport),
+        # False: an HTTP request to the board's own API, same as CHECK_BOARD,
+        # and no Anthropic call. The `extract_job_ad` task it enqueues on
+        # success is what the kill switch actually holds.
+        calls_model=False,
     )
     return registry

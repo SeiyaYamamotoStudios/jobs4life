@@ -70,6 +70,7 @@
       <span class="note" title="{{ job.first_seen_at.isoformat() }}">
         seen since {{ job.first_seen_at | humanize_dt }}
       </span>
+      {% include "_track_button.html" %}
     </li>
     {% endfor %}
   </ul>

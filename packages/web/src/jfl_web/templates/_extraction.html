@@ -13,7 +13,25 @@
          {% endif %}>
   <h2>The ad</h2>
 
-  {% if not extraction or not extraction.has_job_ad %}
+  {% if extraction and extraction.status == "pending" and not extraction.has_job_ad %}
+  {# Slice C7: "Track as application" fetches a description before there is
+     any ad text to extract from, and uses the same `pending` status a paste
+     does -- see `jfl_web.routes.tracking`. Without this branch, the
+     `not extraction.has_job_ad` check below would show "No job ad stored"
+     while the fetch is still in flight. #}
+  <p class="note" role="status">Fetching the job description from the board… this can take a moment.</p>
+
+  {% elif extraction and extraction.status == "failed" and extraction.error_code == "description_unavailable" %}
+  <p class="note" role="alert">Couldn't read this job's description from the board.</p>
+  {% if ad_error %}<p class="error" role="alert">{{ ad_error }}</p>{% endif %}
+  <form method="post" action="/applications/{{ application_id }}/ad">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="job_ad">Paste the job ad</label>
+    <textarea id="job_ad" name="job_ad" rows="10" required>{{ ad_value or "" }}</textarea>
+    <button type="submit">Attach and read it</button>
+  </form>
+
+  {% elif not extraction or not extraction.has_job_ad %}
   <p class="note">No job ad stored against this application.</p>
 
   {% elif extraction.status == "pending" %}

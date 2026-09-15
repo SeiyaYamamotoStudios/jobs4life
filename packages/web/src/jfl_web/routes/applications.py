@@ -42,7 +42,7 @@ from typing import Annotated, get_args
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.models import ApplicationExtraction, ApplicationStatus
+from jfl_core.models import ApplicationDetail, ApplicationExtraction, ApplicationStatus
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
 
@@ -253,6 +253,32 @@ def _form(
     )
 
 
+def _detail_context(
+    session: AuthenticatedSession,
+    applications: ApplicationRepoDep,
+    application_id: uuid.UUID,
+    detail: ApplicationDetail,
+    **extra: object,
+) -> dict[str, object]:
+    """Everything the detail page needs, in one place -- shared with
+    `attach_ad`, which re-renders this same page on a validation error rather
+    than duplicating its context by hand.
+    """
+    extraction = applications.get_extraction(application_id)
+    return {
+        "session": session,
+        "user": session.user,
+        "application": detail.application,
+        "events": detail.events,
+        "statuses": STATUSES,
+        "next_status": next_status(detail.application.status),
+        "next_labels": _NEXT_LABEL,
+        "application_id": application_id,
+        **_extraction_context(extraction),
+        **extra,
+    }
+
+
 @router.get("/applications/{application_id}")
 def application_detail(
     request: Request,
@@ -264,21 +290,10 @@ def application_detail(
     if detail is None:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
-    extraction = applications.get_extraction(application_id)
     return render(
         request,
         "application_detail.html",
-        {
-            "session": session,
-            "user": session.user,
-            "application": detail.application,
-            "events": detail.events,
-            "statuses": STATUSES,
-            "next_status": next_status(detail.application.status),
-            "next_labels": _NEXT_LABEL,
-            "application_id": application_id,
-            **_extraction_context(extraction),
-        },
+        _detail_context(session, applications, application_id, detail),
     )
 
 
@@ -329,6 +344,53 @@ def extract_again(
         return render(request, "error.html", context, status_code=404)
     if applications.request_extraction(application_id):
         tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
+    return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+@router.post("/applications/{application_id}/ad")
+def attach_ad(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+    job_ad: Annotated[str, Form()],
+) -> Response:
+    """The paste box offered when "Track as application" (slice C7) could not
+    read a description off the board -- the application exists, with no ad
+    text and `extraction_error_code == "description_unavailable"`, and this is
+    how a person finishes it by hand.
+
+    Same paste box as `create_application`, reached through a different door,
+    so the same length validation applies. `attach_job_ad` is what
+    `request_extraction` cannot be here: that method requires a `job_id`
+    already on the row, which is exactly what this application does not have
+    yet.
+    """
+    detail = applications.get_application(application_id)
+    if detail is None:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+
+    ad = job_ad.strip()
+    if not ad or len(ad) > MAX_AD_CHARS:
+        message = (
+            "Paste the job ad to attach it."
+            if not ad
+            else "That is much longer than a job ad -- paste just the role and its requirements."
+        )
+        return render(
+            request,
+            "application_detail.html",
+            _detail_context(
+                session, applications, application_id, detail, ad_error=message, ad_value=job_ad
+            ),
+            status_code=400,
+        )
+
+    applications.attach_job_ad(application_id, ad)
+    tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
 
 

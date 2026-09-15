@@ -37,6 +37,7 @@ timeline entry rather than an implicit gap before the first real transition.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from typing import Any
 
 from sqlalchemy import func, insert, select, update
@@ -77,6 +78,7 @@ _APPLICATION_COLUMNS = (
     applications_table.c.extracted_at,
     applications_table.c.title_is_provisional,
     applications_table.c.archived_at,
+    applications_table.c.board_job_id,
     applications_table.c.created_at,
     applications_table.c.updated_at,
 )
@@ -122,6 +124,7 @@ def _application_from_row(row: Any) -> Application:
         extracted_at=row.extracted_at,
         title_is_provisional=row.title_is_provisional,
         archived_at=row.archived_at,
+        board_job_id=row.board_job_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -155,6 +158,7 @@ class PostgresApplicationRepository(TenantScopedRepository):
         status: ApplicationStatus = DEFAULT_STATUS,
         title_is_provisional: bool = False,
         extraction_status: ExtractionStatus = "none",
+        board_job_id: uuid.UUID | None = None,
     ) -> Application:
         """Add an application, and write the "added" event that opens its
         timeline. `raw_job_text`, if given, is stored verbatim as a `jobs` row
@@ -165,6 +169,12 @@ class PostgresApplicationRepository(TenantScopedRepository):
         rather than the user's own words, and `extraction_status="pending"` says
         a task has been (or is about to be) enqueued to read the ad properly.
         Both default off, so the CLI-era callers keep their old behaviour.
+
+        `board_job_id` is slice C7's "Track as application": set when this
+        application was created from a watched-board job rather than a paste, so
+        `fetch_job_description` knows where to fetch a description from. No
+        `raw_job_text` accompanies it -- the ad is fetched lazily, in the
+        worker, never in this request.
         """
         job_id = self._store_raw_job(raw_job_text) if raw_job_text else None
 
@@ -183,6 +193,7 @@ class PostgresApplicationRepository(TenantScopedRepository):
                 notes=notes,
                 title_is_provisional=title_is_provisional,
                 extraction_status=extraction_status,
+                board_job_id=board_job_id,
             )
             .returning(*_APPLICATION_COLUMNS)
         ).one()
@@ -326,6 +337,69 @@ class PostgresApplicationRepository(TenantScopedRepository):
         if row is None:
             raise ApplicationNotFoundError(application_id)
         return _application_from_row(row)
+
+    # -- slice C7: "Track as application" ------------------------------------
+
+    def find_live_by_board_job(self, board_job_id: uuid.UUID) -> uuid.UUID | None:
+        """The live (non-archived) application already tracking this board job,
+        if any -- so pressing "Track as application" a second time lands on the
+        same application rather than minting a duplicate.
+
+        Archived does not count: archiving takes an application off the owner's
+        lists on purpose, and the button on the board's page should offer a
+        fresh start rather than resurrecting a put-away row.
+        """
+        row = self._conn.execute(
+            select(applications_table.c.id).where(
+                applications_table.c.user_id == self._user_id,
+                applications_table.c.board_job_id == board_job_id,
+                applications_table.c.archived_at.is_(None),
+            )
+        ).first()
+        return None if row is None else row.id
+
+    def tracked_board_jobs(
+        self, board_job_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        """Which of these board jobs already have a live application tracking
+        them -- board_job_id -> application_id -- for rendering "Track as
+        application" as "Tracked" on /jobs and a board's page without a query
+        per row. Same archived exclusion as `find_live_by_board_job`.
+        """
+        if not board_job_ids:
+            return {}
+        rows = self._conn.execute(
+            select(applications_table.c.board_job_id, applications_table.c.id).where(
+                applications_table.c.user_id == self._user_id,
+                applications_table.c.board_job_id.in_(list(board_job_ids)),
+                applications_table.c.archived_at.is_(None),
+            )
+        ).all()
+        return {row.board_job_id: row.id for row in rows}
+
+    def attach_job_ad(self, application_id: uuid.UUID, raw_text: str) -> bool:
+        """Attach ad text to an application that has none yet, and mark
+        extraction pending. Returns False, writing nothing, if there is no such
+        application for this user.
+
+        Two callers: `fetch_job_description`, on a successful fetch from a
+        watched board, and the paste box a user is offered when that fetch
+        failed (`POST /applications/{id}/ad`). Both go through `_store_raw_job`,
+        so `job_id` derives exactly as it would from a fresh manual paste --
+        re-pasting the same ad text resolves to the same `jobs` row rather than
+        minting a duplicate.
+        """
+        job_id = self._store_raw_job(raw_text)
+        row = self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(job_id=job_id, extraction_status="pending", extraction_error_code=None)
+            .returning(applications_table.c.id)
+        ).first()
+        return row is not None
 
     def update_notes(self, application_id: uuid.UUID, notes: str | None) -> Application:
         row = self._conn.execute(

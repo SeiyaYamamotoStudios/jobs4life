@@ -528,6 +528,9 @@ _EXTRACTION_ERROR_CODES = (
     "model_refused",
     "model_error",
     "credential_unreadable",
+    # Slice C7: "Track as application" could not read the description off the
+    # watched board -- see `jfl_core.models.ExtractionErrorCode`.
+    "description_unavailable",
 )
 
 applications = Table(
@@ -567,6 +570,16 @@ applications = Table(
     # a real outcome of a real process and must stay reserved for one. NULL means
     # live. Nothing is ever deleted; restoring clears it.
     _ts("archived_at"),
+    # Slice C7: the watched-board job "Track as application" was pressed on, or
+    # NULL for an application added by paste. SET NULL rather than CASCADE --
+    # losing the board, or the job falling off it, must never take the tracked
+    # application down with it. Provenance only: nothing here reads it to
+    # decide what the application is allowed to do.
+    Column(
+        "board_job_id",
+        UUID(as_uuid=True),
+        ForeignKey("board_jobs.id", ondelete="SET NULL"),
+    ),
     _ts("created_at", nullable=False, server_default=func.now()),
     # `onupdate` is a Core-level default: SQLAlchemy adds `updated_at = now()`
     # to any UPDATE built from this table that does not itself set the column
@@ -589,6 +602,9 @@ applications = Table(
     ),
     Index("ix_applications_user_id_updated_at", "user_id", "updated_at"),
     Index("ix_applications_user_id_status", "user_id", "status"),
+    # "Is this board job already tracked?", for rendering the button on /jobs
+    # and a board's page across every open job in one query.
+    Index("ix_applications_user_id_board_job_id", "user_id", "board_job_id"),
 )
 
 # APPEND-ONLY: never updated or deleted. `from_status` is NULL on the row

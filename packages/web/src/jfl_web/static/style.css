@@ -468,3 +468,12 @@ table.jobs .col-workplace { min-width: 10rem; }
 .exception form, .add-exception form { margin: 0.5rem 0; }
 .add-exception summary { cursor: pointer; color: var(--accent); }
 h3 { font-size: 0.98rem; margin: 1.6rem 0 0.4rem; font-weight: 650; }
+
+/* -- track as application -- */
+
+table.jobs .col-track { white-space: nowrap; }
+.track-form { margin: 0; }
+.track-form button.secondary { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
+.status-badge.status-tracked { color: var(--good); border-color: var(--good); }
+ul.requirements li .track-form { display: inline-block; margin-left: 0.6rem; }
+ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }

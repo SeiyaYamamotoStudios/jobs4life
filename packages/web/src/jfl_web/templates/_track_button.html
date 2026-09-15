@@ -1,0 +1,13 @@
+{# Slice C7's "Track as application" button. Expects `job` (a BoardJob) and
+   `tracked` (dict[board_job_id -> application_id], from
+   `applications.tracked_board_jobs`) in scope -- shared by /jobs and a
+   board's page, so the two can never disagree about which jobs are
+   tracked. #}
+{% if tracked.get(job.id) %}
+<a class="status-badge status-tracked" href="/applications/{{ tracked[job.id] }}">Tracked</a>
+{% else %}
+<form method="post" action="/jobs/{{ job.id }}/track" class="track-form">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <button type="submit" class="secondary">Track as application</button>
+</form>
+{% endif %}
