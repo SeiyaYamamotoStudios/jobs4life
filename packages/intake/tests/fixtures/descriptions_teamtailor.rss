@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Teamtailor</title>
+    <description>Current job openings</description>
+    <link>https://career.teamtailor.com/jobs</link>
+    <item>
+      <title>Account Executive - UK Enterprise</title>
+      <description>&lt;figure&gt;&lt;lite-youtube videoid="qaCNYmm5eiQ" title="Play: Video" posterquality="sddefault"&gt;&lt;/lite-youtube&gt;&lt;/figure&gt;&lt;h2&gt;&lt;span&gt;Let's build the future together!&lt;/span&gt;&lt;/h2&gt;&lt;p&gt;&lt;a target="_blank" href="https://www.teamtailor.com/en/"&gt;&lt;span&gt;Teamtailor&lt;/span&gt;&lt;/a&gt;&lt;span&gt; is an Employer Branding and ATS SaaS platform used by over 13,000 companies, 250,000 users in over 100 countries around the world.&lt;/span&gt;&lt;/p&gt;&lt;p&gt;&lt;span&gt;</description>
+      <link>https://career.teamtailor.com/jobs/8021334-account-executive-uk-enterprise</link>
+      <guid isPermaLink="false">a79a10f6-9f69-49b0-9f6d-8bed3d6e3a4f</guid>
+      <remoteStatus>hybrid</remoteStatus>
+      <tt:locations>
+        <tt:location>
+          <tt:name>London</tt:name>
+        </tt:location>
+      </tt:locations>
+    </item>
+    <item>
+      <title>Role With No Description</title>
+      <description></description>
+      <link>https://career.teamtailor.com/jobs/0000000-no-description</link>
+      <guid isPermaLink="false">00000000-0000-0000-0000-000000000000</guid>
+      <remoteStatus>none</remoteStatus>
+    </item>
+  </channel>
+</rss>

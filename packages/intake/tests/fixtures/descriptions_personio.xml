@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<workzag-jobs>
+
+<position>
+    <id>1834171</id>
+    <office>Munich</office>
+    <name>Staff Software Engineer, Data Platform</name>
+    <jobDescriptions>
+        <jobDescription>
+            <name>The Role</name>
+            <value><![CDATA[<p>Join our <strong>Data Platform</strong> team.</p><ul><li>Own pipelines</li><li>Ship reliably</li></ul>]]></value>
+        </jobDescription>
+        <jobDescription>
+            <name>What you bring</name>
+            <value><![CDATA[<p>Several years of backend experience.</p>]]></value>
+        </jobDescription>
+    </jobDescriptions>
+</position>
+
+<position>
+    <id>1834172</id>
+    <office>Berlin</office>
+    <name>Position With Nothing Set</name>
+    <jobDescriptions></jobDescriptions>
+</position>
+
+</workzag-jobs>
