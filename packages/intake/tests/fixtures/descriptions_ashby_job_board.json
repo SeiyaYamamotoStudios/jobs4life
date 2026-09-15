@@ -1,0 +1,16 @@
+{
+  "jobs": [
+    {
+      "id": "8fb1615c-34bf-47c4-a1d1-b7b2f836bbd3",
+      "title": "Technical Program Manager, Compute Infrastructure",
+      "isListed": true,
+      "descriptionHtml": "<h3><strong>About the Team</strong></h3><p style=\"min-height:1.5em\">The compute infrastructure team runs the GPU fleet and large-scale compute clusters that serve the models backing ChatGPT and the API, while also supporting training workloads for our next generation models. We operate a large, modern GPU fleet and provide a unified platform for other OpenAI teams to seamlessly run production Applied AI and Research training workloads.</p>"
+    },
+    {
+      "id": "other-job-id-not-matching",
+      "title": "Some Other Role",
+      "isListed": true,
+      "descriptionHtml": "<p>Different job.</p>"
+    }
+  ]
+}

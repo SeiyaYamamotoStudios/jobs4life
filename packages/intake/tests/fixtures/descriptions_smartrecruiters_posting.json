@@ -1,0 +1,23 @@
+{
+  "id": "744000149723720",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {
+        "title": "Company Description",
+        "text": "<p>Bosch was founded in Stuttgart in 1886 by Robert Bosch (1861-1942) and for more than 130 years has been distinguished by a unique corporate culture based on solid values that drive us to improve every day. Our products, present in a wide variety of fields, that contribute to improve the quality of life of millions of people.</p>"
+      },
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>The Technical Project Manager acts as the technical counterpart to the Project Manager and is responsible to plan, coordinate and execute global multi-disciplinary engineering activities to achieve project success. Responsible for making sure the technical team understands and fulfills the customer and internal requirements on specification, on schedule and on budget.</p>"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<p><u>Required skills:</u></p><ul><li>Project management: stakeholder management, schedule management, risk management, resource management, quality management</li><li>Excellent communication, assertiveness, ability to negotiate and convey complex abstract ideas to global teams and OEMs</li><li>Organizational awareness and development of relationships</li><li>Leadership</li><li>Task prioritization</li><li>Decision making</li><li>Goal-oriented mindset</li><li>Capable to work independently in an organized and structured fashion</li><li>Problem solving abilities</li></ul><p><u>Required</u><u> experience:</u></p>"
+      },
+      "additionalInformation": {
+        "title": "Additional Information",
+        "text": "<p>Travel required approximately 5% of the time within Mexico or USA</p>"
+      }
+    }
+  }
+}
