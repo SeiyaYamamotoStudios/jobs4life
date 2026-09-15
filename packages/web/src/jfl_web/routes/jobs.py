@@ -18,6 +18,7 @@ Screens:
   GET  /jobs                                           -- the list, filter form on top
   POST /jobs/filter                                    -- save the filter
   POST /boards/{id}/unstated                           -- the board's include-unstated setting
+  POST /boards/{id}/hybrid                             -- the board's hybrid under remote friendly
   POST /boards/{id}/exceptions                         -- add a board exception
   POST /boards/{id}/exceptions/{exception_id}          -- edit one
   POST /boards/{id}/exceptions/{exception_id}/remove   -- remove one
@@ -41,10 +42,12 @@ from jfl_web.jobfilter import (
     JOBS_PAGE_CAP,
     MAX_FILTER_TEXT,
     MAX_NOTE_TEXT,
+    WORKPLACE_MODE_NAMES,
     WORKPLACE_NAMES,
     FormTooLongError,
     checked_text,
     filter_open_jobs,
+    parse_workplace_mode,
     parse_workplaces,
 )
 from jfl_web.templating import render
@@ -91,6 +94,7 @@ def list_jobs(
             "user": session.user,
             "saved": saved,
             "workplace_names": WORKPLACE_NAMES,
+            "workplace_mode_names": WORKPLACE_MODE_NAMES,
             "result": result,
             "rows": result.matches[:JOBS_PAGE_CAP],
             "capped": len(result.matches) > JOBS_PAGE_CAP,
@@ -120,9 +124,14 @@ def save_filter(
     title_includes: Annotated[str, Form()] = "",
     title_excludes: Annotated[str, Form()] = "",
     location: Annotated[str, Form()] = "",
+    workplace_mode: Annotated[str, Form()] = "custom",
 ) -> Response:
+    mode = parse_workplace_mode(workplace_mode)
+    if mode is None:
+        return _error(request, session, "That workplace choice is not one of the options.", 400)
     try:
         filters.save_filter(
+            workplace_mode=mode,
             workplaces=parse_workplaces(workplace or []),
             title_includes=checked_text(title_includes, MAX_FILTER_TEXT),
             title_excludes=checked_text(title_excludes, MAX_FILTER_TEXT),
@@ -147,6 +156,25 @@ def set_include_unstated(
     if setting not in ("default", "include", "hide"):
         return _error(request, session, "That setting is not one of the choices.", 400)
     if not boards.set_include_unstated_workplace(board_id, value):
+        return _error(request, session, _BOARD_NOT_FOUND, 404)
+    return RedirectResponse(f"/boards/{board_id}?status=setting_saved", status_code=303)
+
+
+@router.post("/boards/{board_id}/hybrid")
+def set_hybrid_too_heavy(
+    request: Request,
+    board_id: uuid.UUID,
+    session: SessionDep,
+    boards: BoardRepoDep,
+    _csrf: CsrfDep,
+    setting: Annotated[str, Form()] = "include",
+) -> Response:
+    """`setting` is one of a closed set: `include` (hybrid shown under remote
+    friendly, badged "days not stated") or `too_heavy` (left out of it).
+    """
+    if setting not in ("include", "too_heavy"):
+        return _error(request, session, "That setting is not one of the choices.", 400)
+    if not boards.set_hybrid_too_heavy(board_id, setting == "too_heavy"):
         return _error(request, session, _BOARD_NOT_FOUND, 404)
     return RedirectResponse(f"/boards/{board_id}?status=setting_saved", status_code=303)
 

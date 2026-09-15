@@ -770,6 +770,8 @@ _BOARD_CHECK_ERROR_CODES = (
 # is a first-class value: most platforms state nothing, and "not stated" must
 # never be stored as on-site. See `jfl_intake.workplace`.
 _WORKPLACES = ("remote", "hybrid", "onsite", "unknown")
+# The saved filter's workplace preset (`jfl_core.models.WorkplaceMode`).
+_WORKPLACE_MODES = ("remote_only", "remote_friendly", "custom")
 
 watched_boards = Table(
     "watched_boards",
@@ -825,6 +827,10 @@ watched_boards = Table(
     # no structured workplace field, off for those that state it), so a board
     # nobody has touched follows that default; true/false is the owner's choice.
     Column("include_unstated_workplace", Boolean),
+    # The owner says this employer's hybrid is more than about a day a week, so
+    # its hybrid and remote-friendly jobs are left out of the remote-friendly
+    # preset. Off by default: hybrid is shown, badged "days not stated".
+    Column("hybrid_too_heavy", Boolean, nullable=False, server_default=text("false")),
     CheckConstraint(
         "platform in ('" + "','".join(_BOARD_PLATFORMS) + "')",
         name="platform",
@@ -1020,7 +1026,10 @@ job_filters = Table(
         nullable=False,
         unique=True,
     ),
-    # A subset of `_WORKPLACES`. Empty = any workplace.
+    # One of `_WORKPLACE_MODES`. `custom` -- the default, and what every filter
+    # saved before the presets existed reads as -- consults `workplaces` below.
+    Column("workplace_mode", Text, nullable=False, server_default="custom"),
+    # A subset of `_WORKPLACES`. Empty = any workplace. Only consulted under `custom`.
     Column("workplaces", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     Column("title_includes", Text, nullable=False, server_default=""),
     Column("title_excludes", Text, nullable=False, server_default=""),
@@ -1030,6 +1039,10 @@ job_filters = Table(
     CheckConstraint(
         "workplaces <@ array['" + "','".join(_WORKPLACES) + "']::text[]",
         name="workplaces",
+    ),
+    CheckConstraint(
+        "workplace_mode in ('" + "','".join(_WORKPLACE_MODES) + "')",
+        name="workplace_mode",
     ),
 )
 

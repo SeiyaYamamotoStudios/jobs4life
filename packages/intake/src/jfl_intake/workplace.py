@@ -65,6 +65,13 @@ only by a platform or employer value that literally means on-site.
     `On-Site` while their multi-location text includes "Remote-Friendly".
   * Rippling, Workday, Personio -- no structured field: text rule only.
 
+**Remote-friendly evidence is read, never stored.** `says_remote_friendly`
+looks for the employer's own phrase "remote-friendly" in a job's location text
+or workplace label, at match time. It does not change `workplace`: the 38
+Anthropic jobs above stay `onsite`, because that is what the structured field
+says, and the filter's remote-friendly preset shows them with the conflict
+visible (`jfl_intake.filtering`) rather than resolving it here.
+
 **Locations** are every location the posting lists, as display strings,
 deduplicated (by normalised form, first spelling kept) in a stable order --
 the platform's own order with the primary first, except Rippling, whose rows
@@ -75,8 +82,8 @@ locations are never invented.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Protocol
 
 from jfl_core.models import BoardPlatform, Workplace
 
@@ -198,6 +205,44 @@ def greenhouse_metadata(metadata: object) -> tuple[Workplace, str] | None:
         return None
     ((kind, label),) = answers.items()
     return kind, label
+
+
+class WorkplaceEvidence(Protocol):
+    """The employer-written fields a job's workplace evidence is read from."""
+
+    @property
+    def location(self) -> str | None: ...
+    @property
+    def locations(self) -> Sequence[str]: ...
+    @property
+    def workplace_label(self) -> str | None: ...
+
+
+_REMOTE_FRIENDLY = ("remote", "friendly")
+
+
+def says_remote_friendly(job: WorkplaceEvidence) -> bool:
+    """True when the employer's own words -- any of the job's `locations`, its
+    `location`, or its `workplace_label` -- contain the consecutive words
+    `remote friendly` after `normalise` ("Remote-Friendly (Travel-Required)"
+    does), not preceded by `no`/`non`/`not`, the same negation guard the
+    location-text rule uses.
+
+    Only that phrase, because it is the one observed: Anthropic's Greenhouse
+    board, 2026-09-15. **"Remote first" is deliberately not included** -- the
+    owner gives Primer, remote-first, as his example of *strict* remote, so
+    reading it as low-commitment hybrid would move a job to the wrong preset.
+    Other spellings are added when they are seen, not before.
+    """
+    texts: list[str | None] = [*job.locations, job.location, job.workplace_label]
+    for text in texts:
+        words = normalise(text).split()
+        for i in range(len(words) - 1):
+            if (words[i], words[i + 1]) != _REMOTE_FRIENDLY:
+                continue
+            if i == 0 or words[i - 1] not in _NEGATIONS:
+                return True
+    return False
 
 
 def dedupe_locations(values: Iterable[object]) -> tuple[str, ...]:

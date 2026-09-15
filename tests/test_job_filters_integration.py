@@ -237,6 +237,29 @@ def test_include_unstated_defaults_to_none_and_can_be_set_and_reset(
     assert board is not None and board.include_unstated_workplace is None
 
 
+def test_hybrid_too_heavy_defaults_off_and_only_the_owner_can_set_it(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    repo = PostgresBoardRepository(conn, alice)
+    board_id = _board(repo, "anthropic")
+    board = repo.get_board(board_id)
+    assert board is not None and board.hybrid_too_heavy is False
+
+    assert repo.set_hybrid_too_heavy(board_id, True)
+    board = repo.get_board(board_id)
+    assert board is not None and board.hybrid_too_heavy is True
+    assert [b.hybrid_too_heavy for b in repo.list_boards()] == [True]
+
+    assert not PostgresBoardRepository(conn, bob).set_hybrid_too_heavy(board_id, False)
+    board = repo.get_board(board_id)
+    assert board is not None and board.hybrid_too_heavy is True
+
+    assert repo.set_hybrid_too_heavy(board_id, False)
+    board = repo.get_board(board_id)
+    assert board is not None and board.hybrid_too_heavy is False
+    assert not repo.set_hybrid_too_heavy(uuid.uuid4(), True)
+
+
 # -- the saved filter ---------------------------------------------------------------------
 
 
@@ -264,6 +287,55 @@ def test_the_saved_filter_round_trips_one_per_user_and_is_private(
     assert filters.get_filter() == saved
 
     assert PostgresJobFilterRepository(conn, bob).get_filter().title_includes == ""
+
+
+def test_the_workplace_mode_round_trips_and_keeps_the_custom_ticks(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    filters = PostgresJobFilterRepository(conn, alice)
+    assert filters.get_filter().workplace_mode == "custom"
+
+    for mode in ("remote_only", "remote_friendly", "custom"):
+        saved = filters.save_filter(
+            workplace_mode=mode,  # type: ignore[arg-type]
+            workplaces=["hybrid", "remote"],
+            title_includes="engineering manager",
+            title_excludes="",
+            location="",
+        )
+        assert saved.workplace_mode == mode
+        # The ticks are kept under a preset, so Custom comes back as it was.
+        assert saved.workplaces == ["remote", "hybrid"]
+        assert filters.get_filter() == saved
+
+    filters.save_filter(
+        workplace_mode="remote_friendly",
+        workplaces=[],
+        title_includes="",
+        title_excludes="",
+        location="",
+    )
+    assert PostgresJobFilterRepository(conn, bob).get_filter().workplace_mode == "custom"
+
+
+def test_a_filter_saved_before_the_presets_reads_as_custom(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    """The server default stands in for rows written before the column existed."""
+    conn.execute(insert(job_filters).values(id=uuid.uuid4(), user_id=alice, workplaces=["remote"]))
+    saved = PostgresJobFilterRepository(conn, alice).get_filter()
+    assert saved.workplace_mode == "custom" and saved.workplaces == ["remote"]
+
+
+def test_the_database_refuses_a_workplace_mode_outside_the_set(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    with pytest.raises(IntegrityError), conn.begin_nested():
+        conn.execute(
+            insert(job_filters).values(
+                id=uuid.uuid4(), user_id=alice, workplace_mode="mostly_remote"
+            )
+        )
 
 
 # -- board exceptions ----------------------------------------------------------------------

@@ -1,0 +1,24 @@
+{#- One matched job's workplace: the employer's label verbatim, then what the
+    evidence says about it (`jfl_intake.filtering.WorkplaceNote`), then why the
+    job is on the list. Expects `match` and `board`. -#}
+{% set job = match.job %}
+{% if job.workplace == "unknown" %}
+<span class="status-badge workplace-unstated">workplace not stated</span>
+{% else %}
+<span class="status-badge workplace-badge">{{ job | workplace_display }}</span>
+{% endif %}
+{% if match.workplace_note == "hybrid_days_not_stated" %}
+<span class="workplace-caveat">— days not stated</span>
+{% elif match.workplace_note == "listed_onsite_says_remote_friendly" %}
+<div class="note workplace-conflict">Listed {{ job | workplace_display }} · the posting also says Remote-Friendly</div>
+{% elif match.workplace_note == "says_remote_friendly" %}
+<div class="note workplace-evidence">The posting says Remote-Friendly</div>
+{% endif %}
+{% if match.workplace_exception and match.reason != "exception" %}
+<div class="note inclusion">hybrid, per your {{ board.label or board.board_url }} exception: {{ match.workplace_exception.note }}</div>
+{% endif %}
+{% if match.reason == "exception" %}
+<div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if match.exception.note %}: {{ match.exception.note }}{% endif %}</div>
+{% elif match.reason == "unstated" %}
+<div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
+{% endif %}

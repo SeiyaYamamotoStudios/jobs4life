@@ -372,6 +372,15 @@ BoardJobEventKind = Literal["new", "reposted", "returned", "gone"]
 # be presented as on-site -- or silently hidden by a "remote only" filter. How
 # each platform's field maps onto these is `jfl_intake.workplace`'s docstring.
 Workplace = Literal["remote", "hybrid", "onsite", "unknown"]
+# The saved job filter's main workplace control. `remote_only` is strict: the
+# employer states remote and nothing in the posting calls it remote-friendly.
+# `remote_friendly` adds low-commitment hybrid -- and because platforms say
+# "Hybrid" without a day count, hybrid is shown there badged "days not stated",
+# never presented as confirmed low commitment. `custom` is the workplace
+# checkboxes, exactly as they behaved before the presets existed, so filters
+# saved before then keep matching what they matched. Semantics:
+# `jfl_intake.filtering`.
+WorkplaceMode = Literal["remote_only", "remote_friendly", "custom"]
 
 
 class WatchedBoard(BaseModel):
@@ -390,6 +399,10 @@ class WatchedBoard(BaseModel):
     drop_accepted: bool = False
     # None = the platform default (`jfl_intake.workplace.include_unstated_by_default`).
     include_unstated_workplace: bool | None = None
+    # The owner's judgement that this employer's hybrid is more than about a day
+    # a week: its hybrid and remote-friendly jobs are left out of the
+    # `remote_friendly` preset. Plain remote jobs still pass.
+    hybrid_too_heavy: bool = False
 
 
 class BoardCheck(BaseModel):
@@ -578,6 +591,9 @@ class JobFilter(BaseModel):
     mean "no constraint".
     """
 
+    workplace_mode: WorkplaceMode = "custom"
+    # Consulted only under `workplace_mode == "custom"`, but kept whatever the
+    # mode, so switching back to Custom restores what was ticked.
     workplaces: list[Workplace] = Field(default_factory=list)
     title_includes: str = ""
     title_excludes: str = ""

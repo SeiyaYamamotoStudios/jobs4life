@@ -101,6 +101,23 @@
     <button type="submit" class="secondary">Save setting</button>
   </form>
 
+  <form method="post" action="/boards/{{ board.id }}/hybrid" class="hybrid-setting">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <fieldset>
+      <legend>Hybrid jobs under Remote friendly</legend>
+      <label class="inline">
+        <input type="radio" name="setting" value="include" {% if not board.hybrid_too_heavy %}checked{% endif %}>
+        Include them, marked "days not stated"
+      </label>
+      <label class="inline">
+        <input type="radio" name="setting" value="too_heavy" {% if board.hybrid_too_heavy %}checked{% endif %}>
+        Hybrid here is more than about a day a week — leave it out of remote friendly
+      </label>
+    </fieldset>
+    <p class="note">Currently: {% if board.hybrid_too_heavy %}left out — only this board's plain remote jobs appear under Remote friendly{% else %}included{% endif %}. Remote only and Custom are not affected.</p>
+    <button type="submit" class="secondary">Save setting</button>
+  </form>
+
   <h3>Exceptions</h3>
   <p class="note">
     Also include this board's jobs with these workplaces and locations, whatever

@@ -33,6 +33,7 @@ VALUE_SETS = [
     # One set, three constrained columns: board_jobs.workplace, and the
     # workplace arrays on job_filters and board_filter_exceptions.
     (models.Workplace, tables._WORKPLACES),
+    (models.WorkplaceMode, tables._WORKPLACE_MODES),
 ]
 
 

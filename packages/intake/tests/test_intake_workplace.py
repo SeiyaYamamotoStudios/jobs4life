@@ -37,6 +37,7 @@ from jfl_intake.workplace import (
     from_location_text,
     greenhouse_metadata,
     include_unstated_by_default,
+    says_remote_friendly,
     split_location_text,
 )
 
@@ -390,3 +391,62 @@ def test_include_unstated_defaults_by_platform(platform: Any, expected: bool) ->
 
 def test_the_no_field_set_is_exactly_four_platforms() -> None:
     assert {"greenhouse", "rippling", "workday", "personio"} == PLATFORMS_WITHOUT_WORKPLACE_FIELD
+
+
+# -- remote-friendly evidence ------------------------------------------------------------
+
+
+def _evidence(
+    locations: tuple[str, ...] = (), location: str | None = None, label: str | None = None
+) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(locations=locations, location=location, workplace_label=label)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Remote-Friendly (Travel-Required)",
+        "Remote-Friendly (Travel Required) | Canada",
+        "remote friendly, United States",
+        "REMOTE—FRIENDLY",
+    ],
+)
+def test_says_remote_friendly_reads_the_observed_phrase_however_punctuated(text: str) -> None:
+    assert says_remote_friendly(_evidence(locations=("London, UK", text)))
+    assert says_remote_friendly(_evidence(location=text))  # a row with no `locations`
+    assert says_remote_friendly(_evidence(label=text))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Remote",
+        "Hybrid (Travel-Required)",
+        "Remote first",  # the owner's example of STRICT remote -- deliberately not evidence
+        "Remote-first, UK",
+        "Friendly Remote Team",  # the words, but not consecutive in that order
+        "Not remote-friendly",
+        "non remote friendly",
+        "London, UK",
+        "",
+    ],
+)
+def test_says_remote_friendly_is_only_that_phrase_un_negated(text: str) -> None:
+    assert not says_remote_friendly(_evidence(locations=(text,), location=text, label=text))
+
+
+def test_says_remote_friendly_on_the_captured_anthropic_jobs() -> None:
+    jobs = greenhouse.parse(fixture("greenhouse_anthropic_workplace_jobs.json")).jobs
+    assert [(j.title, says_remote_friendly(j)) for j in jobs] == [
+        ("Applied AI Architect, Beneficial Deployments (Life Sciences)", False),
+        ("Anthropic Fellows Program, AI Safety & Security", True),
+        ("Business Systems Analyst", True),
+        ("Applied AI Architect, Industries", False),
+        ("Applied AI Architect", False),
+        ("Staff+ Software Engineer, Data Infrastructure", True),
+        ("Compute Country Lead, Canada", True),
+    ]
+    # Evidence is read, never stored: the structured answer is unchanged.
+    assert jobs[6].workplace == "onsite"

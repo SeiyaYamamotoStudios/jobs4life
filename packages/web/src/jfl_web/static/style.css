@@ -468,3 +468,14 @@ table.jobs .col-workplace { min-width: 10rem; }
 .exception form, .add-exception form { margin: 0.5rem 0; }
 .add-exception summary { cursor: pointer; color: var(--accent); }
 h3 { font-size: 0.98rem; margin: 1.6rem 0 0.4rem; font-weight: 650; }
+
+/* -- workplace presets -- */
+.workplace-modes .mode-choice {
+  display: block;
+  margin: 0.3rem 0;
+}
+.workplace-modes .mode-choice .note { display: inline; }
+.workplace-caveat { color: var(--warn); font-size: 0.9rem; white-space: nowrap; }
+.workplace-conflict { color: var(--warn); margin-top: 0.2rem; }
+.workplace-evidence { margin-top: 0.2rem; }
+.hybrid-setting { margin-top: 1rem; }

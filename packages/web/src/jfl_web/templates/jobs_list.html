@@ -14,8 +14,24 @@
 <section class="job-filter">
   <form method="post" action="/jobs/filter">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <fieldset class="workplace-choices">
+    <fieldset class="workplace-modes">
       <legend>Workplace</legend>
+      {% for value, name in workplace_mode_names.items() %}
+      <label class="mode-choice">
+        <input type="radio" name="workplace_mode" value="{{ value }}"
+               {% if value == saved.workplace_mode %}checked{% endif %}>
+        <strong>{{ name }}</strong>
+        <span class="note">
+          {%- if value == "remote_only" %} — the employer says remote, and nothing in the posting calls it remote-friendly. No hybrid, no on-site.
+          {%- elif value == "remote_friendly" %} — remote, plus hybrid and anything the posting calls remote-friendly. Platforms don't say how many days hybrid means, so those are marked "days not stated" for you to judge.
+          {%- else %} — choose workplaces yourself, below.
+          {%- endif %}
+        </span>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <fieldset class="workplace-choices">
+      <legend>Custom workplaces</legend>
       {% for value, name in workplace_names.items() %}
       <label class="inline">
         <input type="checkbox" name="workplace" value="{{ value }}"
@@ -23,7 +39,7 @@
         {{ name }}
       </label>
       {% endfor %}
-      <div class="note">None ticked means any workplace.</div>
+      <div class="note">Used only when Custom is chosen. None ticked means any workplace.</div>
     </fieldset>
     <div class="filter-fields">
       <div>
@@ -61,6 +77,9 @@
   <p class="summary" role="status">
     <strong>{{ result.matches | length }} matching</strong>{% if has_exceptions or result.via_unstated %} ({% if has_exceptions %}{{ result.via_exception }} via board exceptions{% endif %}{% if has_exceptions and result.via_unstated %}, {% endif %}{% if result.via_unstated %}{{ result.via_unstated }} with workplace not stated, included by board setting{% endif %}){% endif %}
     of {{ result.open_total }} open jobs across {{ checked_board_count }} board{% if checked_board_count != 1 %}s{% endif %}.
+    {% if saved.workplace_mode == "remote_friendly" and result.hybrid_days_not_stated %}
+    {{ result.hybrid_days_not_stated }} of them {% if result.hybrid_days_not_stated == 1 %}is{% else %}are{% endif %} hybrid with days not stated.
+    {% endif %}
   </p>
 
   {% if result.hidden_unstated %}
@@ -112,16 +131,7 @@
             <div class="note">{{ platform_label(board.platform) }}</div>
           </td>
           <td class="col-workplace">
-            {% if job.workplace == "unknown" %}
-            <span class="status-badge workplace-unstated">workplace not stated</span>
-            {% else %}
-            <span class="status-badge workplace-badge">{{ job | workplace_display }}</span>
-            {% endif %}
-            {% if match.reason == "exception" %}
-            <div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if match.exception.note %}: {{ match.exception.note }}{% endif %}</div>
-            {% elif match.reason == "unstated" %}
-            <div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
-            {% endif %}
+            {% include "_workplace_badge.html" %}
           </td>
           <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
           <td class="col-updated" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>

@@ -24,6 +24,7 @@ from jfl_core.models import (
     JobFilter,
     WatchedBoard,
     Workplace,
+    WorkplaceMode,
 )
 from jfl_intake.filtering import FilterResult, apply_filter
 from jfl_intake.workplace import effective_include_unstated, include_unstated_by_default
@@ -35,6 +36,14 @@ WORKPLACE_NAMES: dict[Workplace, str] = {
     "unknown": "Workplace not stated",
 }
 WORKPLACE_VALUES: tuple[Workplace, ...] = get_args(Workplace)
+
+# The presets first: they are the main control, and Custom is the old checkboxes.
+WORKPLACE_MODE_NAMES: dict[WorkplaceMode, str] = {
+    "remote_only": "Remote only",
+    "remote_friendly": "Remote friendly",
+    "custom": "Custom",
+}
+WORKPLACE_MODE_VALUES: tuple[WorkplaceMode, ...] = get_args(WorkplaceMode)
 
 # Generous for comma-separated alternatives and for a note in the owner's own
 # words; the limit exists to bound a row, not to shape what anyone writes.
@@ -63,6 +72,16 @@ def parse_workplaces(values: Iterable[str]) -> list[Workplace]:
     """
     chosen = set(values)
     return [w for w in WORKPLACE_VALUES if w in chosen]
+
+
+def parse_workplace_mode(value: str) -> WorkplaceMode | None:
+    """The submitted mode if it is one of the choices, else None -- which the
+    route refuses, rather than quietly saving some other mode.
+    """
+    for mode in WORKPLACE_MODE_VALUES:
+        if value == mode:
+            return mode
+    return None
 
 
 def checked_text(value: str, limit: int) -> str:
@@ -106,6 +125,7 @@ def filter_open_jobs(
         include_unstated=include_unstated_map(boards),
         exceptions=exceptions,
         show_hidden_unstated=show_hidden_unstated,
+        hybrid_too_heavy=frozenset(b.id for b in boards if b.hybrid_too_heavy),
     )
 
 

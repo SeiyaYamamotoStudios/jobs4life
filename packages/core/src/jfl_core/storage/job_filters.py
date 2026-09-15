@@ -22,10 +22,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from jfl_core.db.tables import board_filter_exceptions as exceptions_table
 from jfl_core.db.tables import job_filters as filters_table
 from jfl_core.db.tables import watched_boards as boards_table
-from jfl_core.models import BoardFilterException, JobFilter, Workplace
+from jfl_core.models import BoardFilterException, JobFilter, Workplace, WorkplaceMode
 from jfl_core.storage.tenancy import TenantScopedRepository
 
 _FILTER_COLUMNS = (
+    filters_table.c.workplace_mode,
     filters_table.c.workplaces,
     filters_table.c.title_includes,
     filters_table.c.title_excludes,
@@ -54,6 +55,7 @@ def _ordered(workplaces: Collection[Workplace]) -> list[Workplace]:
 
 def _filter_from_row(row: Any) -> JobFilter:
     return JobFilter(
+        workplace_mode=row.workplace_mode,
         workplaces=list(row.workplaces),
         title_includes=row.title_includes,
         title_excludes=row.title_excludes,
@@ -93,8 +95,14 @@ class PostgresJobFilterRepository(TenantScopedRepository):
         title_includes: str,
         title_excludes: str,
         location: str,
+        workplace_mode: WorkplaceMode = "custom",
     ) -> JobFilter:
+        """Replace this user's filter. `workplaces` is stored whatever the mode --
+        it is consulted only under `custom`, and keeping it means switching back
+        restores what was ticked.
+        """
         values = {
+            "workplace_mode": workplace_mode,
             "workplaces": _ordered(workplaces),
             "title_includes": title_includes,
             "title_excludes": title_excludes,

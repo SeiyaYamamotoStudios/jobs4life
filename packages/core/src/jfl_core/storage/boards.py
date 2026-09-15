@@ -85,6 +85,7 @@ _BOARD_COLUMNS = (
     boards_table.c.held_check_id,
     boards_table.c.drop_accepted,
     boards_table.c.include_unstated_workplace,
+    boards_table.c.hybrid_too_heavy,
 )
 
 _CHECK_COLUMNS = (
@@ -158,6 +159,7 @@ def _board_from_row(row: Any) -> WatchedBoard:
         held_check_id=row.held_check_id,
         drop_accepted=row.drop_accepted,
         include_unstated_workplace=row.include_unstated_workplace,
+        hybrid_too_heavy=row.hybrid_too_heavy,
     )
 
 
@@ -308,6 +310,19 @@ class PostgresBoardRepository(TenantScopedRepository):
             update(boards_table)
             .where(boards_table.c.id == board_id, boards_table.c.user_id == self._user_id)
             .values(include_unstated_workplace=value)
+            .returning(boards_table.c.id)
+        ).first()
+        return row is not None
+
+    def set_hybrid_too_heavy(self, board_id: uuid.UUID, value: bool) -> bool:
+        """The owner's judgement that this board's hybrid is more than about a
+        day a week, leaving its hybrid out of the remote-friendly preset. False,
+        writing nothing, if the board is not this user's.
+        """
+        row = self._conn.execute(
+            update(boards_table)
+            .where(boards_table.c.id == board_id, boards_table.c.user_id == self._user_id)
+            .values(hybrid_too_heavy=value)
             .returning(boards_table.c.id)
         ).first()
         return row is not None
