@@ -1,10 +1,65 @@
 {% extends "base.html" %}
-{% block title %}Applications — jobs4life{% endblock %}
+{% block title %}{% if show_archived %}Archived applications{% else %}Applications{% endif %} — jobs4life{% endblock %}
 {% block content %}
+{% if show_archived %}
+<div class="page-header">
+  <h1>Archived applications</h1>
+  <a href="/applications">Back to applications</a>
+</div>
+<p class="note">
+  Off your lists, not deleted -- status and timeline are exactly as they were.
+  Restore any of these to put it back.
+</p>
+
+{% if applications %}
+<div class="table-wrap">
+  <table class="applications">
+    <thead>
+      <tr><th>Title</th><th>Employer</th><th>Status</th><th>Archived</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for application in applications %}
+      <tr id="application-{{ application.id }}">
+        <td class="col-title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+        <td class="col-employer">{{ application.employer or "—" }}</td>
+        <td class="col-status">
+          <span class="status-badge status-{{ application.status }}">{{ application.status }}</span>
+        </td>
+        <td class="col-updated" title="{{ application.archived_at.isoformat() }}">
+          {{ application.archived_at | humanize_dt }}
+        </td>
+        <td class="col-actions">
+          <form method="post" action="/applications/{{ application.id }}/unarchive">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="secondary">Restore</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="note">No archived applications.</p>
+{% endif %}
+
+{% else %}
 <div class="page-header">
   <h1>Applications</h1>
-  <a class="button" href="/applications/new">Add application</a>
+  <div class="page-header-actions">
+    {% if archived_count %}
+    <a href="/applications?archived=1">Archived ({{ archived_count }})</a>
+    {% endif %}
+    <a class="button" href="/applications/new">Add application</a>
+  </div>
 </div>
+
+{% if just_archived %}
+<p class="ok" role="status">
+  Archived "{{ just_archived }}". Restore it from
+  <a href="/applications?archived=1">Archived</a>.
+</p>
+{% endif %}
 
 <nav class="status-filter">
   <a href="/applications" class="{{ 'active' if active_status is none else '' }}">All</a>
@@ -32,5 +87,6 @@
   {% else %}No applications yet. <a href="/applications/new">Add your first one</a>.
   {% endif %}
 </p>
+{% endif %}
 {% endif %}
 {% endblock %}

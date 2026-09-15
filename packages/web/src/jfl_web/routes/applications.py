@@ -22,6 +22,9 @@ Screens:
   GET  /applications/{id}/extraction -- the extraction panel, for htmx polling
   POST /applications/{id}/extract    -- read the ad again; explicit, never
                                          automatic, because it costs the user
+  POST /applications/{id}/archive    -- soft delete: off the lists, status and
+                                         timeline untouched, reversible
+  POST /applications/{id}/unarchive  -- restore it
 
 `POST /applications/{id}/status` answers two different callers with one route
 rather than two: the **list** screen calls it over htmx (`HX-Request` header
@@ -112,9 +115,19 @@ def list_applications(
     session: SessionDep,
     applications: ApplicationRepoDep,
 ) -> Response:
+    # `archived=1` swaps the whole screen for the archived list rather than
+    # combining with the status filter -- the archived list is not another
+    # slice of the live one, it is a different question ("what did I put
+    # away") from the default's ("what is live").
+    show_archived = request.query_params.get("archived") == "1"
     raw_status = request.query_params.get("status")
     status = raw_status if raw_status in STATUSES else None
-    items = applications.list_applications(status=status)
+    items = applications.list_applications(
+        status=None if show_archived else status, archived=show_archived
+    )
+    # Always known, even on the live list, so the "Archived (N)" link can
+    # decide whether to render itself without a second round trip.
+    archived_count = len(applications.list_applications(archived=True))
     return render(
         request,
         "applications_list.html",
@@ -124,8 +137,34 @@ def list_applications(
             "applications": items,
             "statuses": STATUSES,
             "active_status": status,
+            "show_archived": show_archived,
+            "archived_count": archived_count,
+            "just_archived": _just_archived_title(applications, request),
         },
     )
+
+
+def _just_archived_title(applications: ApplicationRepoDep, request: Request) -> str | None:
+    """The title for the "Archived ..." confirmation, looked up -- never echoed.
+
+    The redirect carries the application's id, not its title. Rendering text taken
+    straight from the query string would let anyone craft a link that puts words of
+    their choosing on this page, which is why the login flow already returns a fixed
+    error code instead of a message. The id is resolved through the signed-in user's
+    own repository, so another user's id, a stale id or a garbage value simply shows
+    no banner.
+    """
+    raw = request.query_params.get("just_archived")
+    if not raw:
+        return None
+    try:
+        application_id = uuid.UUID(raw)
+    except ValueError:
+        return None
+    detail = applications.get_application(application_id)
+    if detail is None or detail.application.archived_at is None:
+        return None
+    return detail.application.title
 
 
 @router.get("/applications/new")
@@ -357,6 +396,46 @@ def update_notes(
 ) -> Response:
     try:
         applications.update_notes(application_id, notes.strip() or None)
+    except ApplicationNotFoundError:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+    return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+@router.post("/applications/{application_id}/archive")
+def archive_application(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Off the lists, nothing else touched.
+
+    Status and timeline are exactly what they were -- `archive` sets only
+    `archived_at`. This is the fix for an application that never happened
+    rather than an honest one: see migration `e5396ef31c67`. Redirects to
+    the live list, not back to the now-hidden detail page, since that is
+    where the owner is once the row is out of play.
+    """
+    try:
+        application = applications.archive(application_id)
+    except ApplicationNotFoundError:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+    return RedirectResponse(f"/applications?just_archived={application.id}", status_code=303)
+
+
+@router.post("/applications/{application_id}/unarchive")
+def unarchive_application(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    try:
+        applications.unarchive(application_id)
     except ApplicationNotFoundError:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)

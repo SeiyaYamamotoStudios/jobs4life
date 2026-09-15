@@ -634,3 +634,173 @@ def test_a_second_user_cannot_edit_notes_on_the_first_users_application(
         data={"csrf_token": _csrf(client), "notes": "tampered"},
     )
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Archiving: an owner's own words are "a test application that shows as
+# 'withdrawn', which records something he never did" -- archive must take a
+# row off the lists without touching status or timeline, and be reversible.
+# --------------------------------------------------------------------------
+
+
+def test_archiving_hides_it_from_the_live_list_and_leaves_status_and_timeline_alone(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Test Application")
+    client.post(
+        f"/applications/{app_id}/status",
+        data={"csrf_token": _csrf(client), "to_status": "withdrawn"},
+    )
+
+    response = client.post(
+        f"/applications/{app_id}/archive",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/applications?just_archived={app_id}"
+    assert 'Archived "Test Application"' in client.get(response.headers["location"]).text
+
+    live_page = client.get("/applications").text
+    assert "Test Application" not in live_page
+
+    archived_page = client.get("/applications?archived=1").text
+    assert "Archived applications" in archived_page
+    assert "Test Application" in archived_page
+    assert "withdrawn" in archived_page.lower()
+
+    detail_page = client.get(f"/applications/{app_id}").text
+    assert "withdrawn" in detail_page.lower()
+    # "added" + "withdrawn", and nothing that archiving itself might have added.
+    assert detail_page.count("timeline-status") == 2
+    assert "Archived" in detail_page
+    assert f'action="/applications/{app_id}/unarchive"' in detail_page
+
+
+def test_archiving_hides_the_quick_actions_and_restoring_brings_them_back(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    """A `withdrawn` or `rejected` application never shows the quick actions
+    either, so this needs a live-pipeline status (the default, `interested`)
+    to isolate archiving's effect on them from status's own.
+    """
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Quick Actions Check")
+    assert "Mark as applied" in client.get(f"/applications/{app_id}").text
+
+    client.post(f"/applications/{app_id}/archive", data={"csrf_token": _csrf(client)})
+    assert "Mark as applied" not in client.get(f"/applications/{app_id}").text
+
+    client.post(f"/applications/{app_id}/unarchive", data={"csrf_token": _csrf(client)})
+    assert "Mark as applied" in client.get(f"/applications/{app_id}").text
+
+
+def test_restoring_returns_it_to_the_live_list(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Comeback Kid")
+    client.post(f"/applications/{app_id}/archive", data={"csrf_token": _csrf(client)})
+    assert "Comeback Kid" not in client.get("/applications").text
+
+    response = client.post(
+        f"/applications/{app_id}/unarchive",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/applications/{app_id}"
+
+    assert "Comeback Kid" in client.get("/applications").text
+    assert "Comeback Kid" not in client.get("/applications?archived=1").text
+
+
+def test_archived_count_link_appears_only_once_something_is_archived(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    assert "Archived (" not in client.get("/applications").text
+
+    first_id = _add_application(client, title="First Role")
+    second_id = _add_application(client, title="Second Role")
+    client.post(f"/applications/{first_id}/archive", data={"csrf_token": _csrf(client)})
+
+    page = client.get("/applications").text
+    assert "Archived (1)" in page
+
+    client.post(f"/applications/{second_id}/archive", data={"csrf_token": _csrf(client)})
+    assert "Archived (2)" in client.get("/applications").text
+
+
+def test_archive_and_unarchive_require_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded")
+
+    bad_archive = client.post(f"/applications/{app_id}/archive", data={"csrf_token": "wrong"})
+    assert bad_archive.status_code == 403
+    assert "CSRF Guarded" in client.get("/applications").text  # still live
+
+    client.post(f"/applications/{app_id}/archive", data={"csrf_token": _csrf(client)})
+    bad_unarchive = client.post(f"/applications/{app_id}/unarchive", data={"csrf_token": "wrong"})
+    assert bad_unarchive.status_code == 403
+    assert "CSRF Guarded" in client.get("/applications?archived=1").text  # still archived
+
+
+def test_a_second_user_cannot_archive_or_unarchive_the_first_users_application(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    alice_app_id = _add_application(client, title="Alice's role")
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    archive_response = client.post(
+        f"/applications/{alice_app_id}/archive", data={"csrf_token": _csrf(client)}
+    )
+    assert archive_response.status_code == 404
+
+    unarchive_response = client.post(
+        f"/applications/{alice_app_id}/unarchive", data={"csrf_token": _csrf(client)}
+    )
+    assert unarchive_response.status_code == 404
+
+
+def test_archive_and_unarchive_require_a_session(client: TestClient) -> None:
+    random_id = str(uuid.uuid4())
+    for path in (f"/applications/{random_id}/archive", f"/applications/{random_id}/unarchive"):
+        response = client.post(path, data={"csrf_token": "whatever"}, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+
+def test_signed_out_visitor_is_redirected_to_login_from_the_archived_list(
+    client: TestClient,
+) -> None:
+    response = client.get("/applications?archived=1", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_the_archive_confirmation_is_looked_up_never_echoed_from_the_url(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    """The banner's title comes from the database by id, so a crafted link cannot put
+    words of its author's choosing on the page -- not raw text, not a random id, and
+    not another user's archived application."""
+    sign_in(client, google, subs)
+    other_id = _add_application(client, title="Someone Else's Role")
+    client.post(f"/applications/{other_id}/archive", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    crafted = client.get("/applications?just_archived=Your%20account%20is%20suspended").text
+    assert "suspended" not in crafted
+    assert "Restore it from" not in client.get(f"/applications?just_archived={uuid.uuid4()}").text
+    cross_user = client.get(f"/applications?just_archived={other_id}").text
+    assert "Someone Else" not in cross_user
+    assert "Restore it from" not in cross_user
+
+    live_id = _add_application(client, title="Still Live")
+    assert "Restore it from" not in client.get(f"/applications?just_archived={live_id}").text

@@ -11,6 +11,17 @@
 <p class="note">Provisional title, taken from the top of the ad.</p>
 {% endif %}
 
+{% if application.archived_at %}
+<div class="archived-banner" role="status">
+  <p>Archived {{ application.archived_at | humanize_dt }}. It is off your lists,
+    and nothing about its status or history has changed.</p>
+  <form method="post" action="/applications/{{ application.id }}/unarchive">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit">Restore</button>
+  </form>
+</div>
+{% endif %}
+
 <dl class="facts">
   <dt>Employer</dt><dd>{{ application.employer or "—" }}</dd>
   <dt>URL</dt>
@@ -30,8 +41,10 @@
   <h2>Status</h2>
 
   {# One click for the common case. Almost every change is a step along the
-     pipeline; the full picker below stays for jumps, reversals and corrections. #}
-  {% if next_status or application.status not in ("rejected", "withdrawn") %}
+     pipeline; the full picker below stays for jumps, reversals and corrections.
+     Hidden while archived -- archiving is meant to take the application out of
+     play, not offer a one-click way to keep progressing it. #}
+  {% if not application.archived_at and (next_status or application.status not in ("rejected", "withdrawn")) %}
   <div class="quick-actions">
     {% if next_status %}
     <form method="post" action="/applications/{{ application.id }}/status">
@@ -94,4 +107,18 @@
   <p class="note">No events yet.</p>
   {% endif %}
 </section>
+
+{% if not application.archived_at %}
+<details class="confirm-remove">
+  <summary>Archive this application</summary>
+  <p class="note">
+    Removes it from your lists without changing its status or history. You can
+    restore it any time.
+  </p>
+  <form method="post" action="/applications/{{ application.id }}/archive">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Yes, archive it</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}
