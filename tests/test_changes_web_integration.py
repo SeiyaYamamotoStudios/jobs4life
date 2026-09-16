@@ -30,13 +30,15 @@ from jfl_core.db.tables import job_feed_marks, job_feed_state
 from jfl_core.db.tables import users as users_table
 from jfl_core.models import ObservedJob, Workplace
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.job_feed import purge_stale_marks
 from jfl_intake.adapters.base import FetchResult
 from jfl_intake.engine import REPOST_WINDOW, plan_check
+from jfl_intake.feed import VISIBLE_FOR
 from jfl_intake.normalise import fingerprint
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity
 from jfl_web.settings import WebSettings
-from sqlalchemy import create_engine, delete, select, update
+from sqlalchemy import create_engine, delete, func, select, update
 from sqlalchemy.engine import Engine
 
 pytestmark = pytest.mark.integration
@@ -217,6 +219,26 @@ def age_the_feed(engine: Engine, user_id: uuid.UUID, by: dt.timedelta) -> None:
         )
 
 
+def age_the_marks_only(engine: Engine, user_id: uuid.UUID, by: dt.timedelta) -> None:
+    """Like `age_the_feed`, but leaves `last_looked_at` where it is.
+
+    Real time passing never moves `last_looked_at` backwards past an event it
+    already covers -- it just stays put while the real clock advances. Moving
+    it back here too (as `age_the_feed` does, to simulate 24h+ of silence
+    since the last *visit*) would manufacture a `last_looked_at` earlier than
+    this board's events -- a state a real deployment can never reach, since
+    `last_looked_at` is only ever set to the `now` of a view that already saw
+    those events. Purge tests need marks old enough to be dead, not a fictional
+    last-looked time, so only `first_seen_at` moves.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            update(job_feed_marks)
+            .where(job_feed_marks.c.user_id == user_id)
+            .values(first_seen_at=job_feed_marks.c.first_seen_at - by)
+        )
+
+
 # -- access ---------------------------------------------------------------------------
 
 
@@ -300,6 +322,58 @@ def test_changes_are_gone_24_hours_after_first_seen(
     text = text_of(client.get("/changes").text)
     assert "0 changes matching your filter of 0" in text
     assert "Nothing has changed on your boards since you last looked" in text
+    assert "Inference" not in text
+
+
+# -- purge -----------------------------------------------------------------------------
+
+
+def test_purging_aged_out_marks_does_not_resurface_them(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """The real worry `purge_stale_marks` exists to rule out, proved through the
+    actual route rather than the pure functions it is built from: once marks
+    are old enough to purge, deleting them must not turn their events back into
+    news on the next real `GET /changes`.
+    """
+    user_id = sign_in(client, google, subs, engine)
+    board_id = watched_board(engine, user_id)
+    later_check(engine, user_id, board_id)
+    assert "3 changes matching your filter of 3" in text_of(client.get("/changes").text)
+
+    age_the_marks_only(engine, user_id, dt.timedelta(hours=24, minutes=1))  # all three now dead
+    with engine.begin() as conn:
+        deleted = purge_stale_marks(conn, now=dt.datetime.now(dt.UTC), visible_for=VISIBLE_FOR)
+    assert deleted == 3
+
+    with engine.connect() as conn:
+        remaining = conn.execute(
+            select(func.count())
+            .select_from(job_feed_marks)
+            .where(job_feed_marks.c.user_id == user_id)
+        ).scalar_one()
+    assert remaining == 0  # the purge actually did something, not a no-op
+
+    text = text_of(client.get("/changes").text)
+    assert "0 changes matching your filter of 0" in text
+    assert "Inference" not in text
+    assert "Staff Engineer" not in text
+
+
+def test_purging_dismissed_marks_does_not_resurface_them(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    user_id = sign_in(client, google, subs, engine)
+    board_id = watched_board(engine, user_id)
+    later_check(engine, user_id, board_id)
+    client.post("/changes/dismiss-all", data={"csrf_token": csrf(client)})
+
+    with engine.begin() as conn:
+        deleted = purge_stale_marks(conn, now=dt.datetime.now(dt.UTC), visible_for=VISIBLE_FOR)
+    assert deleted == 3
+
+    text = text_of(client.get("/changes").text)
+    assert "0 changes matching your filter of 0" in text
     assert "Inference" not in text
 
 

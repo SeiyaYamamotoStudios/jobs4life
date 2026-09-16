@@ -3,8 +3,8 @@
 Shape of one iteration:
 
   1. maintenance, if due -- reclaim rows a dead worker left `running`, and
-     enqueue the two recurring tasks: the session purge and the watched-board
-     scheduling pass;
+     enqueue the three recurring tasks: the session purge, the feed-mark purge,
+     and the watched-board scheduling pass;
   2. claim up to `batch_size` due tasks of the kinds this worker can run;
   3. dispatch each one, recording success or failure;
   4. if nothing was claimed, sleep for `poll_interval`.
@@ -51,6 +51,7 @@ from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
 from jfl_worker.settings import WorkerSettings, model_calls_disabled
 
 PURGE_SESSIONS_KIND = "purge_expired_sessions"
+PURGE_FEED_MARKS_KIND = "purge_stale_feed_marks"
 BOARD_SCHEDULE_KIND = SCHEDULE_BOARD_CHECKS_KIND
 
 
@@ -94,6 +95,7 @@ class Worker:
         # away, which is exactly the moment both are most likely to be needed.
         self._next_reclaim_at: dt.datetime | None = None
         self._next_purge_at: dt.datetime | None = None
+        self._next_feed_mark_purge_at: dt.datetime | None = None
         self._next_board_schedule_at: dt.datetime | None = None
 
     # -- lifecycle ---------------------------------------------------------
@@ -160,6 +162,11 @@ class Worker:
         if self._next_purge_at is None or now >= self._next_purge_at:
             self._enqueue_purge(now)
             self._next_purge_at = now + dt.timedelta(seconds=self._settings.purge_interval)
+        if self._next_feed_mark_purge_at is None or now >= self._next_feed_mark_purge_at:
+            self._enqueue_recurring(PURGE_FEED_MARKS_KIND, now)
+            self._next_feed_mark_purge_at = now + dt.timedelta(
+                seconds=self._settings.feed_mark_purge_interval
+            )
         if self._next_board_schedule_at is None or now >= self._next_board_schedule_at:
             self._enqueue_recurring(BOARD_SCHEDULE_KIND, now)
             self._next_board_schedule_at = now + dt.timedelta(
@@ -202,9 +209,10 @@ class Worker:
     def _enqueue_recurring(self, kind: str, now: dt.datetime) -> None:
         """One recurring task, through the queue, at most one queued at a time.
 
-        Shared by the session purge (above) and the watched-board scheduling
-        pass, which enqueues each due board's `check_board` itself -- so a
-        worker down for a day restarts into one scheduling pass, not ninety-six.
+        Shared by the session purge (above), the feed-mark purge, and the
+        watched-board scheduling pass, which enqueues each due board's
+        `check_board` itself -- so a worker down for a day restarts into one
+        scheduling pass, not ninety-six.
         """
         # `scheduled_at=now`, not the server's `now()` default: the loop has
         # already fixed `now` for this iteration, and a row scheduled a

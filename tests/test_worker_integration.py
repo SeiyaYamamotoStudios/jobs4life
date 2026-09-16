@@ -10,6 +10,11 @@ there is no Anthropic client anywhere in `jfl_worker` to construct.
 The worker's `system_user_id` is pointed at a throwaway user rather than the
 seeded local one, so everything this file creates is removed by deleting that
 user (tasks and sessions both cascade).
+
+`test_the_worker_runs_the_feed_mark_purge` proves the same thing for the second
+recurring, model-free task: `purge_stale_feed_marks`. The predicate it exercises
+is unit-tested exhaustively in `tests/test_job_feed_repo_integration.py`; this
+file only needs to show the queue actually reaches and runs it.
 """
 
 from __future__ import annotations
@@ -24,18 +29,30 @@ from contextlib import contextmanager
 
 import pytest
 from jfl_core.crypto.envelope import MasterKey
+from jfl_core.db.tables import job_feed_marks as marks_table
 from jfl_core.db.tables import sessions as sessions_table
 from jfl_core.db.tables import users
+from jfl_core.models import ObservedJob
 from jfl_core.storage.accounts import PostgresSessionRepository
+from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_intake.adapters.base import FetchResult
+from jfl_intake.engine import REPOST_WINDOW, plan_check
 from jfl_intake.http import Transport
-from jfl_worker.handlers import PURGE_EXPIRED_SESSIONS, build_registry
+from jfl_intake.normalise import fingerprint
+from jfl_worker.handlers import (
+    PURGE_EXPIRED_SESSIONS,
+    PURGE_STALE_FEED_MARKS,
+    build_registry,
+    purge_stale_feed_marks,
+)
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import postgres_enqueuer_scope, postgres_queue_scope
 from jfl_worker.registry import HandlerRegistry, TaskContext
 from jfl_worker.runner import Worker
 from jfl_worker.settings import WorkerSettings
-from sqlalchemy import create_engine, delete, insert, select
+from sqlalchemy import create_engine, delete, func, insert, select
 from sqlalchemy.engine import Engine
 
 pytestmark = pytest.mark.integration
@@ -150,6 +167,116 @@ def test_the_worker_enqueues_claims_and_runs_the_session_purge(
     assert succeeded[0]["kind"] == PURGE_EXPIRED_SESSIONS
     assert succeeded[0]["sessions_deleted"] >= 1
     assert "duration_ms" in succeeded[0]
+
+
+def _dead_feed_mark(engine: Engine, user_id: uuid.UUID, *, now: dt.datetime) -> None:
+    """One 'gone' mark, first seen 25 hours ago and never dismissed -- dead by
+    `VISIBLE_FOR`, and with no other mark of this user's to block it. Built via
+    the same board-history path the worker itself writes with, like
+    `tests/test_job_feed_repo_integration.py`'s `board_with_events`.
+    """
+    baseline_at = now - dt.timedelta(days=2)
+    gone_at = now - dt.timedelta(days=1)
+    job = ObservedJob(
+        external_id="a",
+        title="Role a",
+        location="London",
+        url="https://example.invalid/jobs/a",
+        fingerprint=fingerprint("Role a", "London"),
+    )
+    with engine.begin() as conn:
+        boards = PostgresBoardRepository(conn, user_id)
+        board = boards.add_board(
+            platform="greenhouse",
+            board_url=f"https://boards.greenhouse.io/{user_id.hex[:8]}",
+            board_key={"token": user_id.hex[:8]},
+        )
+        state = boards.lock_check_state(
+            board.id, observed_external_ids=["a"], closed_since=baseline_at - REPOST_WINDOW
+        )
+        assert state is not None
+        boards.apply_check_plan(
+            plan_check(
+                state,
+                FetchResult(status="complete", jobs=(job,), expected_total=1),
+                observed_at=baseline_at,
+            ),
+            started_at=baseline_at,
+            finished_at=baseline_at,
+        )
+        state = boards.lock_check_state(
+            board.id, observed_external_ids=[], closed_since=gone_at - REPOST_WINDOW
+        )
+        assert state is not None
+        boards.apply_check_plan(
+            plan_check(
+                state,
+                FetchResult(status="complete", jobs=(), expected_total=0),
+                observed_at=gone_at,
+            ),
+            started_at=gone_at,
+            finished_at=gone_at,
+        )
+        events = boards.events_since(baseline_at - dt.timedelta(days=1))
+        assert [e.kind for e in events] == ["gone"]
+
+        feed = PostgresJobFeedRepository(conn, user_id)
+        first_seen_at = now - dt.timedelta(hours=25)  # >24h ago: already dead
+        marks = feed.record_seen(events, now=first_seen_at)
+        feed.set_last_looked_at(first_seen_at)
+    assert len(marks) == 1
+
+
+def test_the_worker_runs_the_feed_mark_purge(engine: Engine, user: uuid.UUID) -> None:
+    """The same proof as the session purge, for the feed-mark purge: ticker ->
+    enqueue -> claim -> dispatch -> handler -> succeeded, deleting a real dead
+    mark. `run_once` is called enough times to drain all three maintenance
+    tickers (`batch_size` is 1, so each dispatches one task).
+    """
+    now = dt.datetime.now(tz=dt.UTC)
+    _dead_feed_mark(engine, user, now=now)
+
+    stream = io.StringIO()
+    worker = _build_worker(engine, user, stream=stream)
+
+    dispatched = sum(worker.run_once() for _ in range(3))
+    assert dispatched == 3  # session purge, feed-mark purge, board schedule
+
+    with engine.connect() as conn:
+        remaining = conn.execute(
+            select(func.count()).select_from(marks_table).where(marks_table.c.user_id == user)
+        ).scalar_one()
+    assert remaining == 0
+
+    with engine.connect() as conn:
+        tasks = PostgresTaskRepository(conn, user).list_tasks(kind=PURGE_STALE_FEED_MARKS)
+    assert len(tasks) == 1
+    assert tasks[0].status == "succeeded"
+    assert tasks[0].last_error is None
+
+    events = [json.loads(line) for line in stream.getvalue().strip().splitlines()]
+    succeeded = [
+        e for e in events if e["event"] == "task.succeeded" and e["kind"] == PURGE_STALE_FEED_MARKS
+    ]
+    assert len(succeeded) == 1
+    assert succeeded[0]["feed_marks_deleted"] == 1
+
+
+def test_the_feed_mark_purge_handler_is_idempotent(engine: Engine, user: uuid.UUID) -> None:
+    """A second run, once the table is already clean, deletes nothing and still
+    succeeds -- what at-least-once delivery requires of every handler. Calls the
+    handler directly (bypassing the queue) since that is the unit under test,
+    the same way `PostgresSessionRepository.purge_expired` is proved idempotent
+    at the repository level, not only through a lucky queue timing.
+    """
+    now = dt.datetime.now(tz=dt.UTC)
+    _dead_feed_mark(engine, user, now=now)
+    with engine.begin() as conn:
+        task = PostgresTaskRepository(conn, user).enqueue(kind=PURGE_STALE_FEED_MARKS)
+    ctx = TaskContext(task=task, engine=engine, now=now)
+
+    assert purge_stale_feed_marks(ctx) == {"feed_marks_deleted": 1}
+    assert purge_stale_feed_marks(ctx) == {"feed_marks_deleted": 0}
 
 
 def test_the_purge_is_not_re_enqueued_while_one_is_still_queued(

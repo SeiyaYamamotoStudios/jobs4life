@@ -11,6 +11,7 @@ from jfl_worker.handlers import (
     EXTRACT_JOB_AD,
     FETCH_JOB_DESCRIPTION,
     PURGE_EXPIRED_SESSIONS,
+    PURGE_STALE_FEED_MARKS,
     SCHEDULE_BOARD_CHECKS,
     SUGGEST_TITLES,
     build_registry,
@@ -71,6 +72,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 CHECK_BOARD,
                 EXTRACT_JOB_AD,
                 PURGE_EXPIRED_SESSIONS,
+                PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
                 SUGGEST_TITLES,
                 FETCH_JOB_DESCRIPTION,
@@ -80,6 +82,9 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
 
     purge = registry.get(PURGE_EXPIRED_SESSIONS)
     assert purge is not None and purge.calls_model is False
+
+    feed_purge = registry.get(PURGE_STALE_FEED_MARKS)
+    assert feed_purge is not None and feed_purge.calls_model is False
 
     extract = registry.get(EXTRACT_JOB_AD)
     assert extract is not None and extract.calls_model is True
@@ -99,5 +104,13 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
 
     # And the switch actually removes only the model-calling kinds.
     assert registry.runnable_kinds(allow_model_calls=False) == tuple(
-        sorted((CHECK_BOARD, FETCH_JOB_DESCRIPTION, PURGE_EXPIRED_SESSIONS, SCHEDULE_BOARD_CHECKS))
+        sorted(
+            (
+                CHECK_BOARD,
+                FETCH_JOB_DESCRIPTION,
+                PURGE_EXPIRED_SESSIONS,
+                PURGE_STALE_FEED_MARKS,
+                SCHEDULE_BOARD_CHECKS,
+            )
+        )
     )

@@ -32,6 +32,8 @@ from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
 from jfl_worker.handlers.description import build_fetch_job_description
 from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
+from jfl_worker.handlers.feed_marks import KIND as PURGE_STALE_FEED_MARKS
+from jfl_worker.handlers.feed_marks import purge_stale_feed_marks
 from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
 from jfl_worker.handlers.sessions import purge_expired_sessions
 from jfl_worker.handlers.title_suggestions import KIND as SUGGEST_TITLES
@@ -44,6 +46,7 @@ __all__ = [
     "EXTRACT_JOB_AD",
     "FETCH_JOB_DESCRIPTION",
     "PURGE_EXPIRED_SESSIONS",
+    "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
     "SUGGEST_TITLES",
     "build_check_board",
@@ -53,6 +56,7 @@ __all__ = [
     "build_schedule_board_checks",
     "build_suggest_titles",
     "purge_expired_sessions",
+    "purge_stale_feed_marks",
 ]
 
 
@@ -75,6 +79,14 @@ def build_registry(
     registry.register(
         PURGE_EXPIRED_SESSIONS,
         purge_expired_sessions,
+        calls_model=False,
+    )
+    registry.register(
+        PURGE_STALE_FEED_MARKS,
+        purge_stale_feed_marks,
+        # False, same reasoning as the session purge: a DELETE against this
+        # deployment's own Postgres, no `anthropic` on the path, nobody's key
+        # spent.
         calls_model=False,
     )
     registry.register(

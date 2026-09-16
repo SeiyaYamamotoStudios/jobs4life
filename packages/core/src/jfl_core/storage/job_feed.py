@@ -11,6 +11,15 @@ user's; so `record_seen` keeps only keys whose job and check belong to this user
 in the caller's transaction, rather than trusting the route.
 
 No SQL above this layer, and no model call anywhere near it.
+
+**`purge_stale_marks` is deliberately not a method on the repository above.**
+It is global maintenance, not one user's data: the worker calls it once, across
+every user, the same way `PostgresSessionRepository.purge_expired` purges every
+user's expired sessions in one statement. `PostgresJobFeedRepository` cannot
+express that -- it is constructed for exactly one `user_id` -- so this stays a
+plain function taking a `Connection`, outside the tenancy scheme entirely (it is
+not named `*Repository` and `test_tenancy_enforcement.py` does not walk it). Its
+own `WHERE` never crosses a user boundary: see its docstring.
 """
 
 from __future__ import annotations
@@ -20,8 +29,9 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import Connection
 
 from jfl_core.db.tables import board_checks as checks_table
 from jfl_core.db.tables import board_jobs as jobs_table
@@ -204,3 +214,71 @@ class PostgresJobFeedRepository(TenantScopedRepository):
             .values(dismissed_at=now)
         )
         return result.rowcount
+
+
+def purge_stale_marks(conn: Connection, *, now: dt.datetime, visible_for: dt.timedelta) -> int:
+    """Delete marks that can no longer affect anything `/changes` can show, for
+    every user in one statement. Table only grows otherwise (`NEXT.md`).
+
+    **What a mark is for**, restated because the safe condition falls straight
+    out of it: `jfl_intake.feed.visible_events` looks a derived event up by
+    `(job_id, kind, check_id)`. No mark at all means "never shown" -- shown as
+    new if `event.at > effective_last_looked_at(last_looked_at)`. A mark that
+    exists but is not live (dismissed, or `first_seen_at` more than
+    `visible_for` ago -- `mark_is_live`) means "already shown and done with" --
+    suppressed regardless of that comparison. **A dead mark is a tombstone, and
+    deleting one turns "already shown" back into "never shown".** That is the
+    resurfacing bug this function must never cause: the same old event
+    reappearing as news.
+
+    **Why deleting a dead mark is actually safe.** `record_seen` and
+    `set_last_looked_at` are only ever called together, with the same `now`, in
+    the one transaction `GET /changes` runs (`jfl_web.routes.changes` -- the only
+    production call site of either). A mark's `event_at` is always `<=` the
+    `first_seen_at` it is given (an event has already happened before it can be
+    shown), and `set_last_looked_at` only ever moves `last_looked_at` forward
+    (`GREATEST`). So from the moment any mark for a user is created, that user's
+    `last_looked_at` is `>= that mark's event_at`, **forever after** -- and
+    `visible_events`'s "no mark -> is it new" check compares straight against
+    `last_looked_at`, never against the widened `since` `derive_since` computes
+    for the database query. A dead mark's event can therefore never again pass
+    `event.at > last_looked_at`, tombstone or none: deleting it is inert.
+
+    **The extra guard below is a deliberate margin, not load off that proof.**
+    It refuses to delete a dead mark while another *live* mark for the same user
+    has an `event_at` at or before it -- the shared-check case, where one event
+    is dismissed and a sibling from the very same check is not. Nothing here
+    depends on it for correctness against the code as it stands today (see
+    `test_a_dead_mark_purge_correctly_keeps_would_resurface_its_event_if_deleted`,
+    which forces the deletion this guard refuses and confirms the event still
+    does not resurface). It is kept because it is checkable from this table
+    alone, without leaning on `job_feed_state` staying in lock-step forever, and
+    because `derive_since` widening `since` for exactly this pairing is the one
+    place a future change to `visible_events` -- accepting the widened `since`
+    instead of recomputing it -- would make that lean matter. Delaying deletion
+    of a mark until its live sibling also dies costs nothing: the row is deleted
+    on the very next run where it is safe by both measures.
+
+    Not tenant-scoped (see the module docstring): the correlated subquery
+    below still never compares one user's marks against another's --
+    `other.c.user_id == marks_table.c.user_id` pins it to the row being
+    considered -- so the single statement is exactly the union of what a
+    per-user version would have deleted.
+    """
+    live_after = now - visible_for
+    other = marks_table.alias("other_mark")
+    blocked_by_a_live_mark = (
+        select(1)
+        .where(
+            other.c.user_id == marks_table.c.user_id,
+            other.c.dismissed_at.is_(None),
+            other.c.first_seen_at > live_after,
+            other.c.event_at <= marks_table.c.event_at,
+        )
+        .exists()
+    )
+    is_dead = or_(
+        marks_table.c.dismissed_at.is_not(None), marks_table.c.first_seen_at <= live_after
+    )
+    result = conn.execute(delete(marks_table).where(is_dead, ~blocked_by_a_live_mark))
+    return result.rowcount

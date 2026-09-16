@@ -23,7 +23,12 @@ from jfl_core.models import ReclaimResult, Task
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import TaskEnqueuer, TaskQueue
 from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
-from jfl_worker.runner import BOARD_SCHEDULE_KIND, PURGE_SESSIONS_KIND, Worker
+from jfl_worker.runner import (
+    BOARD_SCHEDULE_KIND,
+    PURGE_FEED_MARKS_KIND,
+    PURGE_SESSIONS_KIND,
+    Worker,
+)
 from jfl_worker.settings import WorkerSettings
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -432,6 +437,30 @@ def test_the_session_purge_is_enqueued_on_a_ticker_not_every_poll(engine: Engine
     )
     two_hours_on.run_once()
     assert purges(later_enqueuer.calls) == [PURGE_SESSIONS_KIND]
+
+
+def test_the_feed_mark_purge_is_enqueued_on_its_own_ticker(engine: Engine) -> None:
+    """Same shape as the session purge above: its own ticker, its own interval,
+    through `enqueue_unique` so a worker down for a day restarts into one purge.
+    """
+    queue = FakeQueue()
+    registry = HandlerRegistry()
+    registry.register(PURGE_FEED_MARKS_KIND, lambda ctx: None, calls_model=False)
+    settings = WorkerSettings(database_url="x", feed_mark_purge_interval=3600.0)
+    worker, enqueuer = build_worker(engine, registry, queue, settings=settings)
+
+    def ticks() -> int:
+        return enqueuer.calls.count(PURGE_FEED_MARKS_KIND)
+
+    worker._run_maintenance(NOW)
+    assert ticks() == 1
+    worker._run_maintenance(NOW + dt.timedelta(minutes=30))
+    assert ticks() == 1  # not due yet
+    worker._run_maintenance(NOW + dt.timedelta(hours=1))
+    assert ticks() == 2
+
+    scheduled = [t for t in queue.tasks.values() if t.kind == PURGE_FEED_MARKS_KIND]
+    assert len(scheduled) == 1  # only one queued at a time
 
 
 def test_the_board_scheduling_pass_is_enqueued_on_its_own_ticker(engine: Engine) -> None:

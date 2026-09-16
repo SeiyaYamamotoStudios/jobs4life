@@ -85,6 +85,13 @@ def test_the_board_scheduling_interval_defaults_to_fifteen_minutes_and_can_be_se
     assert overridden.board_schedule_interval == 60.0
 
 
+def test_the_feed_mark_purge_interval_defaults_to_an_hour_and_can_be_set() -> None:
+    base = {"JFL_DATABASE_URL": "postgresql+psycopg://x/y", "JFL_MASTER_KEY": _MASTER_KEY}
+    assert WorkerSettings.from_env(base).feed_mark_purge_interval == 60 * 60.0
+    overridden = WorkerSettings.from_env({**base, "JFL_WORKER_FEED_MARK_PURGE_INTERVAL": "120"})
+    assert overridden.feed_mark_purge_interval == 120.0
+
+
 def test_a_missing_master_key_fails_at_boot_not_at_the_first_extraction() -> None:
     """The worker now unseals users' API keys, so `JFL_MASTER_KEY` is as
     required as the database URL. Discovering it is absent one task into

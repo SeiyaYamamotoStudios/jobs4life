@@ -63,6 +63,7 @@ DEFAULT_RETRY_FACTOR = 2.0
 DEFAULT_RETRY_CAP = 10 * 60.0
 DEFAULT_KILL_SWITCH_RETRY_DELAY = 60.0
 DEFAULT_PURGE_INTERVAL = 60 * 60.0
+DEFAULT_FEED_MARK_PURGE_INTERVAL = 60 * 60.0
 DEFAULT_BOARD_SCHEDULE_INTERVAL = 15 * 60.0
 DEFAULT_ERROR_BACKOFF = 10.0
 
@@ -128,6 +129,13 @@ class WorkerSettings:
     # is housekeeping rather than a security boundary.
     purge_interval: float = DEFAULT_PURGE_INTERVAL
 
+    # How often the feed-mark purge is enqueued. Also hourly, same reasoning:
+    # `jfl_intake.feed` already treats a stale mark as inert, so this is only
+    # housekeeping against `job_feed_marks` growing forever, and a mark only
+    # becomes eligible once it has been dead for a while (see
+    # `purge_stale_marks`), so there is no benefit to running it more often.
+    feed_mark_purge_interval: float = DEFAULT_FEED_MARK_PURGE_INTERVAL
+
     # How often the watched-board scheduling pass is enqueued. Fifteen minutes:
     # each board has its own daily slot (`jfl_intake.scheduling`), so this is
     # the most a check runs late, and a newly added board gets its baseline
@@ -178,6 +186,9 @@ class WorkerSettings:
             retry_base=_seconds(source, "JFL_WORKER_RETRY_BASE", DEFAULT_RETRY_BASE),
             retry_cap=_seconds(source, "JFL_WORKER_RETRY_CAP", DEFAULT_RETRY_CAP),
             purge_interval=_seconds(source, "JFL_WORKER_PURGE_INTERVAL", DEFAULT_PURGE_INTERVAL),
+            feed_mark_purge_interval=_seconds(
+                source, "JFL_WORKER_FEED_MARK_PURGE_INTERVAL", DEFAULT_FEED_MARK_PURGE_INTERVAL
+            ),
             board_schedule_interval=_seconds(
                 source, "JFL_WORKER_BOARD_SCHEDULE_INTERVAL", DEFAULT_BOARD_SCHEDULE_INTERVAL
             ),
