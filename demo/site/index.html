@@ -471,7 +471,9 @@
   }
 
   function claimSentences(result) {
-    return result.gate.sentences.filter(function (s) { return s.kind !== "framing"; });
+    // Only kind "claim" was checked. A document "title" was never sent to the
+    // model and carries no verdict; like framing, it is shown as NOT CHECKED.
+    return result.gate.sentences.filter(function (s) { return s.kind === "claim"; });
   }
 
   function framingSentences(result) {
@@ -690,7 +692,7 @@
       text.textContent = s.text;
       row.appendChild(text);
 
-      var isFraming = s.kind === "framing";
+      var isFraming = s.kind !== "claim";
       var pill = document.createElement("span");
       pill.className = "pill " + (isFraming ? "framing" : s.verdict);
       pill.textContent = isFraming ? "NOT CHECKED" : (VERDICT_LABEL[s.verdict] || s.verdict);

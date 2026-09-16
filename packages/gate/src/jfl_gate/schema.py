@@ -29,7 +29,13 @@ DriftLabel = Literal[
     "framing",
 ]
 
-SentenceKind = Literal["claim", "framing"]
+# "claim" and "framing" are the model's call. "title" never is: GATE_OUTPUT_SCHEMA
+# does not offer it, and `check_text` rejects a model result carrying it. It is
+# assigned only by the splitter, to a document's title (see
+# `jfl_gate.gate.split_units`), which is never sent to the model and so has no
+# verdict and no drift label -- None, never a default "supported", because
+# nothing checked it.
+SentenceKind = Literal["claim", "framing", "title"]
 Verdict = Literal["supported", "review", "unsupported"]
 
 
@@ -42,10 +48,15 @@ class SentenceResult(BaseModel):
     # deterministic check that a misaligned or dropped/reordered result is
     # caught loudly instead of silently attaching a verdict to the wrong
     # sentence -- see that function's docstring.
+    #
+    # Once `check_text` returns, `index` is the unit's 1-based position in the whole
+    # document, title included. With no title in the document -- every FEVER item,
+    # every plain-text CV -- that is exactly the numbering the model was given.
     index: int
     kind: SentenceKind
-    verdict: Verdict
-    drift_label: DriftLabel
+    # None only for kind="title"; see SentenceKind.
+    verdict: Verdict | None
+    drift_label: DriftLabel | None
     cited_span_ids: list[uuid.UUID]
     # Named `evidence_note`, not `reason` -- see prompt.py's GATE_OUTPUT_SCHEMA
     # for why (live-API classifier false positive, found 2026-09-02).

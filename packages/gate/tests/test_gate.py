@@ -18,7 +18,16 @@ import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
 from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord, Span, SpanCandidate
-from jfl_gate.gate import EFFORT, GateError, check_text, sentences_from_text, split_blocks
+from jfl_gate.gate import (
+    EFFORT,
+    TITLE_NOTE,
+    GateError,
+    TextUnit,
+    check_text,
+    sentences_from_text,
+    split_blocks,
+    split_units,
+)
 from jfl_gate.pricing import MODEL, compute_cost_usd
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -653,6 +662,145 @@ class TestAlignment:
             check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._MULTI_TEXT)
 
         assert runs.recorded[0].outcome == "error"
+
+
+class TestDocumentTitle:
+    """A lone markdown h1 is the document's title: never sent to the model, and
+    still present in the output as kind "title" with no verdict. Observed defect:
+    a demo draft titled "<name> -- CV bullets (<target role> -- <target employer>)"
+    came back `unsupported` / `adjacency_substitution`, the title read as a claim
+    to hold the role being applied for.
+    """
+
+    _TITLE = "Jane Placeholder -- CV bullets (Staff Engineer -- Example Co)"
+    _DOC = f"# {_TITLE}\n\n- Led the platform team."
+
+    def test_a_lone_h1_is_a_title_unit_without_its_marker(self) -> None:
+        assert split_units(self._DOC) == [
+            TextUnit(self._TITLE, "title"),
+            TextUnit("Led the platform team.", "sentence"),
+        ]
+
+    def test_the_title_is_not_among_the_sentences_sent_to_the_model(self) -> None:
+        assert sentences_from_text(self._DOC) == ["Led the platform team."]
+
+    def test_a_title_is_never_sentence_split(self) -> None:
+        units = split_units("# Worked in the U.K. Then moved. Twice.\n\nLed a team.")
+        assert units[0] == TextUnit("Worked in the U.K. Then moved. Twice.", "title")
+
+    def test_a_title_is_its_own_block_even_with_no_blank_line_after_it(self) -> None:
+        assert split_units(f"# {self._TITLE}\nLed the platform team.") == [
+            TextUnit(self._TITLE, "title"),
+            TextUnit("Led the platform team.", "sentence"),
+        ]
+
+    def test_two_h1s_are_structure_not_a_title_and_both_are_checked(self) -> None:
+        # Same rule as jfl_core.ingest.parser: several h1s carry position, not identity.
+        units = split_units("# Northwind\n\nLed a team.\n\n# Example Co\n\nShipped it.")
+        assert all(unit.kind == "sentence" for unit in units)
+        assert [unit.text for unit in units] == [
+            "# Northwind",
+            "Led a team.",
+            "# Example Co",
+            "Shipped it.",
+        ]
+
+    def test_lower_level_headings_are_unchanged(self) -> None:
+        units = split_units("## Experience\n\n- Led a team.")
+        assert units == [
+            TextUnit("## Experience", "sentence"),
+            TextUnit("Led a team.", "sentence"),
+        ]
+
+    def test_a_plain_text_name_line_is_not_guessed_to_be_a_title(self) -> None:
+        # No markup, no title: plain text cannot tell a name line from a
+        # role-and-dates line that is a real claim, so it does not try.
+        units = split_units("Jane Placeholder\n\nEngineering Manager, Example Co (2021 - Present)")
+        assert all(unit.kind == "sentence" for unit in units)
+
+    def test_a_hash_without_a_space_is_not_a_heading(self) -> None:
+        assert split_units("#platform was the channel.") == [
+            TextUnit("#platform was the channel.", "sentence")
+        ]
+
+    def test_check_text_sends_only_the_body_and_returns_the_title_unchecked(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM]))
+        _patch_client(monkeypatch, client)
+
+        result = check_text(_ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), self._DOC)
+
+        user_message = client.messages.calls[0]["messages"][0]["content"]
+        assert "following 1 sentences" in user_message
+        assert "Staff Engineer" not in user_message
+        assert "1. Led the platform team." in user_message
+
+        title, claim = result.sentences
+        assert title.kind == "title"
+        assert title.text == self._TITLE
+        assert title.index == 1
+        assert title.verdict is None
+        assert title.drift_label is None
+        assert title.cited_span_ids == []
+        assert title.rule_flags == []
+        assert title.evidence_note == TITLE_NOTE
+        assert claim.kind == "claim"
+        assert claim.text == "Led the platform team."
+        assert claim.index == 2
+        assert claim.verdict == "supported"
+
+    def test_a_title_between_sentences_keeps_document_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        items = [_SUPPORTED_ITEM, {**_SUPPORTED_ITEM, "index": 2}]
+        client = _FakeAnthropicClient(response=_response(items))
+        _patch_client(monkeypatch, client)
+
+        result = check_text(
+            _ctx(),
+            _FakeGroundingRepo([_span()]),
+            _FakeRunRepo(),
+            "Led a team.\n\n# The Title\n\nShipped it.",
+        )
+
+        assert [(s.index, s.kind, s.text) for s in result.sentences] == [
+            (1, "claim", "Led a team."),
+            (2, "title", "The Title"),
+            (3, "claim", "Shipped it."),
+        ]
+
+    def test_a_title_only_document_raises_without_calling_the_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeAnthropicClient(response=_response([]))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match="no sentences"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, f"# {self._TITLE}")
+
+        assert client.messages.calls == []
+        assert runs.recorded == []
+
+    @pytest.mark.parametrize(
+        "override",
+        [{"kind": "title"}, {"verdict": None}, {"drift_label": None}],
+        ids=["kind-title", "null-verdict", "null-drift-label"],
+    )
+    def test_a_model_result_shaped_like_a_title_is_a_parse_error(
+        self, monkeypatch: pytest.MonkeyPatch, override: dict[str, Any]
+    ) -> None:
+        client = _FakeAnthropicClient(response=_response([{**_SUPPORTED_ITEM, **override}]))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match="could not parse"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, "Led the platform team.")
+
+        assert [r.outcome for r in runs.recorded] == ["error"]
+        assert runs.recorded[0].error is not None
+        assert runs.recorded[0].error.startswith("parse_error")
 
 
 class TestInitialsAreOneUnit:

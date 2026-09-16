@@ -177,8 +177,9 @@ def _print_summary(sentences: list[SentenceResult]) -> None:
     verdicts flat inflates the supported total with sentences nothing ever checked.
     A user reading "40 supported" would take it as forty verified claims.
     """
-    checked = [s for s in sentences if s.kind != "framing"]
-    framing = len(sentences) - len(checked)
+    checked = [s for s in sentences if s.kind == "claim"]
+    framing = sum(1 for s in sentences if s.kind == "framing")
+    titles = sum(1 for s in sentences if s.kind == "title")
     counts = Counter(s.verdict for s in checked)
     parts = [
         typer.style(f"{counts[v]} {v}", fg=_VERDICT_COLOR[v])
@@ -187,6 +188,8 @@ def _print_summary(sentences: list[SentenceResult]) -> None:
     ]
     if framing:
         parts.append(typer.style(f"{framing} not checked (framing)", fg=_FRAMING_COLOR))
+    if titles:
+        parts.append(typer.style(f"{titles} not checked (title)", fg=_FRAMING_COLOR))
     typer.echo(f"\n{len(sentences)} sentences: " + ", ".join(parts))
 
 
@@ -200,11 +203,16 @@ def _print_sentence(sentence: SentenceResult) -> None:
     misfiles as framing would inherit that false assurance silently. NOT CHECKED is
     what actually occurred.
     """
-    is_framing = sentence.kind == "framing"
-    label = "NOT CHECKED" if is_framing else sentence.verdict.upper()
-    color = _FRAMING_COLOR if is_framing else _VERDICT_COLOR[sentence.verdict]
+    # A document title (kind "title") was never sent to the model at all, so it has
+    # no verdict and no drift label; it renders the same way, labelled as a title.
+    if sentence.kind == "claim" and sentence.verdict is not None:
+        label = sentence.verdict.upper()
+        color = _VERDICT_COLOR[sentence.verdict]
+    else:
+        label = "NOT CHECKED"
+        color = _FRAMING_COLOR
     typer.secho(
-        f"[{label:<11}] {sentence.drift_label:<22} {sentence.text}",
+        f"[{label:<11}] {sentence.drift_label or sentence.kind:<22} {sentence.text}",
         fg=color,
     )
     if sentence.cited_span_ids:

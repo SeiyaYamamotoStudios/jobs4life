@@ -166,8 +166,12 @@ def summarise(data: dict[str, Any]) -> str:
     (never checked) must never be folded into the checked counts.
     """
     sentences = data["gate"]["sentences"]
-    claims = [s for s in sentences if s.get("kind") != "framing"]
-    framing_count = len(sentences) - len(claims)
+    # Only kind "claim" was checked. "framing" and a document "title" (never sent
+    # to the model, no verdict at all) are both reported as not checked.
+    claims = [s for s in sentences if s.get("kind") == "claim"]
+    framing_count = sum(1 for s in sentences if s.get("kind") == "framing")
+    title_count = sum(1 for s in sentences if s.get("kind") == "title")
+    titles = f", {title_count} not checked (title)" if title_count else ""
     supported = sum(1 for s in claims if s.get("verdict") == "supported")
     review = sum(1 for s in claims if s.get("verdict") == "review")
     unsupported = sum(1 for s in claims if s.get("verdict") == "unsupported")
@@ -177,7 +181,7 @@ def summarise(data: dict[str, Any]) -> str:
     return (
         f"{candidate_slug} x {job_slug}: {supported}/{len(claims)} traced, "
         f"{review} review, {unsupported} unsupported, {framing_count} not checked "
-        f"(framing) -- ${cost}"
+        f"(framing){titles} -- ${cost}"
     )
 
 

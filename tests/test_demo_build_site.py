@@ -292,6 +292,27 @@ def test_summarise_counts_framing_separately_from_claims() -> None:
     line = build_site.summarise(_valid_result())
     assert "1/1 traced" in line
     assert "1 not checked (framing)" in line
+    assert "(title)" not in line
+
+
+def test_summarise_never_counts_a_document_title_as_a_claim() -> None:
+    data = _valid_result()
+    data["gate"]["sentences"].insert(
+        0,
+        {
+            "index": 1,
+            "kind": "title",
+            "verdict": None,
+            "drift_label": None,
+            "cited_span_ids": [],
+            "evidence_note": "Document title: not checked against the corpus.",
+            "text": "Jane Placeholder -- CV bullets",
+        },
+    )
+    line = build_site.summarise(data)
+    assert "1/1 traced" in line
+    assert "0 unsupported" in line
+    assert "1 not checked (title)" in line
 
 
 # --------------------------------------------------------------------------

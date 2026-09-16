@@ -1,8 +1,9 @@
 """The baseline gate: fixed control flow, one model call.
 
 Not agentic -- see CLAUDE.md, "What is agentic, and what is not." The steps are:
-split input text into blocks and then sentences within each block (see
-`split_blocks` below), load the whole corpus for the user, one call to Claude
+split input text into blocks and then sentences within each block, setting the
+document title aside unchecked (see `split_units` below), load the whole corpus
+for the user, one call to Claude
 with the corpus cached and the sentences volatile, parse the structured
 response, record exactly one `runs` row. No retrieval, no verifier, no second
 call, no loop.
@@ -11,8 +12,10 @@ call, no loop.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -67,29 +70,61 @@ class GateError(RuntimeError):
     """
 
 
-def split_blocks(text: str) -> list[str]:
-    """Group text into blocks: bullets or paragraphs.
+# A markdown h1: one "#", whitespace, then the heading text. "## Section" does not
+# match -- its second character is "#", not whitespace.
+_H1_LINE = re.compile(r"^#\s+(?P<text>\S.*)$")
 
-    Mirrors the block model in jfl_core.ingest.parser -- a blank line ends a
-    block, and a bullet marker always starts a new one, even directly below
-    another bullet -- minus headings and section tracking, which checked text
-    (unlike the corpus) has no use for: every block here is just a unit to
-    sentence-split and send to the model. Text handed in from `read_input`'s
-    PDF path already has every real break expressed as a blank line, so this
-    only needs blank lines and bullet markers to recover the same blocks;
-    plain hand-written or pasted text (never touched by that PDF pass) relies
-    on the same two signals, exactly as corpus markdown does.
+# What a title's `evidence_note` says, so the reason it has no verdict travels with
+# the result rather than living only in whichever renderer shows it.
+TITLE_NOTE = "Document title: not checked against the corpus."
+
+
+@dataclass(frozen=True, slots=True)
+class TextUnit:
+    """One unit of a checked document, in document order. `kind="sentence"` is
+    sent to the model; `kind="title"` is not, and comes back as a result with no
+    verdict (see `jfl_gate.schema.SentenceKind`).
     """
-    blocks: list[str] = []
+
+    text: str
+    kind: Literal["sentence", "title"]
+
+
+def _title_line(lines: Sequence[str]) -> int | None:
+    """The line number of the document title, or None.
+
+    The title is an h1 that is the only h1 in the text -- the same rule
+    jfl_core.ingest.parser applies to corpus markdown, where a lone h1 is the
+    document's title and several h1s are structure. It is a rule about markup,
+    so it is only as good as the markup: plain text and PDF extractions carry
+    none, and a name line at the top of one is not recognised as a title. That
+    is deliberate -- nothing in plain text separates "Jane Doe" or "Engineering
+    Manager" from a role-and-dates line that is a real, checkable claim.
+    """
+    h1s = [i for i, line in enumerate(lines) if _H1_LINE.match(line.strip())]
+    return h1s[0] if len(h1s) == 1 else None
+
+
+def _blocks(text: str) -> list[tuple[str, bool]]:
+    """(block text, is the document title) in document order. See `split_blocks`."""
+    lines = text.splitlines()
+    title_at = _title_line(lines)
+    blocks: list[tuple[str, bool]] = []
     current: list[str] = []
 
     def flush() -> None:
         if current:
-            blocks.append(" ".join(current))
+            blocks.append((" ".join(current), False))
             current.clear()
 
-    for raw_line in text.splitlines():
+    for i, raw_line in enumerate(lines):
         line = raw_line.strip()
+        if i == title_at:
+            flush()
+            match = _H1_LINE.match(line)
+            assert match is not None  # _title_line only returns matching lines
+            blocks.append((match.group("text").strip(), True))
+            continue
         if not line:
             flush()
             continue
@@ -104,18 +139,56 @@ def split_blocks(text: str) -> list[str]:
     return blocks
 
 
+def split_blocks(text: str) -> list[str]:
+    """Group text into blocks: bullets or paragraphs.
+
+    Mirrors the block model in jfl_core.ingest.parser -- a blank line ends a
+    block, and a bullet marker always starts a new one, even directly below
+    another bullet -- minus section tracking, which checked text (unlike the
+    corpus) has no use for. The one heading this does recognise is the
+    document title (a lone markdown h1, see `_title_line`), which is always a
+    block of its own, returned without its "#" marker. Text handed in from
+    `read_input`'s PDF path already has every real break expressed as a blank
+    line, so this only needs blank lines and bullet markers to recover the
+    same blocks; plain hand-written or pasted text (never touched by that PDF
+    pass) relies on the same two signals, exactly as corpus markdown does.
+    """
+    return [block for block, _ in _blocks(text)]
+
+
+def split_units(text: str) -> list[TextUnit]:
+    """Every unit of the document in order: one per sentence *within a block*,
+    plus the document title as a unit of its own that is never sentence-split.
+
+    Sentences never cross blocks, so a heading, a bullet, and the next bullet
+    down can never be fused into one claim the way flat, block-blind
+    sentence-splitting fused them before.
+
+    The title is kept rather than dropped so it stays visible in the gate's
+    output, marked as not checked. It is not sent to the model because a title
+    is not an assertion: a draft titled "<name> -- CV bullets (<target role> --
+    <target employer>)" names the job being applied for, and the gate read that
+    as a claim to hold the role -- `adjacency_substitution`, unsupported, on
+    two of the nine demo drafts.
+    """
+    units: list[TextUnit] = []
+    for block, is_title in _blocks(text):
+        if is_title:
+            units.append(TextUnit(block, "title"))
+            continue
+        units.extend(TextUnit(block[s:e], "sentence") for s, e in split_sentences(block))
+    return units
+
+
 def sentences_from_text(text: str) -> list[str]:
-    """One unit per sentence *within a block* -- never across blocks, so a
-    heading, a bullet, and the next bullet down can never be fused into one
-    claim the way flat, block-blind sentence-splitting fused them before.
+    """The sentences `check_text` sends to the model, in order -- `split_units`
+    without the document title.
 
     Public, like jfl_core.ingest.parser.split_sentences, so this can be tested
     directly instead of only through `check_text`, which needs a live (or
     mocked) model call to exercise at all.
     """
-    return [
-        block[start:end] for block in split_blocks(text) for start, end in split_sentences(block)
-    ]
+    return [unit.text for unit in split_units(text) if unit.kind == "sentence"]
 
 
 def _check_alignment(sentences: Sequence[str], results: Sequence[SentenceResult]) -> None:
@@ -138,6 +211,52 @@ def _check_alignment(sentences: Sequence[str], results: Sequence[SentenceResult]
             "model output misaligned with input sentences: "
             f"expected indices {expected}, got {actual}"
         )
+
+
+def _reject_splitter_only_fields(results: Sequence[SentenceResult]) -> None:
+    """`kind="title"` and a missing verdict or drift label belong to the splitter's
+    title units only. GATE_OUTPUT_SCHEMA already keeps the model from producing
+    them; this makes a response that somehow did a parse failure rather than a
+    result that looks like an unchecked title. Raises ValueError so `check_text`
+    records it exactly as it records any other unparseable response.
+    """
+    for r in results:
+        if r.kind == "title" or r.verdict is None or r.drift_label is None:
+            raise ValueError(
+                f"result {r.index} has kind={r.kind!r}, verdict={r.verdict!r}, "
+                f"drift_label={r.drift_label!r}; the model must give a claim or "
+                "framing kind, a verdict and a drift label"
+            )
+
+
+def _assemble(units: Sequence[TextUnit], checked: Sequence[SentenceResult]) -> GateOutput:
+    """Merge the model's aligned results back into document order.
+
+    Each sentence result gets its own text (the model was never asked to echo it;
+    see SentenceResult.text) and its position in the whole document as `index`.
+    Each title unit becomes a result of its own with kind "title", no verdict, no
+    drift label and no citations, so it is shown as not checked rather than dropped.
+    Call only after `_check_alignment` has passed: `checked` is consumed in order.
+    """
+    remaining = iter(checked)
+    assembled: list[SentenceResult] = []
+    for position, unit in enumerate(units, start=1):
+        if unit.kind == "title":
+            assembled.append(
+                SentenceResult(
+                    index=position,
+                    kind="title",
+                    verdict=None,
+                    drift_label=None,
+                    cited_span_ids=[],
+                    evidence_note=TITLE_NOTE,
+                    text=unit.text,
+                )
+            )
+        else:
+            sentence = next(remaining)
+            assembled.append(sentence.model_copy(update={"text": unit.text, "index": position}))
+    return GateOutput(sentences=assembled)
 
 
 def check_text(
@@ -164,7 +283,8 @@ def check_text(
     The rendered prompt text is the same either way, so this cannot change a
     verdict -- see the byte-identity tests in `tests/test_prompt.py`.
     """
-    sentences = sentences_from_text(text)
+    units = split_units(text)
+    sentences = [unit.text for unit in units if unit.kind == "sentence"]
     if not sentences:
         raise GateError("no sentences found in the input text")
 
@@ -315,6 +435,7 @@ def check_text(
 
     try:
         result = GateOutput.model_validate(json.loads(text_block.text))
+        _reject_splitter_only_fields(result.sentences)
     except (json.JSONDecodeError, ValueError) as e:
         record(
             "error",
@@ -341,14 +462,7 @@ def check_text(
         )
         raise
 
-    # Attach each sentence's own text now that alignment is confirmed -- the model
-    # was never asked for it (see SentenceResult.text's docstring).
-    result = GateOutput(
-        sentences=[
-            sentence.model_copy(update={"text": sentences[sentence.index - 1]})
-            for sentence in result.sentences
-        ]
-    )
+    result = _assemble(units, result.sentences)
 
     # The rule tier makes no model call and adds no latency worth measuring, so it
     # runs here, after the one parse that can fail, and before the one `runs` row

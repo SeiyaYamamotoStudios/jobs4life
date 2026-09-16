@@ -171,3 +171,22 @@ def test_multiple_sentences_preserve_order() -> None:
     }
     result = GateOutput.model_validate(data)
     assert [s.index for s in result.sentences] == [1, 2]
+
+
+def test_a_stored_title_result_round_trips_with_no_verdict() -> None:
+    """`Draft.gate_result` is stored as a dump and re-validated by the CLI, so a title
+    unit -- no verdict, no drift label -- must survive the round trip as None,
+    never coerced to a default verdict.
+    """
+    title = SentenceResult(
+        index=1,
+        kind="title",
+        verdict=None,
+        drift_label=None,
+        cited_span_ids=[],
+        evidence_note="Document title: not checked against the corpus.",
+        text="Jane Placeholder -- CV bullets",
+    )
+    restored = GateOutput.model_validate(GateOutput(sentences=[title]).model_dump(mode="json"))
+    assert restored.sentences[0] == title
+    assert restored.sentences[0].verdict is None
