@@ -164,12 +164,19 @@ def build_coverage_user_message(requirements: Sequence[str]) -> str:
 
 
 # Kept in exact correspondence with jfl_generate.schema.DraftOutput.
+#
+# `title` is separate from `draft` so a heading for the whole document never reaches
+# the claim gate as a sentence: `jfl_generate.draft` renders it as the document's
+# lone markdown h1, which `jfl_gate.gate.split_units` sets aside unchecked. Before
+# this, a title naming the target role and employer was checked as a claim to hold
+# that role. "" means no title.
 DRAFT_OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
+        "title": {"type": "string"},
         "draft": {"type": "string"},
     },
-    "required": ["draft"],
+    "required": ["title", "draft"],
     "additionalProperties": False,
 }
 
@@ -194,6 +201,9 @@ _DRAFT_INSTRUCTIONS = """\
 You are drafting application material for jobs4life, a tool that measures the distance \
 between what a candidate's corpus documents and what is claimed on their behalf. \
 {kind_instructions}
+
+If the document has a title, return it in title rather than as a line of draft; \
+otherwise return "" for title.
 
 Select and emphasise what the job's requirements call for. Ground every factual claim in \
 the corpus below, and do not assert anything the corpus does not support -- where the \

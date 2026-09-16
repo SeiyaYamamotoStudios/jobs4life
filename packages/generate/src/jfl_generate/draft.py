@@ -49,6 +49,22 @@ MAX_TOKENS = 8000
 Outcome = Literal["ok", "error", "refused", "skipped"]
 
 
+def compose_draft_text(title: str, body: str) -> str:
+    """The stored and gated draft text: the model's title, if any, as a markdown h1
+    above the body.
+
+    An h1 is how `jfl_gate.gate.split_units` knows a title from a claim -- it sets
+    a lone h1 aside as not checked. The title is flattened to one line, and any "#"
+    it starts with is dropped, so it is always exactly one h1 line. If the body
+    itself also carries an h1, there are two and neither is a title: both are
+    checked, the same as before titles were separated at all.
+    """
+    title_line = " ".join(title.split()).lstrip("#").strip()
+    if not title_line:
+        return body
+    return f"# {title_line}\n\n{body}"
+
+
 def generate_draft(
     ctx: RequestContext,
     job_repo: JobRepository,
@@ -245,13 +261,14 @@ def generate_draft(
     # GateError here (an API failure, not a flagged claim) propagates uncaught:
     # the draft call's `runs` row has already committed, and the caller (the CLI)
     # reports the failure the same way it reports any other generation error.
-    gate_output = check_text(ctx, grounding_repo, run_repo, parsed.draft)
+    text = compose_draft_text(parsed.title, parsed.draft)
+    gate_output = check_text(ctx, grounding_repo, run_repo, text)
 
     draft = Draft(
         user_id=ctx.user_id,
         job_id=job_id,
         kind=kind,
-        text=parsed.draft,
+        text=text,
         gate_result=gate_output.model_dump(mode="json"),
         trace_id=ctx.trace_id,
     )

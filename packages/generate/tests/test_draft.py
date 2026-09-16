@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 
 import anthropic
@@ -40,7 +41,7 @@ from jfl_core.models import (
 from jfl_gate.gate import GateError
 from jfl_gate.pricing import MODEL, compute_cost_usd
 from jfl_gate.schema import GateOutput, SentenceResult
-from jfl_generate.draft import generate_draft
+from jfl_generate.draft import compose_draft_text, generate_draft
 from jfl_generate.errors import GenerateError
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -212,6 +213,7 @@ def _ctx(api_key: str | None = "test-key") -> RequestContext:
 def _draft_response(
     draft_text: str,
     *,
+    title: str = "",
     stop_reason: str = "end_turn",
     stop_details: RefusalStopDetails | None = None,
     input_tokens: int = 100,
@@ -221,7 +223,7 @@ def _draft_response(
 ) -> Message:
     return Message(
         id="msg_test",
-        content=[TextBlock(type="text", text=json.dumps({"draft": draft_text}))],
+        content=[TextBlock(type="text", text=json.dumps({"title": title, "draft": draft_text}))],
         model=MODEL,
         role="assistant",
         stop_reason=stop_reason,  # type: ignore[arg-type]
@@ -528,6 +530,126 @@ def test_a_flagged_draft_is_still_returned_not_suppressed(monkeypatch: pytest.Mo
     assert result.text == "Owned the FX pricing platform."
     assert result.gate_result == flagged_output.model_dump(mode="json")
     assert job_repo.drafts == [result]
+
+
+# --- the draft's title --------------------------------------------------------------
+
+
+class TestComposeDraftText:
+    def test_no_title_leaves_the_body_untouched(self) -> None:
+        assert compose_draft_text("", "- Led the team.") == "- Led the team."
+
+    def test_a_whitespace_only_title_is_no_title(self) -> None:
+        assert compose_draft_text("  \n ", "- Led the team.") == "- Led the team."
+
+    def test_a_title_becomes_one_h1_line_above_the_body(self) -> None:
+        assert compose_draft_text("Jane -- CV bullets", "- Led the team.") == (
+            "# Jane -- CV bullets\n\n- Led the team."
+        )
+
+    def test_a_multi_line_title_is_flattened_to_one_line(self) -> None:
+        assert compose_draft_text("Jane\n  CV bullets", "Body.").startswith("# Jane CV bullets\n\n")
+
+    def test_a_title_already_marked_as_a_heading_is_not_double_marked(self) -> None:
+        assert compose_draft_text("## Jane", "Body.") == "# Jane\n\nBody."
+
+    def test_a_title_made_only_of_hashes_is_no_title(self) -> None:
+        assert compose_draft_text("##", "Body.") == "Body."
+
+
+def test_the_title_reaches_the_gate_and_the_store_as_a_heading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeAnthropicClient(
+        response=_draft_response("- Led the platform team.", title="Jane -- CV bullets")
+    )
+    _patch_client(monkeypatch, client)
+    gate_calls = _fake_check_text(monkeypatch)
+
+    job = _job()
+    requirement = _requirement(job)
+    job_repo = _FakeJobRepository(job, [requirement], [_coverage_row(requirement)])
+
+    result = generate_draft(
+        _ctx(), job_repo, _FakeGroundingRepo([_span()]), _FakeRunRepo(), job.id, "cv_bullets"
+    )
+
+    assert gate_calls[0][3] == "# Jane -- CV bullets\n\n- Led the platform team."
+    assert result.text == "# Jane -- CV bullets\n\n- Led the platform team."
+
+
+class _DraftThenGateMessages:
+    """Serves the draft call (`create`) and then the real claim gate's call
+    (`stream`), so the title's whole path runs through the real `check_text`.
+    """
+
+    def __init__(self, draft: Message, gate: Message) -> None:
+        self._draft = draft
+        self._gate = gate
+        self.stream_calls: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> Message:
+        return self._draft
+
+    def stream(self, **kwargs: Any) -> _DraftThenGateMessages:
+        self.stream_calls.append(kwargs)
+        return self
+
+    def __enter__(self) -> _DraftThenGateMessages:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get_final_message(self) -> Message:
+        return self._gate
+
+
+def test_a_title_naming_the_target_role_is_never_checked_as_a_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The observed defect, end to end through the real claim gate: the model titles
+    its draft with the role and employer being applied for, and that title must come
+    back not checked -- not sent to the gate model, no verdict -- while the body is
+    checked as usual.
+    """
+    title = "Jane Placeholder -- CV bullets (Staff Engineer -- Example Co)"
+    span = _span()
+    gate_item = {
+        "index": 1,
+        "kind": "claim",
+        "verdict": "supported",
+        "drift_label": "supported",
+        "cited_span_ids": [str(span.id)],
+        "evidence_note": "Traces cleanly.",
+    }
+    gate_response = _draft_response("unused")
+    gate_response = gate_response.model_copy(
+        update={"content": [TextBlock(type="text", text=json.dumps({"sentences": [gate_item]}))]}
+    )
+    messages = _DraftThenGateMessages(
+        _draft_response("- Led the platform team.", title=title), gate_response
+    )
+    client = SimpleNamespace(messages=messages)
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **kwargs: client)
+
+    job = _job()
+    requirement = _requirement(job)
+    job_repo = _FakeJobRepository(job, [requirement], [_coverage_row(requirement)])
+
+    result = generate_draft(
+        _ctx(), job_repo, _FakeGroundingRepo([span]), _FakeRunRepo(), job.id, "cv_bullets"
+    )
+
+    gate_user_message = messages.stream_calls[0]["messages"][0]["content"]
+    assert "Staff Engineer" not in gate_user_message
+    assert "1. Led the platform team." in gate_user_message
+
+    gate_output = GateOutput.model_validate(result.gate_result)
+    assert [(s.kind, s.verdict, s.text) for s in gate_output.sentences] == [
+        ("title", None, title),
+        ("claim", "supported", "Led the platform team."),
+    ]
 
 
 # --- draft call failure paths -----------------------------------------------------

@@ -64,6 +64,8 @@ class CoverageOutput(BaseModel):
 
 
 class DraftOutput(BaseModel):
+    # "" for no title -- see DRAFT_OUTPUT_SCHEMA in prompts.py for why it is separate.
+    title: str
     draft: str
 
 

@@ -306,9 +306,16 @@ def test_draft_system_blocks_cache_placement() -> None:
     )
 
 
-def test_draft_output_schema_requires_draft_and_forbids_extras() -> None:
-    assert _DRAFT_SCHEMA["required"] == ["draft"]
+def test_draft_output_schema_requires_title_and_draft_and_forbids_extras() -> None:
+    assert _DRAFT_SCHEMA["required"] == ["title", "draft"]
+    assert set(_DRAFT_SCHEMA["properties"]) == {"title", "draft"}
     assert _DRAFT_SCHEMA["additionalProperties"] is False
+
+
+def test_draft_system_prompt_asks_for_the_title_outside_the_draft() -> None:
+    for kind in ("cv_bullets", "cover_letter"):
+        prompt = build_draft_system_prompt([], kind)
+        assert "return it in title rather than as a line of draft" in prompt
 
 
 # --- product name --------------------------------------------------------------
