@@ -58,15 +58,16 @@ that mattered was found that way and none by review.
 
 Slice C7 and C7a shipped this session, built by five parallel agents and merged here.
 
-- **Workplace presets.** `/jobs` has three modes: **remote only** (strict: the employer
-  says remote, and wording saying "Remote-Friendly" does not count), **remote friendly**
+- **Workplace presets.** `/jobs` has three modes: **remote only** (the employer's
+  structured field says remote; see the 2026-09-16 ruling below), **remote friendly**
   (remote plus hybrid, hybrid badged "— days not stated"), and **custom** (the old
   checkboxes, unchanged). Anthropic's 38 On-Site jobs whose location reads
   "Remote-Friendly" appear under remote friendly with the conflict shown on the row, per
   the owner's ruling. A board can be marked "hybrid here is too heavy", which drops its
-  hybrid jobs from remote friendly. **Open for the owner:** remote only currently also
-  drops a job the board's own field calls Remote when its text says Remote-Friendly —
-  on the captured Anthropic fixture that is both of their remote jobs.
+  hybrid jobs from remote friendly. **Ruled 2026-09-16:** a job the board's own field
+  calls Remote stays in remote only when its text says Remote-Friendly, badged "The
+  posting says Remote-Friendly" — before that ruling it was dropped, which hid both of
+  Anthropic's remote jobs. Words alone never bring in a job whose field is not remote.
 - **The changes feed** at `/changes`: new / gone / returned / reposted since the user
   last looked, each staying 24 hours after they first see it or until dismissed, through
   the same saved filter. First visit looks back 7 days. Marks are never pruned (the table

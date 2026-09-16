@@ -322,6 +322,9 @@ filter used everywhere**, with per-board exceptions in the owner's own words.
 **Workplace modes — two named presets, replacing loose checkboxes as the main control.**
 - **Remote only** — strict. Jobs the employer states are remote. Nothing labelled on-site
   or hybrid, whatever the location text says. The owner's example: Primer, remote-first.
+  A job labelled remote whose text also says remote-friendly **stays in, badged** (owner,
+  2026-09-16): the label is the employer's statement, and dropping it resolved the
+  conflict silently.
 - **Remote friendly** — remote only, **plus low-commitment hybrid: from a couple of days a
   month up to one day a week.**
 

@@ -281,6 +281,38 @@ def test_remote_only_shows_only_strict_remote(
     assert "— days not stated" not in text
 
 
+def test_remote_only_keeps_a_remote_job_whose_posting_says_remote_friendly(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """Owner ruling, 2026-09-16: the structured field says Remote, the location
+    says Remote-Friendly. Remote only keeps it, with the words shown on the row.
+    """
+    user_id = sign_in(client, google, subs, engine)
+    seed_board(
+        engine,
+        user_id,
+        platform="greenhouse",
+        label="Anthropic",
+        jobs=[
+            job(
+                "r1",
+                "Engineering Manager, Remote-Friendly",
+                "remote",
+                ("Remote-Friendly (Travel-Required)", "San Francisco, CA"),
+                "Remote",
+            ),
+            job("r2", "Engineering Manager, Compute", "onsite", ("Remote-Friendly",), "On-Site"),
+        ],
+    )
+    save_filter(client, "remote_only")
+    text = text_of(client.get("/jobs").text)
+    assert "Engineering Manager, Remote-Friendly" in text
+    assert "Remote The posting says Remote-Friendly" in text
+    # Words alone never bring in a job whose field is not remote.
+    assert "Engineering Manager, Compute" not in text
+    assert "1 matching of 2 open jobs" in text
+
+
 def test_remote_friendly_shows_hybrid_badged_and_the_conflict_on_the_row(
     client: TestClient, seeded: dict[str, uuid.UUID]
 ) -> None:

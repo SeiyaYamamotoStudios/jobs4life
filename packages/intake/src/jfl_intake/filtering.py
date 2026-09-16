@@ -24,14 +24,19 @@ a guess, and a guess here silently hides or shows a role.
       - `custom`: the job's workplace must be in the selected set; empty = any.
         Exactly the behaviour from before the presets, so an old filter matches
         what it matched.
-      - `remote_only`: strict. The employer states `remote`, and nothing in the
-        posting calls it remote-friendly (`jfl_intake.workplace.says_remote_friendly`),
-        which is the employer telling us there is some office time.
+      - `remote_only`: the employer's structured field states `remote`. A posting
+        that also calls itself remote-friendly (`jfl_intake.workplace.says_remote_friendly`)
+        stays in, with the conflict on the row: the structured field is the
+        employer's own statement, and hiding it would resolve the conflict silently
+        (owner ruling, 2026-09-16 -- before that, the words excluded it, which on
+        the captured Anthropic board hid both of its remote jobs). A job whose
+        field is not `remote` never gets in on the words alone.
       - `remote_friendly`: `remote` or `hybrid`, or the posting says
         remote-friendly **even where the structured field says on-site** --
         Anthropic's 38 `On-Site` jobs whose location reads
         "Remote-Friendly (Travel-Required)" (owner ruling, 2026-09-15). A board
-        the owner marks `hybrid_too_heavy` contributes only its plain remote jobs.
+        the owner marks `hybrid_too_heavy` contributes only the jobs remote only
+        would, so remote friendly is never narrower than remote only.
 
 **Hybrid is flagged, never promoted.** Platforms say "Hybrid" without a day
 count, so each match carries a `WorkplaceNote` the page turns into words:
@@ -201,9 +206,8 @@ def workplace_passes(f: CompiledFilter, job: FilterableJob, *, hybrid_too_heavy:
     evidence = says_remote_friendly(job)
     if f.unknown_shown and job.workplace == "unknown" and not evidence:
         return True
-    strict = job.workplace == "remote" and not evidence
     if f.mode == "remote_only" or hybrid_too_heavy:
-        return strict
+        return job.workplace == "remote"
     return job.workplace in ("remote", "hybrid") or evidence
 
 

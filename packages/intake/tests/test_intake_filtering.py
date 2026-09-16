@@ -282,9 +282,10 @@ def job_for(workplace: Workplace, evidence: bool, board: uuid.UUID = BOARD) -> J
 # workplaces=["remote"]. Outcomes: filter, hidden (hidden_unstated), out (excluded).
 # fmt: off
 PRESET_TABLE: dict[tuple[WorkplaceMode, Workplace, bool, bool], str] = {
-    # remote only: strict, and hybrid_too_heavy is irrelevant.
+    # remote only: the structured field says remote; remote-friendly words stay in,
+    # badged (owner ruling, 2026-09-16). hybrid_too_heavy is irrelevant.
     ("remote_only", "remote", False, False): "filter",
-    ("remote_only", "remote", True, False): "out",
+    ("remote_only", "remote", True, False): "filter",
     ("remote_only", "hybrid", False, False): "out",
     ("remote_only", "hybrid", True, False): "out",
     ("remote_only", "onsite", False, False): "out",
@@ -292,7 +293,7 @@ PRESET_TABLE: dict[tuple[WorkplaceMode, Workplace, bool, bool], str] = {
     ("remote_only", "unknown", False, False): "hidden",
     ("remote_only", "unknown", True, False): "out",
     ("remote_only", "remote", False, True): "filter",
-    ("remote_only", "remote", True, True): "out",
+    ("remote_only", "remote", True, True): "filter",
     ("remote_only", "hybrid", False, True): "out",
     ("remote_only", "hybrid", True, True): "out",
     ("remote_only", "onsite", False, True): "out",
@@ -308,9 +309,9 @@ PRESET_TABLE: dict[tuple[WorkplaceMode, Workplace, bool, bool], str] = {
     ("remote_friendly", "onsite", True, False): "filter",
     ("remote_friendly", "unknown", False, False): "hidden",
     ("remote_friendly", "unknown", True, False): "filter",
-    # remote friendly on a board whose hybrid is too heavy: plain remote only.
+    # remote friendly on a board whose hybrid is too heavy: exactly what remote only keeps.
     ("remote_friendly", "remote", False, True): "filter",
-    ("remote_friendly", "remote", True, True): "out",
+    ("remote_friendly", "remote", True, True): "filter",
     ("remote_friendly", "hybrid", False, True): "out",
     ("remote_friendly", "hybrid", True, True): "out",
     ("remote_friendly", "onsite", False, True): "out",
@@ -440,10 +441,13 @@ def test_the_captured_anthropic_board_under_each_preset() -> None:
     ]
 
     strict = apply_filter(jobs, preset("remote_only"), include_unstated={BOARD: True})
-    # Both remote jobs say Remote-Friendly, so remote only keeps neither; the
+    # Both remote jobs say Remote-Friendly. Their structured field says Remote, so
+    # remote only keeps them with the words shown (owner ruling, 2026-09-16); the
     # unstated Sydney job comes in by Greenhouse's include-unstated default.
-    assert [(m.job.title, m.reason) for m in strict.matches] == [
-        ("Applied AI Architect", "unstated")
+    assert [(m.job.title, m.reason, m.workplace_note) for m in strict.matches] == [
+        ("Business Systems Analyst", "filter", "says_remote_friendly"),
+        ("Applied AI Architect", "unstated", None),
+        ("Staff+ Software Engineer, Data Infrastructure", "filter", "says_remote_friendly"),
     ]
 
     friendly = apply_filter(jobs, preset("remote_friendly"), include_unstated={BOARD: True})
