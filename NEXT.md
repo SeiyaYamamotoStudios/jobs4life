@@ -92,11 +92,16 @@ Then, in order: B4 (two scores on arrival, never composited), B5 (the engine's s
 including "Generate a CV"), B6 (corpus upload), C (intake), D1 (interview prep), D2
 (rejection into a plan).
 
-**Do before B5 puts drafting in front of anyone but the owner:** the prompt-defect batch.
-Two known defects — document titles read as assertions, the model re-splitting its own
-input at initials — plus the deferred `job4life` → `jobs4life` prompt rename, in one
-change and one ~$2.07 eval re-run against the 2026-09-05 Opus baseline. Until that runs,
-the published over-claim rate describes a prompt that is not the one deployed.
+**Do before B5 puts drafting in front of anyone but the owner:** re-run the eval. The
+prompt-defect batch **landed 2026-09-16** (df0333d..996508e): dotted initials no longer
+split a sentence, a lone markdown h1 is a title shown as NOT CHECKED and never sent to
+the model, drafts return their title separately, and the four prompt blocks say
+jobs4life. What is still owed is the ~$2.07 eval re-run against the 2026-09-05 Opus
+baseline — and **the baseline `.eval` logs are not on this machine**, so they must be
+found before the paired comparison can run. Until then the published over-claim rate
+describes a prompt that is not the one deployed. Expect fever-13515 to move from harness
+error to scored (over-flag denominator 69 → 70). The demo also needs regenerating
+(~$2.82): drafts now carry a `# title` line.
 
 Also outstanding, small:
 
@@ -136,16 +141,17 @@ mistake. Uncommitted changes are not deployed, on purpose: the box always runs a
   ranged 190 to 975 output tokens across three samples. Treat every projected total in
   PLAN.md as a lower bound with roughly 2x spread, and meter runs rather than trusting a
   budget computed from one sample.
-- **The model re-splits its own input, and it used to abort the whole eval.** On
-  `fever-13515`, "Petyr Baelish is created by an American author George R.R. Martin."
-  came back as *two* claims -- "...George R.R." and a fragment "Martin.". `split_blocks`
-  is not at fault: it returns one block for that text, verified locally. The model split
-  at the initials inside its own structured output. Any name with initials, or a
-  "Ph.D.", can do this, so it will happen on real CVs too. The eval scorer used to raise
-  on it, which killed a 50-item run at sample 45; it now scores as a harness error,
-  excluded from both headline rates rather than folded into either. **The underlying gate
-  behaviour is unfixed** -- fixing it means a prompt change, which invalidates the
-  2026-09-05 baseline, so it waits.
+- **"The model re-splits its own input" was our splitter, not the model** (corrected
+  2026-09-16). On `fever-13515`, "Petyr Baelish is created by an American author George
+  R.R. Martin." came back as two claims. `split_blocks` does return one block -- but
+  `sentences_from_text` then runs `jfl_core.ingest.parser.split_sentences` inside each
+  block, and that split after "R.R." (not in `_ABBREVIATIONS`, not a single initial,
+  followed by a capital). The model received two numbered sentences and correctly
+  answered two; `_check_alignment` already rejects any index set other than exactly
+  1..N. Fixed by `_DOTTED_ABBREVIATION` (df0333d). It was the only one of the 210 golden
+  items affected, which is why the baseline scored 209. A free test now asserts every
+  golden item splits into exactly one sentence. **Lesson:** "verified locally" checked
+  the wrong function -- verify the whole path the text takes, not the first stage.
 - **A 5-item eval sample overstates the per-item cost by ~2x.** The smoke test measured
   $0.02116/item; the full 210-item run came in at $0.00986. The small sample pays a cache
   write for the shared instructions block that the remaining items then read for free.

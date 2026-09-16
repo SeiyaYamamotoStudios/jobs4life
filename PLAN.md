@@ -495,10 +495,11 @@ eventually improves the corpus the claim gate measures against.
 - **Drop `users.email`'s UNIQUE NOT NULL.** Email is presentation-only now that identity
   is Google's `sub`; the constraint makes a reassigned address a hard login failure for
   its new owner.
-- **The prompt batch.** Two known defects — document titles read as assertions, the model
-  re-splitting its own input at initials — plus the deferred prompt rename, in one change
-  and one $2.07 eval re-run. **Before drafting goes in front of anyone but the owner**, or
-  the published over-claim rate describes a prompt that is not running.
+- **The prompt batch.** Landed 2026-09-16: titles are shown NOT CHECKED rather than
+  sent as claims, the initials split turned out to be our own sentence splitter (fixed
+  there, no prompt change), and the prompt rename. **Still owed: the $2.07 eval re-run**,
+  before drafting goes in front of anyone but the owner, or the published over-claim rate
+  describes a prompt that is not running.
 
 
 ## Risks worth naming now
@@ -511,11 +512,11 @@ the tool isn't used daily is that there is nowhere to put an application. Resist
 now a credential disclosure. This is why custody is in slice A rather than bolted on when
 the first non-owner user appears.
 
-**Two prompt defects are known and unfixed** — document titles read as assertions, and
-the model re-splitting its own input at initials. Both need a prompt change, which
-invalidates the 2026-09-05 eval baseline, so they are batched with the deferred prompt
-rename into one $2.07 re-run. Do that before slice B puts drafting in front of a second
-user.
+**Two defects were fixed 2026-09-16 and are not yet measured** — document titles read as
+assertions, and what was recorded as the model re-splitting its input at initials (it
+was our sentence splitter). The gate prompt changed only by the rename, but the splitter
+change and the rename together invalidate the 2026-09-05 baseline, so the $2.07 re-run
+is still owed before slice B puts drafting in front of a second user.
 
 **The demo page must not rot.** It is the honest front door and it is pre-computed. If
 the pipeline changes materially, regenerate it — nine combinations, ~$2.82 — or take it

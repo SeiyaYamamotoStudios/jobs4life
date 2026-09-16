@@ -196,6 +196,14 @@ assertions; the model re-splitting its own input). The prompt rename rides along
 batch, measured in the same run. Until then the prompts name a product that has been
 renamed, which is invisible to users and costs nothing.
 
+**Amended 2026-09-16 — the batch landed; the re-run is still owed.** The rename is done.
+The "model re-splitting its own input" defect was never the model: `split_sentences`
+split "George R.R. Martin." after the initials, and the model correctly answered the two
+sentences it was given. Fixed in the splitter, not the prompt. Titles are now a
+structural `kind="title"`, shown NOT CHECKED and never sent to the model. The measurement
+rule above is unchanged — the $2.07 re-run against the 2026-09-05 baseline is what makes
+the published number true of the running code again.
+
 **The Python identifiers stay `jfl_*` / `JFL_*`.** The abbreviation expands to "jobs for
 life" as readily as it did to "job for life", so renaming ~100 identifiers, the CLI entry
 point, and every environment variable would be churn with no reader-facing gain. The
