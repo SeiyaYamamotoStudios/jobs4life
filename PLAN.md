@@ -155,9 +155,58 @@ judgement. So: try the URL, fall back quietly, never pretend it is reliable.
 This is also the slice that proves the queue end to end, which is why it comes first
 among the model-facing work.
 
-### B4 — two scores on arrival, never one
+### B3a — profile setup: questions, none mandatory
 
-On add, the application is scored automatically, with a paragraph for each score.
+Added 2026-09-16. Scoring needs to know what the user wants and what they will not
+accept, and the owner currently carries that across scattered Claude conversations. So
+profile setup is **a set of questions, every one optional**. A skipped question is
+never guessed at: the stage that would have used it reports "not stated".
+
+Answers are stored **verbatim, in the user's words**, and are **per-user preferences,
+never grounding** — with two exceptions, 15 and 16, which are claims about the person
+and go to the corpus through the same verbatim path as gap answers. The CV (18) goes to
+the sent-document store: form, never truth. **Nothing asks age**: it is a protected
+characteristic, and what trajectory actually needs is how long the user expects to stay.
+
+| # | Question | Consumed by |
+|---|---|---|
+| 1 | Where are you based, and how far / how often will you travel to an office? | gate: location, commute |
+| 2 | Which working arrangements will you consider? | gate: workplace presets |
+| 3 | Which levels — IC, EM, above EM? | gate: level |
+| 4 | Lowest total package you would accept, and what your current one is made of (base, bonus, equity, pension, car)? | gate: comp floor; objective: comp |
+| 5 | Contract types — permanent, contract (inside/outside IR35), fixed-term? | gate: contract |
+| 6 | Notice period, and earliest or preferred start date? | gate, timing |
+| 7 | Right to work, sponsorship, security clearance held? | gate |
+| 8 | Anything you categorically will not do, or requirements you know you do not meet? | gate: categorical |
+| 9 | Disciplines targeted, and not (tickboxes plus free text) | discipline match |
+| 10 | What is this move for? Up to four objectives, each scored separately | objectives |
+| 11 | Per objective: what would show a role delivers it? | objectives |
+| 12 | Where do you want to be in two years, and how long do you expect to stay? | trajectory |
+| 13 | Employer deal-breakers: ownership (PE), funding stage, recent layoffs, sectors | signals about the place |
+| 14 | Warning signs in job ads you have learned to distrust | tells |
+| 15 | Where is your depth genuine, and where is it exposure only? | **corpus, verbatim** |
+| 16 | Gaps that keep coming up in roles you want | coverage, education planning |
+| 17 | Anything ruled out that you do not want reopened — dated, flagged if it reappears | ruled-out decisions |
+| 18 | Your current CV | sent-document store |
+
+The discipline buckets in 9 are the owner's own, observed in use: platform/infra
+engineering, engineering management, ML modelling, data engineering, consulting practice
+leadership, frontend, embedded, programme management. Editable, since another user's
+disciplines will differ.
+
+Assessment order, from how the owner already assesses roles (cheap stages first, since
+they eliminate most roles): hard gates → discipline → requirement-by-requirement
+coverage (built) → objectives, each separately → trajectory → signals about the place →
+tells. Deterministic where the ad has structured data (workplace, stated comp, contract
+type), model-judged otherwise, and model stages run only when the user tracks a job.
+
+### B4 — two scores when tracked, never one
+
+**Superseded trigger (2026-09-15):** scoring runs when the user turns a job into an
+application, never on arrival. The axes below are unchanged; B3a's answers are what
+"do I want this" is judged against, objective by objective.
+
+On tracking, the application is scored, with a paragraph for each score.
 
 **Two axes, never composited** — the standing decision, and the owner's three requests map
 onto it cleanly: *chances* is **could I get this**, *alignment to interest* is **do I want
