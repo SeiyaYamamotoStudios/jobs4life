@@ -202,7 +202,8 @@ def test_a_new_sub_never_inherits_an_account_by_email(
 ) -> None:
     """The failure keying on email would eventually cause: an address is
     reassigned, a different person signs in, and gets somebody's career history.
-    Here they are refused instead.
+    Identity stays the `sub`, so the stranger gets their own new account
+    instead -- never the original one.
     """
     first = sign_in(client, google, subs)
     original_id = user_id_for(engine, first.sub)
@@ -213,17 +214,49 @@ def test_a_new_sub_never_inherits_an_account_by_email(
     google.identity = GoogleIdentity(sub=stranger, email=first.email, display_name="Someone Else")
     response = client.get("/auth/google/callback")
 
-    assert "Sign in with Google" in response.text  # bounced back to login
-    assert "already uses that email address" in response.text
+    assert response.status_code == 200  # signed in, not bounced to login
     with engine.connect() as conn:
-        assert (
-            conn.execute(
-                select(users_table.c.id).where(users_table.c.google_sub == stranger)
-            ).first()
-            is None
-        )
+        stranger_id = conn.execute(
+            select(users_table.c.id).where(users_table.c.google_sub == stranger)
+        ).one()
+        # A new, different account -- not the original one, and not refused.
+        assert stranger_id.id != original_id
         # And the original account is untouched.
         assert conn.execute(select(users_table.c.id).where(users_table.c.id == original_id)).one()
+
+
+def test_two_users_with_the_same_email_can_both_exist_and_sign_in(
+    client: TestClient, google: StubGoogle, engine: Engine, subs: list[str]
+) -> None:
+    """`users.email` carries no uniqueness constraint (migration
+    6b3ce06d7b4e): email is presentation-only, so a reassigned
+    address must not lock its new owner out. Both accounts stay independently
+    resolvable by their own `sub`, and both can sign in.
+    """
+    shared_email = f"{uuid.uuid4()}@test.invalid"
+    first = sign_in(client, google, subs, email=shared_email)
+    first_id = user_id_for(engine, first.sub)
+    assert "Signed in" in client.get("/").text
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    second = sign_in(client, google, subs, email=shared_email)
+    second_id = user_id_for(engine, second.sub)
+    assert "Signed in" in client.get("/").text
+
+    assert first_id != second_id
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users_table.c.id, users_table.c.email).where(
+                users_table.c.id.in_([first_id, second_id])
+            )
+        ).all()
+    assert {row.id for row in rows} == {first_id, second_id}
+    assert all(row.email == shared_email for row in rows)
+
+    # Signing back into the first account still resolves to the same row.
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs, sub=first.sub, email=shared_email)
+    assert user_id_for(engine, first.sub) == first_id
 
 
 def test_the_session_cookie_is_host_prefixed_and_opaque(

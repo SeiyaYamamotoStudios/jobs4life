@@ -75,8 +75,12 @@ users = Table(
     # on a non-null value rather than matching NULL.
     Column("google_sub", Text, unique=True),
     # Presentation only, refreshed from the id token on every login. Never used
-    # to find or match a user.
-    Column("email", Text, nullable=False, unique=True),
+    # to find or match a user. Neither NOT NULL nor UNIQUE (migration
+    # 6b3ce06d7b4e): Google reassigns an address to a different
+    # person, and the old unique constraint turned that reassignment into a
+    # hard login failure for the address's new owner -- their upsert clashed
+    # with the row still displaying it under the previous owner's `sub`.
+    Column("email", Text),
     Column("display_name", Text),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
     _ts("created_at", nullable=False, server_default=func.now()),

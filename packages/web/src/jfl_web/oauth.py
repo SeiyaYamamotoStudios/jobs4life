@@ -109,8 +109,8 @@ def _identity_from_claims(claims: dict[str, Any]) -> GoogleIdentity:
     if not claims.get("email_verified", False):
         # Unverified addresses can be claimed by someone who does not control
         # them. Identity here is the `sub`, so this is not an account-takeover
-        # risk -- but `users.email` is unique, so an unverified address could
-        # squat one a real owner needs.
+        # risk, but the address is still shown back to the user on every page
+        # as theirs -- refuse rather than display one they do not control.
         raise OAuthError("This Google account's email address is not verified.")
     name = claims.get("name")
     return GoogleIdentity(
