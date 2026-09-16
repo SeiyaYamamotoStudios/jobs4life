@@ -70,8 +70,9 @@ Slice C7 and C7a shipped this session, built by five parallel agents and merged 
   Anthropic's remote jobs. Words alone never bring in a job whose field is not remote.
 - **The changes feed** at `/changes`: new / gone / returned / reposted since the user
   last looked, each staying 24 hours after they first see it or until dismissed, through
-  the same saved filter. First visit looks back 7 days. Marks are never pruned (the table
-  only grows; a purge task is the obvious next step).
+  the same saved filter. First visit looks back 7 days. Dead marks (dismissed, or past 24 hours)
+  are purged hourly by the worker (`purge_stale_feed_marks`, 2026-09-16); a purged mark's
+  event cannot resurface, because `last_looked_at` already passed it.
 - **Track as application** from `/jobs`, a board's page or the feed: fetches that one
   posting's description (`jfl_intake.descriptions`, 11 of 12 platforms; **Breezy has no
   public description source**, so it asks for a paste), then runs the existing B3
