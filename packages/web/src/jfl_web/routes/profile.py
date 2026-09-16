@@ -89,7 +89,11 @@ def _objective_slots(profile: ProfileRepoDep) -> list[dict[str, Any]]:
             "ordinal": n,
             "objective_text": (by_ordinal[n].objective_text if n in by_ordinal else ""),
             "evidence_text": (by_ordinal[n].evidence_text if n in by_ordinal else ""),
-            "updated_at": (by_ordinal[n].updated_at if n in by_ordinal else None),
+            # `list_objectives` already excludes a slot whose latest version
+            # is blank, so a slot present here always has a real save --
+            # `created_at` is that version's timestamp, kept as `updated_at`
+            # in the template's terms ("Saved <when>").
+            "updated_at": (by_ordinal[n].created_at if n in by_ordinal else None),
         }
         for n in range(1, MAX_OBJECTIVES + 1)
     ]

@@ -1268,8 +1268,12 @@ profile_answers = Table(
     ),
 )
 
-# Up to four objectives (questions 10/11), one row per (user, ordinal). A
-# mutable row, not versioned -- see jfl_core.models.ProfileObjective for why.
+# Up to four objectives (questions 10/11). Append-only, same shape and
+# reasoning as `profile_answers`: a save to ordinal N is a new row, never an
+# UPDATE, so what the user once said an objective was is never lost -- see
+# jfl_core.models.ProfileObjective. There is deliberately no unique constraint
+# on (user_id, ordinal); the current version of a slot is its latest row,
+# read back with DISTINCT ON in the repository, exactly as for answers.
 profile_objectives = Table(
     "profile_objectives",
     metadata,
@@ -1280,10 +1284,17 @@ profile_objectives = Table(
     Column("ordinal", Integer, nullable=False),
     Column("objective_text", Text, nullable=False, server_default=""),
     Column("evidence_text", Text, nullable=False, server_default=""),
-    _ts("created_at", nullable=False, server_default=func.now()),
-    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    # `clock_timestamp()`, not `now()` -- same reasoning as
+    # `profile_answers.created_at`: two saves to the same ordinal in one
+    # transaction must not tie.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
     CheckConstraint("ordinal between 1 and 4", name="ordinal_range"),
-    UniqueConstraint("user_id", "ordinal"),
+    Index(
+        "ix_profile_objectives_user_id_ordinal_created_at",
+        "user_id",
+        "ordinal",
+        "created_at",
+    ),
 )
 
 # Question 17: dated and kept forever, never deleted. Reopening sets

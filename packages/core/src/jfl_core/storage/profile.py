@@ -13,11 +13,15 @@ Three tables, three shapes of "not the same as everything else":
   guessed at".
 
 * **Objectives** (`profile_objectives`, questions 10/11) are up to four
-  separate mutable records, one per ordinal 1-4. They are not versioned the
-  way answers are: an objective is a single current statement of "what this
-  move is for" and "what would show it delivered", not a history of answers
-  to a fixed question. Clearing both fields removes the row, so an unused
-  ordinal is simply absent rather than an empty row sitting in the table.
+  separate slots, one per ordinal 1-4, versioned exactly like
+  `profile_answers`: saving a slot a second time never overwrites the first
+  row -- it inserts a new one, so what the user once said an objective was is
+  never lost. The current value of a slot is its latest row, resolved the
+  same way as answers. Clearing both fields is itself saved as a new version
+  (with blank text) rather than deleting anything; the *current view* treats
+  an all-blank latest version as "no objective" -- absent from
+  `list_objectives`, rendered as "not stated" -- without erasing the fact
+  that an objective once stood there.
 
 * **Ruled-out decisions** (`profile_ruled_out`, question 17) are add-only and
   never deleted, each with its own `recorded_at`. Marking one reopened sets
@@ -36,8 +40,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import delete, func, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import func, insert, select, update
 
 from jfl_core.db.tables import profile_answers as answers_table
 from jfl_core.db.tables import profile_objectives as objectives_table
@@ -73,7 +76,6 @@ _OBJECTIVE_COLUMNS = (
     objectives_table.c.objective_text,
     objectives_table.c.evidence_text,
     objectives_table.c.created_at,
-    objectives_table.c.updated_at,
 )
 
 _RULED_OUT_COLUMNS = (
@@ -101,8 +103,16 @@ def _objective_from_row(row: Any) -> ProfileObjective:
         objective_text=row.objective_text,
         evidence_text=row.evidence_text,
         created_at=row.created_at,
-        updated_at=row.updated_at,
     )
+
+
+def _objective_is_blank(objective_text: str, evidence_text: str) -> bool:
+    """Both fields empty once surrounding whitespace is ignored -- the same
+    test `save_objective` uses to decide whether a slot has anything in it.
+    A slot whose *latest version* is blank reads as "no objective" even
+    though the version itself is a real, kept row.
+    """
+    return not objective_text.strip() and not evidence_text.strip()
 
 
 def _ruled_out_from_row(row: Any) -> ProfileRuledOut:
@@ -202,45 +212,88 @@ class PostgresProfileRepository(TenantScopedRepository):
 
     # -- objectives (questions 10/11) -----------------------------------------
 
+    def _latest_objective_version(self, ordinal: int) -> ProfileObjective | None:
+        """The most recent row for this ordinal, blank or not -- used to
+        decide whether a save is a no-op, a new version, or a first version,
+        never to decide what the page shows (that is `list_objectives`).
+        """
+        row = self._conn.execute(
+            select(*_OBJECTIVE_COLUMNS)
+            .where(
+                objectives_table.c.user_id == self._user_id,
+                objectives_table.c.ordinal == ordinal,
+            )
+            .order_by(objectives_table.c.created_at.desc())
+            .limit(1)
+        ).first()
+        return None if row is None else _objective_from_row(row)
+
     def list_objectives(self) -> list[ProfileObjective]:
+        """The current, in-use objective slots, ordinal ascending -- a slot
+        whose latest version is blank (cleared, or never set) is absent, same
+        as "an unanswered question is simply absent" for the rest of the
+        profile. Its history is not lost; see `objective_history`.
+        """
         rows = self._conn.execute(
             select(*_OBJECTIVE_COLUMNS)
+            .distinct(objectives_table.c.ordinal)
             .where(objectives_table.c.user_id == self._user_id)
-            .order_by(objectives_table.c.ordinal.asc())
+            .order_by(objectives_table.c.ordinal, objectives_table.c.created_at.desc())
+        ).all()
+        objectives = [_objective_from_row(r) for r in rows]
+        return [o for o in objectives if not _objective_is_blank(o.objective_text, o.evidence_text)]
+
+    def objective_history(self, ordinal: int) -> list[ProfileObjective]:
+        """Every version ever saved for this ordinal, oldest first -- the
+        objectives analogue of `history`, including blank (cleared) versions.
+        """
+        rows = self._conn.execute(
+            select(*_OBJECTIVE_COLUMNS)
+            .where(
+                objectives_table.c.user_id == self._user_id,
+                objectives_table.c.ordinal == ordinal,
+            )
+            .order_by(objectives_table.c.created_at.asc())
         ).all()
         return [_objective_from_row(r) for r in rows]
 
     def save_objective(
         self, ordinal: int, *, objective_text: str, evidence_text: str
     ) -> ProfileObjective | None:
-        """Upsert objective `ordinal` (1-4). Both fields blank deletes the row
-        instead -- an unused slot is absent, not an empty row, matching "an
-        unanswered question is simply absent" for the rest of the profile.
-        Returns None when the row was deleted or there was nothing to store.
+        """Append a new version for objective `ordinal` (1-4) if it differs
+        from the current one; otherwise do nothing and return None, exactly
+        `save_answer`'s semantics. Both fields blank is a legitimate value --
+        clearing a previously set objective -- and is still versioned if it
+        differs from what came before, so the fact that an objective once
+        stood there is never lost.
+
+        A slot that has never been set, submitted blank, writes nothing at
+        all: there is no way to tell "left blank" apart from "not touched" at
+        the form layer, and an unused slot must stay simply absent.
+
+        Nothing here is ever deleted. Use `list_objectives` for the current,
+        in-use slots -- a blank latest version reads there as "no objective".
         """
-        if not objective_text.strip() and not evidence_text.strip():
-            self._conn.execute(
-                delete(objectives_table).where(
-                    objectives_table.c.user_id == self._user_id,
-                    objectives_table.c.ordinal == ordinal,
-                )
-            )
+        current = self._latest_objective_version(ordinal)
+        blank = _objective_is_blank(objective_text, evidence_text)
+        if current is None and blank:
             return None
-        statement = pg_insert(objectives_table).values(
-            id=uuid.uuid4(),
-            user_id=self._user_id,
-            ordinal=ordinal,
-            objective_text=objective_text,
-            evidence_text=evidence_text,
-        )
+        if (
+            current is not None
+            and current.objective_text == objective_text
+            and current.evidence_text == evidence_text
+        ):
+            return None
         row = self._conn.execute(
-            statement.on_conflict_do_update(
-                index_elements=["user_id", "ordinal"],
-                set_={
-                    "objective_text": objective_text,
-                    "evidence_text": evidence_text,
-                },
-            ).returning(*_OBJECTIVE_COLUMNS)
+            insert(objectives_table)
+            .values(
+                id=uuid.uuid4(),
+                user_id=self._user_id,
+                ordinal=ordinal,
+                objective_text=objective_text,
+                evidence_text=evidence_text,
+            )
+            .returning(*_OBJECTIVE_COLUMNS)
         ).one()
         return _objective_from_row(row)
 

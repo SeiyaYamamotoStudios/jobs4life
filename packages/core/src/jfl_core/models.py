@@ -747,12 +747,15 @@ class ProfileAnswer(BaseModel):
 
 
 class ProfileObjective(BaseModel):
-    """One of up to four objectives (questions 10/11) -- separate records,
-    never combined, so "what is this move for" and "what would show it
-    delivered" for objective 2 can never bleed into objective 3's. `ordinal`
-    is 1-4; a mutable row (edited in place, not versioned) because an objective
-    is a single current statement, not a history of answers to one question --
-    see the profile repository's docstring for the reasoning.
+    """One version of one objective slot (questions 10/11) -- separate
+    records per `ordinal` (1-4), never combined, so "what is this move for"
+    and "what would show it delivered" for objective 2 can never bleed into
+    objective 3's. Append-only, the same shape as `ProfileAnswer`: a save to
+    an ordinal is a new row, never an UPDATE, so what the user once said an
+    objective was is never lost. The current value of a slot is its latest
+    row -- see `jfl_core.storage.profile.PostgresProfileRepository`. A latest
+    row with both fields blank means the slot was cleared and reads as "no
+    objective", not as an empty objective.
     """
 
     id: uuid.UUID
@@ -760,7 +763,6 @@ class ProfileObjective(BaseModel):
     objective_text: str = ""
     evidence_text: str = ""
     created_at: dt.datetime
-    updated_at: dt.datetime
 
 
 class ProfileRuledOut(BaseModel):

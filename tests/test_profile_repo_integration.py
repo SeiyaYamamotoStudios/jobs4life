@@ -198,6 +198,7 @@ def test_a_user_cannot_read_another_users_objectives_or_ruled_out(
     bobs = PostgresProfileRepository(conn, bob)
     assert bobs.list_objectives() == []
     assert bobs.list_ruled_out() == []
+    assert bobs.objective_history(1) == []
 
 
 def test_a_user_cannot_reopen_another_users_ruled_out_entry(
@@ -211,7 +212,7 @@ def test_a_user_cannot_reopen_another_users_ruled_out_entry(
     assert alices.list_ruled_out()[0].reopened_at is None
 
 
-# -- objectives: separate records, never combined -----------------------------
+# -- objectives: separate records, never combined, versioned like answers ----
 
 
 def test_objectives_are_separate_records_up_to_four(conn: Connection, alice: uuid.UUID) -> None:
@@ -225,23 +226,93 @@ def test_objectives_are_separate_records_up_to_four(conn: Connection, alice: uui
     assert objectives[1].evidence_text == "Org of 40+, budget owner"
 
 
-def test_saving_an_objective_twice_updates_it_in_place(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    repo.save_objective(1, objective_text="More comp", evidence_text="v2")
-    objectives = repo.list_objectives()
-    assert len(objectives) == 1
-    assert objectives[0].evidence_text == "v2"
-
-
-def test_clearing_both_fields_removes_the_objective_slot(
+def test_saving_an_objective_twice_appends_a_new_current_version(
     conn: Connection, alice: uuid.UUID
 ) -> None:
     repo = PostgresProfileRepository(conn, alice)
+    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
+    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
+    assert first is not None
+    assert second is not None
+    assert second.id != first.id
+
+    objectives = repo.list_objectives()
+    assert len(objectives) == 1
+    assert objectives[0].evidence_text == "v2"
+    assert objectives[0].id == second.id
+
+
+def test_objective_history_is_retained_across_edits(conn: Connection, alice: uuid.UUID) -> None:
+    repo = PostgresProfileRepository(conn, alice)
+    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
+    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
+    assert first is not None
+    assert second is not None
+
+    history = repo.objective_history(1)
+    assert [h.evidence_text for h in history] == ["v1", "v2"]
+    assert history[0].id == first.id
+    assert history[1].id == second.id
+
+
+def test_clearing_both_fields_is_recorded_and_hides_the_objective(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    """Blanking a previously set objective is itself saved as a new version
+    (PLAN.md B3a: the owner decided objectives must keep history like every
+    other answer) -- it must not delete anything -- but the current view
+    treats an all-blank latest version as "no objective".
+    """
+    repo = PostgresProfileRepository(conn, alice)
     repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    result = repo.save_objective(1, objective_text="  ", evidence_text="")
+    cleared = repo.save_objective(1, objective_text="  ", evidence_text="")
+    assert cleared is not None
+    assert cleared.objective_text == "  "
+    assert cleared.evidence_text == ""
+
+    assert repo.list_objectives() == []
+    history = repo.objective_history(1)
+    assert len(history) == 2
+    assert history[0].evidence_text == "v1"
+    assert history[1].id == cleared.id
+
+
+def test_blank_and_never_set_writes_nothing(conn: Connection, alice: uuid.UUID) -> None:
+    repo = PostgresProfileRepository(conn, alice)
+    result = repo.save_objective(2, objective_text="", evidence_text="   ")
     assert result is None
     assert repo.list_objectives() == []
+    assert repo.objective_history(2) == []
+
+
+def test_resaving_the_same_objective_is_a_no_op_and_writes_no_history(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    repo = PostgresProfileRepository(conn, alice)
+    text = "More comp"
+    evidence = "Offer at or above floor"
+    repo.save_objective(1, objective_text=text, evidence_text=evidence)
+    result = repo.save_objective(1, objective_text=text, evidence_text=evidence)
+    assert result is None
+    assert len(repo.objective_history(1)) == 1
+
+
+def test_two_objective_saves_in_one_transaction_order_correctly(
+    conn: Connection, alice: uuid.UUID
+) -> None:
+    """`created_at` uses `clock_timestamp()`, not `now()` -- two saves to the
+    same ordinal inside one (test) transaction must not tie, or "the latest
+    version" would be ambiguous exactly where it matters most.
+    """
+    repo = PostgresProfileRepository(conn, alice)
+    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
+    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
+    assert first is not None
+    assert second is not None
+    assert first.created_at < second.created_at
+
+    history = repo.objective_history(1)
+    assert [h.evidence_text for h in history] == ["v1", "v2"]
 
 
 # -- ruled-out: dated, kept, reopen never deletes ------------------------------
