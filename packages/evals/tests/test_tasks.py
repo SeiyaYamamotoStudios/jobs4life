@@ -165,10 +165,11 @@ class TestClaimGateFeverTask:
 
 
 class TestScorerOnResplitItems:
-    """The gate occasionally returns more than one SentenceResult for a
-    single-sentence golden item -- the model re-splits the input, observed on
-    `fever-13515` ("...George R.R. Martin.") on 2026-09-04. That must be scored as
-    a harness error, never raised: raising aborted a 50-item run at sample 45.
+    """The gate can return more than one SentenceResult for a single-sentence
+    golden item when the sentence splitter divides it before the model sees it --
+    observed on `fever-13515` ("...George R.R. Martin.") on 2026-09-04, since fixed
+    in the splitter. Any future case must still be scored as a harness error,
+    never raised: raising aborted a 50-item run at sample 45.
     """
 
     @staticmethod
@@ -208,7 +209,7 @@ class TestScorerOnResplitItems:
         )
 
         assert score.explanation is not None
-        assert "re-split" in score.explanation
+        assert "split before the model saw it" in score.explanation
         assert "'Martin.'" in score.explanation
 
     def test_the_normal_single_sentence_path_is_untouched(self) -> None:
@@ -217,3 +218,17 @@ class TestScorerOnResplitItems:
         )
 
         assert cast(dict[str, str], score.value)["outcome"] == "match"
+
+
+def test_every_golden_item_reaches_the_gate_as_exactly_one_sentence() -> None:
+    """Free, deterministic, and the check that would have caught fever-13515
+    before a paid run did: each golden item is one claim, so the splitter must
+    hand the model exactly one sentence for each. Before the dotted-abbreviation
+    fix this failed on fever-13515 alone.
+    """
+    from jfl_evals.dataset import load_golden_set
+    from jfl_gate.gate import sentences_from_text
+
+    items = load_golden_set(Path(DEFAULT_DATASET_PATH))
+    split = {item.id: sentences_from_text(item.claim) for item in items}
+    assert {item_id: s for item_id, s in split.items() if len(s) != 1} == {}

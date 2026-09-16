@@ -224,26 +224,32 @@ def gate_grounding_scorer() -> Scorer:
             )
 
         sentences = gate_result["sentences"]
-        # Every golden item is exactly one FEVER claim, so `check_text` (given
-        # exactly one sentence) should return exactly one SentenceResult. When it
-        # does not, the model has re-split the input: observed on 2026-09-04 with
-        # `fever-13515`, where "Petyr Baelish is created by an American author
-        # George R.R. Martin." came back as two claims, "...George R.R." and a
-        # fragment "Martin.". The splitter is not at fault -- `split_blocks`
-        # returns one block for that text; the model split at the initials inside
-        # its own output. Any name with initials, or a "Ph.D.", can do this.
+        # Every golden item is exactly one FEVER claim, so `check_text` should
+        # return exactly one SentenceResult. It returns more only when
+        # `sentences_from_text` split the claim before the model saw it -- the
+        # model cannot cause this, because `_check_alignment` turns any result
+        # count other than the number of sentences sent into a GateError, which
+        # arrives here as `gate_error` above.
+        #
+        # Observed on 2026-09-04 with `fever-13515`, "Petyr Baelish is created by
+        # an American author George R.R. Martin.", which came back as "...George
+        # R.R." and "Martin.". It was first recorded as the model re-splitting its
+        # own input; it was the sentence splitter, which read "R.R." followed by a
+        # capital as a sentence end (`split_blocks` returned one block, but the
+        # sentence split inside that block made two). The splitter now keeps
+        # dotted tokens like "R.R." and "Ph.D." whole.
         #
         # This used to raise, which was right to notice it and wrong in blast
         # radius: one such item aborted a 50-item run at sample 45 and would abort
         # a 210-item one just as readily. It is scored as a harness error instead
         # -- excluded from both headline rates rather than folded into either,
-        # exactly as a GateError is, because a re-split item carries no clean
+        # exactly as a GateError is, because a split item carries no clean
         # grounding judgement to attribute. `_item_results` counts errors
         # separately, so this stays visible rather than becoming a silent pass.
         if len(sentences) != 1:
             detail = (
                 f"gate returned {len(sentences)} sentence results for a "
-                f"single-sentence item (model re-split the input): "
+                f"single-sentence item (the input was split before the model saw it): "
                 + " | ".join(repr(x.get("text")) for x in sentences)
             )
             return Score(

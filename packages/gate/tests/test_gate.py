@@ -653,3 +653,55 @@ class TestAlignment:
             check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._MULTI_TEXT)
 
         assert runs.recorded[0].outcome == "error"
+
+
+class TestInitialsAreOneUnit:
+    """FEVER item fever-13515 once came back as two gate results for one claim. The
+    split happened in `sentences_from_text`, not in the model: the model was handed
+    two numbered sentences and correctly returned two results. These pin the
+    splitter fix end to end, and pin that a model which really does return more
+    results than it was given sentences is a loud failure, never a mis-scored item.
+    """
+
+    _FEVER_13515 = "Petyr Baelish is created by an American author George R.R. Martin."
+
+    def test_the_recorded_case_is_one_unit(self) -> None:
+        assert sentences_from_text(self._FEVER_13515) == [self._FEVER_13515]
+
+    def test_the_model_is_sent_exactly_one_numbered_sentence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM]))
+        _patch_client(monkeypatch, client)
+
+        result = check_text(
+            _ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), self._FEVER_13515
+        )
+
+        user_message = client.messages.calls[0]["messages"][0]["content"]
+        assert "following 1 sentences" in user_message
+        assert f"1. {self._FEVER_13515}" in user_message
+        assert "2. " not in user_message
+        assert [s.text for s in result.sentences] == [self._FEVER_13515]
+
+    def test_a_model_returning_an_extra_result_is_a_gate_error_with_an_error_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        extra = {**_SUPPORTED_ITEM, "index": 2}
+        client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM, extra]))
+        _patch_client(monkeypatch, client)
+
+        runs = _FakeRunRepo()
+        with pytest.raises(GateError, match=r"expected indices \[1\], got \[1, 2\]"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), runs, self._FEVER_13515)
+
+        assert [r.outcome for r in runs.recorded] == ["error"]
+
+    def test_two_results_sharing_one_index_are_a_gate_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM, _SUPPORTED_ITEM]))
+        _patch_client(monkeypatch, client)
+
+        with pytest.raises(GateError, match="misaligned"):
+            check_text(_ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), self._FEVER_13515)

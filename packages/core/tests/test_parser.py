@@ -180,6 +180,36 @@ class TestSentenceSplittingAbbreviations:
         offsets = split_sentences("Reported to J. Smith throughout the project.")
         assert len(offsets) == 1
 
+    def test_does_not_split_on_run_together_initials(self) -> None:
+        # FEVER item fever-13515, verbatim: this used to come back as two units,
+        # "...George R.R." and "Martin.".
+        text = "Petyr Baelish is created by an American author George R.R. Martin."
+        assert split_sentences(text) == [(0, len(text))]
+
+    def test_does_not_split_on_three_run_together_initials(self) -> None:
+        assert len(split_sentences("Read J.R.R. Tolkien before the offsite.")) == 1
+
+    def test_does_not_split_on_spaced_initials(self) -> None:
+        assert len(split_sentences("Reported to J. R. R. Hale for two years.")) == 1
+
+    def test_does_not_split_on_a_dotted_acronym(self) -> None:
+        assert len(split_sentences("Worked at A.B. Dick Co. in the U.S. Midwest.")) == 1
+
+    def test_does_not_split_on_phd_before_a_capitalised_word(self) -> None:
+        assert len(split_sentences("Holds a Ph.D. Thesis prize from Northwind University.")) == 1
+
+    def test_does_not_split_on_msc_or_bsc(self) -> None:
+        assert len(split_sentences("Earned an M.Sc. Distinction and a B.Sc. Honours degree.")) == 1
+
+    def test_still_splits_after_an_ordinary_word_ending_a_sentence(self) -> None:
+        # The segment cap: a normal word is never mistaken for a dotted abbreviation.
+        assert len(split_sentences("Joined Northwind. Led the platform team.")) == 2
+
+    def test_a_sentence_really_ending_on_a_dotted_acronym_stays_merged(self) -> None:
+        # The accepted cost, stated as a test so it is a decision rather than a
+        # surprise: same direction as "Northwind Ltd. They build..." above.
+        assert len(split_sentences("Moved to the U.S. The team grew.")) == 1
+
     def test_does_split_after_an_initial_when_a_real_sentence_follows(self) -> None:
         # "Smith." ends with a real word before the period, not a bare initial.
         offsets = split_sentences("Reported to A. B. Smith. Delivered the platform.")

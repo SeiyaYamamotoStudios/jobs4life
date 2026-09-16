@@ -64,6 +64,20 @@ _ABBREVIATIONS = {
     "st.",
 }
 _SINGLE_INITIAL = re.compile(r"^[A-Z]\.$")
+# Two or more short dotted segments written as one token: run-together initials
+# ("R.R.", "J.R.R."), dotted acronyms ("U.S.", "U.K."), and degree abbreviations
+# ("Ph.D.", "M.Sc.", "B.Sc."). Before this existed, "George R.R. Martin." split
+# into "...George R.R." and a fragment "Martin." -- observed on FEVER item
+# fever-13515, where the eval then scored the item as a harness error. That was
+# first recorded as the model re-splitting its input; it was this splitter.
+#
+# Segments are capped at three letters so an ordinary word followed by an
+# abbreviation cannot match. The cost is the same one the Ltd./Inc. entries
+# above already accept: a sentence that genuinely ends on such a token ("...in
+# the U.S. The team grew.") stays merged with the next one. That is the cheaper
+# direction -- a merged unit is still checked, whole; a split one sends a name
+# fragment to the claim gate as a claim of its own.
+_DOTTED_ABBREVIATION = re.compile(r"^(?:[A-Za-z]{1,3}\.){2,}$")
 _SENTENCE_BOUNDARY = re.compile(r"[.!?]+(?=\s|$)")
 _TRAILING_WORD = re.compile(r"(\S+)$")
 
@@ -82,7 +96,8 @@ def split_sentences(text: str) -> list[tuple[int, int]]:
 
     A regex-based splitter, not a real sentence-boundary algorithm. It covers
     the abbreviation ("e.g.", "Ltd.", ...) and single-initial ("J. Smith")
-    cases common in CVs by refusing to split there. Known gaps, left
+    cases common in CVs by refusing to split there, and likewise run-together
+    dotted tokens ("R.R.", "U.S.", "Ph.D."). Known gaps, left
     unhandled on purpose: decimal numbers ("v2.0 shipped."), quoted sentences,
     and abbreviations not in the fixed list above. A real corpus is short
     enough that misplaced sentence boundaries cost little -- they only affect
@@ -97,7 +112,11 @@ def split_sentences(text: str) -> list[tuple[int, int]]:
         end = match.end()
         word_match = _TRAILING_WORD.search(text[:end])
         word = word_match.group(1) if word_match else ""
-        if word.lower() in _ABBREVIATIONS or _SINGLE_INITIAL.match(word):
+        if (
+            word.lower() in _ABBREVIATIONS
+            or _SINGLE_INITIAL.match(word)
+            or _DOTTED_ABBREVIATION.match(word)
+        ):
             continue
         rest = text[end:].lstrip()
         if rest and not (rest[0].isupper() or rest[0].isdigit() or rest[0] in "\"'([“‘"):
