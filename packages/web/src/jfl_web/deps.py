@@ -24,6 +24,7 @@ from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
+from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from sqlalchemy.engine import Connection
@@ -159,6 +160,14 @@ def job_feed_repo(session: SessionDep, conn: ConnDep) -> PostgresJobFeedReposito
 
 
 JobFeedRepoDep = Annotated[PostgresJobFeedRepository, Depends(job_feed_repo)]
+
+
+def profile_repo(session: SessionDep, conn: ConnDep) -> PostgresProfileRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresProfileRepository(conn, session.user.id)
+
+
+ProfileRepoDep = Annotated[PostgresProfileRepository, Depends(profile_repo)]
 
 
 def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSuggestionRepository:

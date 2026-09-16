@@ -510,3 +510,14 @@ table.jobs .col-track { white-space: nowrap; }
 .status-badge.status-tracked { color: var(--good); border-color: var(--good); }
 ul.requirements li .track-form { display: inline-block; margin-left: 0.6rem; }
 ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
+
+/* -- profile setup (PLAN.md B3a) -- */
+
+.ruled-out-entry {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.ruled-out-entry form { margin: 0.4rem 0 0; }
