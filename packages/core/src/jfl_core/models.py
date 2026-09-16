@@ -698,3 +698,79 @@ class JobFeedMark(BaseModel):
     event_at: dt.datetime
     first_seen_at: dt.datetime
     dismissed_at: dt.datetime | None = None
+
+
+# -- profile setup, PLAN.md slice B3a ----------------------------------------
+#
+# Every value here is the user's own words about themselves, stored verbatim --
+# never grounding (see CLAUDE.md's "generated documents influence form, never
+# truth"), and never logged (comp and deal-breakers are sensitive). The closed
+# set of keys lives in `jfl_core.profile_questions.QUESTION_KEYS`; mirrored here
+# as a Literal so the CHECK constraint, the tuple in `db.tables`, and this type
+# all agree (`test_value_lists_agree.py`).
+
+ProfileQuestionKey = Literal[
+    "location_commute",
+    "workplace_arrangements",
+    "levels",
+    "comp_floor",
+    "contract_types",
+    "notice_period",
+    "right_to_work",
+    "categorical_no",
+    "disciplines",
+    "trajectory",
+    "employer_deal_breakers",
+    "warning_signs",
+]
+
+
+class ProfileAnswer(BaseModel):
+    """One version of one question's answer. Append-only: a new answer to the
+    same question is a new row, never an UPDATE, so "what the user said, when"
+    stays readable after it changes. The current value is the latest row for a
+    given `question_key` -- see `jfl_core.storage.profile.get_current_answers`.
+
+    `structured` is populated only for the four questions that offer an
+    optional structured value alongside the free text (levels, comp floor,
+    contract types, disciplines) -- see `jfl_core.profile_questions`. Its shape
+    is question-specific and deliberately untyped here: a gate that reads it
+    reads a documented shape per key, not a Pydantic model whose fields would
+    have to unify all four.
+    """
+
+    id: uuid.UUID
+    question_key: ProfileQuestionKey
+    answer_text: str = ""
+    structured: dict[str, Any] | None = None
+    created_at: dt.datetime
+
+
+class ProfileObjective(BaseModel):
+    """One of up to four objectives (questions 10/11) -- separate records,
+    never combined, so "what is this move for" and "what would show it
+    delivered" for objective 2 can never bleed into objective 3's. `ordinal`
+    is 1-4; a mutable row (edited in place, not versioned) because an objective
+    is a single current statement, not a history of answers to one question --
+    see the profile repository's docstring for the reasoning.
+    """
+
+    id: uuid.UUID
+    ordinal: int
+    objective_text: str = ""
+    evidence_text: str = ""
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class ProfileRuledOut(BaseModel):
+    """One ruled-out decision (question 17): dated, and kept forever. Marking
+    one reopened sets `reopened_at` -- it is never deleted, so a decision that
+    gets revisited is still on the record. Flagging when a ruled-out employer
+    or role reappears is future work; this only makes the data support it.
+    """
+
+    id: uuid.UUID
+    decision_text: str
+    recorded_at: dt.datetime
+    reopened_at: dt.datetime | None = None

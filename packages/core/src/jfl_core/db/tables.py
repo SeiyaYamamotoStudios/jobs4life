@@ -1209,6 +1209,103 @@ title_suggestions = Table(
 )
 
 # --------------------------------------------------------------------------
+# Profile setup (PLAN.md slice B3a). Every value here is the user's own words
+# about what they want and will not accept -- verbatim, never grounding, and
+# never logged (comp and deal-breakers are sensitive). See
+# jfl_core.profile_questions for the question definitions and
+# jfl_core.storage.profile for how these three tables are read and written.
+# --------------------------------------------------------------------------
+
+# Mirrors jfl_core.profile_questions.QUESTION_KEYS and
+# models.ProfileQuestionKey. See test_value_lists_agree.py.
+_PROFILE_QUESTION_KEYS = (
+    "location_commute",
+    "workplace_arrangements",
+    "levels",
+    "comp_floor",
+    "contract_types",
+    "notice_period",
+    "right_to_work",
+    "categorical_no",
+    "disciplines",
+    "trajectory",
+    "employer_deal_breakers",
+    "warning_signs",
+)
+
+# Append-only: a new answer to the same question_key is a new row, never an
+# UPDATE, so "what the user said, when" survives a later change. There is
+# deliberately no unique constraint on (user_id, question_key) -- the current
+# value is the latest row, read back with DISTINCT ON in the repository.
+profile_answers = Table(
+    "profile_answers",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("question_key", Text, nullable=False),
+    Column("answer_text", Text, nullable=False, server_default=""),
+    # Question-specific shape; see jfl_core.models.ProfileAnswer. NULL for the
+    # eight questions that take free text only.
+    Column("structured", JSONB),
+    # `clock_timestamp()`, not `now()`: this is an append-only history table,
+    # and `now()` is transaction-start time -- two answers to the *same*
+    # question saved in one transaction would share one timestamp, making
+    # "the latest row" ambiguous exactly where it matters most. Every other
+    # timestamp in this schema uses `now()` because nothing else here orders
+    # same-transaction rows against each other for correctness.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    CheckConstraint(
+        "question_key in ('" + "','".join(_PROFILE_QUESTION_KEYS) + "')",
+        name="question_key",
+    ),
+    Index(
+        "ix_profile_answers_user_id_question_key_created_at",
+        "user_id",
+        "question_key",
+        "created_at",
+    ),
+)
+
+# Up to four objectives (questions 10/11), one row per (user, ordinal). A
+# mutable row, not versioned -- see jfl_core.models.ProfileObjective for why.
+profile_objectives = Table(
+    "profile_objectives",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("objective_text", Text, nullable=False, server_default=""),
+    Column("evidence_text", Text, nullable=False, server_default=""),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint("ordinal between 1 and 4", name="ordinal_range"),
+    UniqueConstraint("user_id", "ordinal"),
+)
+
+# Question 17: dated and kept forever, never deleted. Reopening sets
+# `reopened_at` rather than removing the row, so a decision that gets
+# revisited is still on the record -- see jfl_core.models.ProfileRuledOut.
+profile_ruled_out = Table(
+    "profile_ruled_out",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("decision_text", Text, nullable=False),
+    # `clock_timestamp()`, same reasoning as `profile_answers.created_at`:
+    # entries added in the same transaction must still sort in the order they
+    # were added.
+    _ts("recorded_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("reopened_at"),
+    Index("ix_profile_ruled_out_user_id_recorded_at", "user_id", "recorded_at"),
+)
+
+# --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not
 # rendered on a dashboard.

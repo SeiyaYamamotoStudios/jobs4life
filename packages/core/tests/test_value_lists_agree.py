@@ -37,6 +37,7 @@ VALUE_SETS = [
     (models.BoardJobEventKind, tables._BOARD_JOB_EVENT_KINDS),
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
+    (models.ProfileQuestionKey, tables._PROFILE_QUESTION_KEYS),
 ]
 
 

@@ -35,6 +35,7 @@ CONSTRAINED_COLUMNS = [
     ("job_feed_marks", "kind", tables._BOARD_JOB_EVENT_KINDS),
     ("title_suggestions", "status", tables._TITLE_SUGGESTION_STATUSES),
     ("title_suggestions", "error_code", tables._TITLE_SUGGESTION_ERROR_CODES),
+    ("profile_answers", "question_key", tables._PROFILE_QUESTION_KEYS),
 ]
 
 
