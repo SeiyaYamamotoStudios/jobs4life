@@ -27,7 +27,6 @@ import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.storage.accounts import DuplicateEmailError
 
 from jfl_web.deps import (
     CsrfDep,
@@ -53,10 +52,6 @@ router = APIRouter()
 
 LOGIN_ERRORS = {
     "google": "Google sign-in did not complete. Please try again.",
-    "email_taken": (
-        "Another account here already uses that email address. Sign in with the "
-        "Google account that owns it."
-    ),
     "deactivated": "That account is deactivated.",
 }
 
@@ -92,14 +87,11 @@ async def google_callback(
         log.warning("google sign-in failed: %s", exc)
         return _login_error("google")
 
-    try:
-        account = users.upsert_google_user(
-            google_sub=identity.sub,
-            email=identity.email,
-            display_name=identity.display_name,
-        )
-    except DuplicateEmailError:
-        return _login_error("email_taken")
+    account = users.upsert_google_user(
+        google_sub=identity.sub,
+        email=identity.email,
+        display_name=identity.display_name,
+    )
 
     if not account.is_active:
         return _login_error("deactivated")

@@ -7,7 +7,10 @@ Two rules encoded here rather than left to the caller:
     reassigned -- inside a workspace they are reassigned to *different people* --
     so matching on one would eventually hand somebody another person's account.
     Email and display name are written on every login for presentation and are
-    never read back as a key.
+    never read back as a key. `users.email` carries no uniqueness constraint
+    (migration 6b3ce06d7b4e) for the same reason: two different
+    `sub`s legitimately displaying the same address, mid-reassignment, must
+    both be able to sign in.
   * a session row stores sha256 of the cookie value, never the value. Reading
     this table yields no usable session.
 """
@@ -44,17 +47,6 @@ class AuthenticatedSession(BaseModel):
     created_at: dt.datetime
     last_seen_at: dt.datetime
     expires_at: dt.datetime
-
-
-class DuplicateEmailError(RuntimeError):
-    """Another account already holds this email address.
-
-    `users.email` is unique, and email is presentation-only, so this means a
-    second Google `sub` has arrived carrying an address a different account
-    already displays -- the reassignment case. Surfaced rather than swallowed:
-    silently reusing the existing row would be exactly the identity confusion
-    that keying on `sub` exists to avoid.
-    """
 
 
 class PostgresUserRepository(PreAuthRepository):
@@ -94,15 +86,11 @@ class PostgresUserRepository(PreAuthRepository):
                 is_active=row.is_active,
             )
 
-        clash = self._conn.execute(
-            select(users_table.c.id).where(users_table.c.email == email)
-        ).first()
-        if clash is not None:
-            raise DuplicateEmailError(
-                "an existing account already displays this email address; "
-                "it belongs to a different Google identity"
-            )
-
+        # No email-clash check: `users.email` is not unique, so a second `sub`
+        # arriving with an address another account already displays (Google
+        # reassigned it) simply gets its own row. Refusing that here would be
+        # the hard login failure this table's lack of a unique constraint
+        # exists to avoid -- see the module docstring.
         user_id = uuid.uuid4()
         self._conn.execute(
             insert(users_table).values(
