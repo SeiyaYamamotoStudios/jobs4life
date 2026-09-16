@@ -22,6 +22,7 @@ a fresh one would silently orphan every credential already stored.
 from __future__ import annotations
 
 import logging
+import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
@@ -117,9 +118,47 @@ def _install_error_handlers(app: FastAPI) -> None:
     async def csrf_failed(request: Request, exc: Exception) -> Response:
         return render(request, "error.html", {"message": _CSRF_MESSAGE}, status_code=403)
 
+    async def unhandled_exception(request: Request, exc: Exception) -> Response:
+        """Everything else. Nothing about the failure -- type, message, module
+        path, traceback -- reaches the browser; only a short reference does.
+
+        This has to hold for unauthenticated routes too: the failure that
+        motivated it was on `/auth/google/callback`, which runs before a
+        session exists, and a stack through `envelope.py` named the crypto
+        layer to whoever triggered it. Registering a handler for `Exception`
+        (rather than `HTTPException` or a status code) hooks Starlette's
+        `ServerErrorMiddleware`, which sits outside routing -- so this also
+        covers a failure in middleware, not only inside a route -- and it
+        never sees an `HTTPException`: those are dispatched by the separate,
+        inner `ExceptionMiddleware` and reach FastAPI's own 404/redirect
+        handling exactly as before.
+
+        `ServerErrorMiddleware` re-raises after sending this response, which
+        is by design (see its docstring) so a hosting server can log or a test
+        client can raise -- in deployment this means uvicorn's own error log
+        also sees the exception, without a reference, in addition to the line
+        below. That is redundant but harmless: both land in the same stdout
+        stream, and only the line below carries the reference tying it to what
+        the user was told.
+        """
+        reference = secrets.token_hex(4)
+        log.error(
+            "unhandled exception (reference=%s, path=%s)",
+            reference,
+            request.url.path,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        return render(
+            request,
+            "error.html",
+            {"message": _unhandled_message(reference)},
+            status_code=500,
+        )
+
     handlers: dict[type[Exception], Callable[[Request, Exception], object]] = {
         NotAuthenticated: not_authenticated,
         CsrfFailed: csrf_failed,
+        Exception: unhandled_exception,
     }
     for exc_type, handler in handlers.items():
         app.add_exception_handler(exc_type, handler)  # type: ignore[arg-type]
@@ -129,3 +168,10 @@ _CSRF_MESSAGE = (
     "That form could not be verified -- it was probably left open too long. "
     "Reload the page and try again."
 )
+
+
+def _unhandled_message(reference: str) -> str:
+    return (
+        "Something went wrong on our end -- nothing you did caused this. "
+        f"If it keeps happening, quote this reference: {reference}."
+    )
