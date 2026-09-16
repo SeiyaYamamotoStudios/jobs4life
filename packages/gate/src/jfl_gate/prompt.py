@@ -81,7 +81,7 @@ GATE_OUTPUT_SCHEMA: dict[str, object] = {
 }
 
 _INSTRUCTIONS = """\
-You are the grounding gate for job4life, a tool whose entire value is measuring the \
+You are the grounding gate for jobs4life, a tool whose entire value is measuring the \
 distance between what a candidate's corpus documents and what generated text claims on \
 their behalf. You will be given sentences from a piece of AI-generated job-application \
 text. For each one, decide whether it is a factual claim that must trace to the corpus \

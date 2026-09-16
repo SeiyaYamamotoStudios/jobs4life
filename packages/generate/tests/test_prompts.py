@@ -309,3 +309,24 @@ def test_draft_system_blocks_cache_placement() -> None:
 def test_draft_output_schema_requires_draft_and_forbids_extras() -> None:
     assert _DRAFT_SCHEMA["required"] == ["draft"]
     assert _DRAFT_SCHEMA["additionalProperties"] is False
+
+
+# --- product name --------------------------------------------------------------
+
+
+def test_every_instruction_block_names_the_product_jobs4life() -> None:
+    """The four prompt blocks CLAUDE.md held back from the 2026-09-07 rename, so the
+    rename could be measured in the same eval run as the prompt-defect batch. Checked
+    through the public builders so the test sees exactly what reaches the model.
+    """
+    from jfl_gate.prompt import build_system_prompt
+
+    prompts = {
+        "gate": build_system_prompt([]),
+        "extract": build_extract_prompt(),
+        "coverage": build_coverage_system_prompt([]),
+        "draft cv_bullets": build_draft_system_prompt([], "cv_bullets"),
+        "draft cover_letter": build_draft_system_prompt([], "cover_letter"),
+    }
+    assert {name for name, text in prompts.items() if "jobs4life" not in text} == set()
+    assert {name for name, text in prompts.items() if "job4life" in text} == set()

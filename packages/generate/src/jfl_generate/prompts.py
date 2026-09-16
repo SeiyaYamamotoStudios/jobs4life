@@ -45,7 +45,7 @@ EXTRACT_OUTPUT_SCHEMA: dict[str, object] = {
 }
 
 _EXTRACT_INSTRUCTIONS = """\
-You are extracting structured requirements from a pasted job advertisement for job4life, \
+You are extracting structured requirements from a pasted job advertisement for jobs4life, \
 a tool that measures how well a candidate's own record evidences a role's requirements. \
 Read the job ad in the next message and return:
 
@@ -104,7 +104,7 @@ COVERAGE_OUTPUT_SCHEMA: dict[str, object] = {
 }
 
 _COVERAGE_INSTRUCTIONS = """\
-You are checking, for job4life, what a candidate's corpus can evidence for each \
+You are checking, for jobs4life, what a candidate's corpus can evidence for each \
 requirement of a job. This is a report of what the corpus documents, NOT a judgement of \
 whether the candidate is good enough -- do not let how strong a candidate "should" look \
 bias the status; check only what is actually written below.
@@ -191,7 +191,7 @@ _KIND_INSTRUCTIONS: dict[DraftKind, str] = {
 # residual drift a genuine attempt still produces) and it does not induce drift either
 # (equally dishonest, the opposite direction).
 _DRAFT_INSTRUCTIONS = """\
-You are drafting application material for job4life, a tool that measures the distance \
+You are drafting application material for jobs4life, a tool that measures the distance \
 between what a candidate's corpus documents and what is claimed on their behalf. \
 {kind_instructions}
 
