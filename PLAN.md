@@ -202,6 +202,9 @@ type), model-judged otherwise, and model stages run only when the user tracks a 
 
 ### B4 — two scores when tracked, never one
 
+**Settled 2026-09-18:** each axis is **1–10** with a paragraph; "could I get this"
+grounds on confirmed facts only and names the unconfirmed CV claims that would move it.
+
 **Superseded trigger (2026-09-15):** scoring runs when the user turns a job into an
 application, never on arrival. The axes below are unchanged; B3a's answers are what
 "do I want this" is judged against, objective by objective.
@@ -228,6 +231,11 @@ gate with per-sentence verdicts. All built; all needing a UI and the queue.
 obeys. Per-run cost is shown, because the user is paying for it with their own key.
 
 ### B6 — corpus upload
+
+**Redesigned 2026-09-18: onboarding from CVs, confirmed fact by fact.** See NEXT.md's task
+list and CLAUDE.md's 2026-09-18 decision; the markdown upload below remains for users who
+already keep a corpus.
+
 
 A user with no corpus has nothing to measure against, so this gates B's usefulness for
 anyone but the owner. Markdown upload through the existing ingestion, spans stored
@@ -518,6 +526,7 @@ was our sentence splitter). The gate prompt changed only by the rename, but the 
 change and the rename together invalidate the 2026-09-05 baseline, so the $2.07 re-run
 is still owed before slice B puts drafting in front of a second user.
 
-**The demo page must not rot.** It is the honest front door and it is pre-computed. If
-the pipeline changes materially, regenerate it — nine combinations, ~$2.82 — or take it
-down. A page claiming "this is what the tool outputs" must stay true.
+~~**The demo page must not rot.** If the pipeline changes materially, regenerate it or
+take it down.~~ **Superseded 2026-09-18:** the demo is deprecated and frozen, never
+regenerated (see CLAUDE.md). Its claim stays true only as a dated one — "what the tool
+output on 2026-09-07" — never as a description of the running code.

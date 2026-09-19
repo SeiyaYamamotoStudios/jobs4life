@@ -10,7 +10,8 @@ be wrong".
   Anthropic key custody, the application tracker. On an OVH VPS in London behind a
   Cloudflare Tunnel, with no public inbound HTTP ports. Runbook: `docs/hosting.md`.
 - **The demo**: <https://jobs4life.hiltonlabs.org> — pre-computed, static, on Cloudflare
-  Pages. Nine candidate x job combinations, all real pipeline output.
+  Pages. Nine candidate x job combinations, all real pipeline output. **Deprecated and
+  frozen** (2026-09-18): never regenerated; it shows the pipeline as it was on 2026-09-07.
 - **The number**: over-claim **0.7%** (1/140), over-flag **2.9%** (2/69) across 210
   tier-1 items. Framing was 0/209, so tier 1 never exercised the gate's one unguarded
   path — say that whenever the number is quoted.
@@ -54,7 +55,69 @@ that mattered was found that way and none by review.
 
 ## Next
 
-### Resume here — end of session, 2026-09-15
+### Resume here — agreed 2026-09-18, pick straight up
+
+The owner's goal: **score a job against ourselves as a candidate, with a paragraph saying
+why; generate a CV for it; and answer its application questions.** All three need a
+corpus big enough to matter, so onboarding from CVs comes first. Decisions are in
+CLAUDE.md (2026-09-18) and PLAN.md B4–B6; this is the task list, in order.
+
+**0. Housekeeping, first thing.**
+- **Deploy.** Production is still at the 2026-09-15 deploy (migration `a56076494b99`);
+  GitHub `main` carries 16+ commits and five migrations on top — error references, the
+  email constraint, the remote-only ruling, feed-mark purge, the prompt batch, and B3a
+  profile storage and `/profile`. Deploy, then check `/profile` in production.
+- **Open question for the owner:** add one dated line to the frozen demo page ("produced
+  by the pipeline as it stood on 2026-09-07; the tool has changed since")? No model spend,
+  a static redeploy. Not yet answered.
+- The old `git stash` and the now-redundant `scaffold-and-schema` branch can both go.
+
+**1. CV onboarding — B6, redesigned (the prerequisite for everything below).**
+- Upload **every** CV the user has (the owner: hand-written ones plus the 33 generated
+  ones). Stored verbatim in the **sent-document store** — form, never truth.
+- One model call per CV extracts **candidate facts** (role, dates, scope, numbers,
+  outcomes), each linked to the CV line it came from, de-duplicated across CVs.
+- **Confirmation screen, grouped by role.** Per role: see its facts, then "all true as
+  written" for that role, or edit / reject individually. **No global accept-all.** Facts
+  with a number, a team size, "led" or "owned" are pulled out for a one-line answer
+  ("led how many?"). Confirmed or edited facts become corpus spans, verbatim, like gap
+  answers.
+- Every fact has one of **three states: confirmed, claimed-in-a-CV-unconfirmed, absent.**
+  Unconfirmed facts are kept, never grounding.
+- The same pass **pre-fills profile answers** (location, levels, disciplines) as
+  suggestions the user accepts — preferences, not grounding.
+- Profile questions **15 and 16** go to the corpus verbatim; **18** (current CV) goes
+  through this same upload.
+
+**2. B4 scoring — two axes, 1–10 each, never composited.**
+- **Could I get this** (corpus coverage, confirmed facts only) and **do I want this**
+  (B3a profile: hard gates, discipline, each objective scored separately, trajectory,
+  signals, tells). Each with a paragraph. Labelled **unmeasured**.
+- Runs when a job is tracked or an application is added, on the user's key; cost shown.
+- Where an **unconfirmed** CV fact would cover a requirement, say so: "your CVs claim X;
+  confirm it and this moves from 5 to 7" — the score stays honest and names what to
+  confirm next.
+- Schema: **no property named `reason`** — e.g. `assessment` for the paragraph.
+
+**3. Generate a CV for an application — B5.** Existing drafting (2b-core) behind the
+queue, grounded on confirmed facts only, the claim gate automatic, framing shown NOT
+CHECKED, per-run cost shown. Previous CVs influence form only.
+
+**4. Application questions — both ways, advised not prescribed.** Paste a question. Two
+paths with equal standing: **"check my answer"** (claim gate on the user's draft, plus
+feedback on how well it answers the question and the role) and **"draft one for me"**
+(generated, and gated). The page *advises* answering first — the owner's words: "we do
+not want to prescribe, but advise" — it does not enforce it.
+
+**5. Still owed before drafting reaches anyone but the owner:** the ~$2.07 eval re-run
+against the 2026-09-05 baseline (find the baseline `.eval` logs first).
+
+Parallelisable: 2, 3 and 4 can be built against the existing span repository while 1 is
+built, as five agents were on 2026-09-15 — give each its own worktree created from the
+current commit (the harness's own worktrees started from a stale commit last time) and
+its own database, with `JFL_DATABASE_URL` inline on every command.
+
+### Earlier — end of session, 2026-09-15
 
 Slice C7 and C7a shipped this session, built by five parallel agents and merged here.
 
@@ -101,8 +164,9 @@ jobs4life. What is still owed is the ~$2.07 eval re-run against the 2026-09-05 O
 baseline — and **the baseline `.eval` logs are not on this machine**, so they must be
 found before the paired comparison can run. Until then the published over-claim rate
 describes a prompt that is not the one deployed. Expect fever-13515 to move from harness
-error to scored (over-flag denominator 69 → 70). The demo also needs regenerating
-(~$2.82): drafts now carry a `# title` line.
+error to scored (over-flag denominator 69 → 70). **The demo is not regenerated** — it
+is deprecated and frozen as it stands (owner, 2026-09-18), even though drafts now carry a
+`# title` line it does not show.
 
 Also outstanding, small:
 

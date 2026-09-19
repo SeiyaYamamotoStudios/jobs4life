@@ -74,6 +74,28 @@ Twelve domains, listed so nothing gets architecturally excluded. Only 1 and 2 ar
 
 ## Decisions log
 
+**2026-09-18 — The corpus starts from CVs, but only what the user confirms is evidence.**
+The owner's point, and it is right: the corpus as it stands is too small to score or
+draft against (21 of 68 claims on a real CV traced to it). A new user starts by uploading
+their CVs. But a CV cannot simply become the corpus — the corpus is what claims are
+measured against, and grounding on CVs makes every later CV "supported" and switches the
+over-claim measurement off silently (the 33-CV analysis found exactly that drift in
+them). So: CVs go to the sent-document store; a model extracts candidate facts; **the user
+confirms each, per role, with no global accept-all**, and only confirmed or edited facts
+become spans. Every fact is **confirmed, claimed-unconfirmed, or absent**; scoring and
+drafting ground on confirmed only, and scoring names the unconfirmed facts that would
+change a score, which is what makes confirming worth the user's time. Also decided:
+**each score axis is 1–10**, with a paragraph, still two axes never composited and
+labelled unmeasured; and **application questions offer "check my answer" and "draft one"
+side by side — the tool advises answering first, it never prescribes it.**
+
+**2026-09-18 — The demo is deprecated and frozen.** The owner's call: the static demo at
+`jobs4life.hiltonlabs.org` is **never regenerated**, even though the pipeline has since
+changed (drafts carry a `# title` line; the prompt batch landed). Supersedes PLAN.md's
+"regenerate it or take it down" — do not spend the ~$2.82 or propose it again. Every result
+on it was produced by the real pipeline on 2026-09-07, so it stays honest as a **dated
+snapshot**, and only as one: it must never be described as what the tool does today.
+
 **2026-09-15 — Scoring is spent only on jobs the user chooses; "remote friendly" needs
 evidence.** Two owner decisions, detailed in `PLAN.md` C7. **A job is scored only when the
 user turns it into an application**, never on arrival and never for jobs they merely
