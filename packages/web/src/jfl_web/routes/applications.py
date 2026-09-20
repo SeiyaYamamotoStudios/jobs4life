@@ -46,7 +46,14 @@ from jfl_core.models import ApplicationDetail, ApplicationExtraction, Applicatio
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
 
-from jfl_web.deps import ApplicationRepoDep, CsrfDep, SessionDep, TaskRepoDep
+from jfl_web.applicationanswers import question_views
+from jfl_web.deps import (
+    ApplicationQuestionRepoDep,
+    ApplicationRepoDep,
+    CsrfDep,
+    SessionDep,
+    TaskRepoDep,
+)
 from jfl_web.jobads import (
     MAX_AD_CHARS,
     extraction_failure,
@@ -258,6 +265,8 @@ def _detail_context(
     applications: ApplicationRepoDep,
     application_id: uuid.UUID,
     detail: ApplicationDetail,
+    *,
+    questions: ApplicationQuestionRepoDep,
     **extra: object,
 ) -> dict[str, object]:
     """Everything the detail page needs, in one place -- shared with
@@ -274,6 +283,9 @@ def _detail_context(
         "next_status": next_status(detail.application.status),
         "next_labels": _NEXT_LABEL,
         "application_id": application_id,
+        # NEXT.md's task 4: "check my answer" / "draft one for me", side by
+        # side -- see jfl_web.applicationanswers and jfl_web.routes.application_questions.
+        "question_views": question_views(questions, application_id),
         **_extraction_context(extraction),
         **extra,
     }
@@ -285,6 +297,7 @@ def application_detail(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    questions: ApplicationQuestionRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -293,7 +306,7 @@ def application_detail(
     return render(
         request,
         "application_detail.html",
-        _detail_context(session, applications, application_id, detail),
+        _detail_context(session, applications, application_id, detail, questions=questions),
     )
 
 
@@ -353,6 +366,7 @@ def attach_ad(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    questions: ApplicationQuestionRepoDep,
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
@@ -384,7 +398,13 @@ def attach_ad(
             request,
             "application_detail.html",
             _detail_context(
-                session, applications, application_id, detail, ad_error=message, ad_value=job_ad
+                session,
+                applications,
+                application_id,
+                detail,
+                questions=questions,
+                ad_error=message,
+                ad_value=job_ad,
             ),
             status_code=400,
         )

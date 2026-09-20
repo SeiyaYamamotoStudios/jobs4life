@@ -19,6 +19,7 @@ from jfl_core.storage.accounts import (
     PostgresSessionRepository,
     PostgresUserRepository,
 )
+from jfl_core.storage.application_questions import PostgresApplicationQuestionRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
@@ -124,6 +125,18 @@ def application_repo(session: SessionDep, conn: ConnDep) -> PostgresApplicationR
 
 
 ApplicationRepoDep = Annotated[PostgresApplicationRepository, Depends(application_repo)]
+
+
+def application_question_repo(
+    session: SessionDep, conn: ConnDep
+) -> PostgresApplicationQuestionRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresApplicationQuestionRepository(conn, session.user.id)
+
+
+ApplicationQuestionRepoDep = Annotated[
+    PostgresApplicationQuestionRepository, Depends(application_question_repo)
+]
 
 
 def task_repo(session: SessionDep, conn: ConnDep) -> PostgresTaskRepository:

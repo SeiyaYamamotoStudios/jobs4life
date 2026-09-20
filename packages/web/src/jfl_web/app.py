@@ -35,6 +35,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from jfl_web.deps import CsrfFailed, NotAuthenticated
 from jfl_web.oauth import AuthlibGoogleProvider, GoogleIdentityProvider
 from jfl_web.routes import (
+    application_questions,
     applications,
     auth,
     boards,
@@ -100,6 +101,7 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(pages.router)
     app.include_router(applications.router)
+    app.include_router(application_questions.router)
     app.include_router(boards.router)
     app.include_router(jobs.router)
     app.include_router(changes.router)

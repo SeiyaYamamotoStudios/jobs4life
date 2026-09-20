@@ -38,6 +38,9 @@ VALUE_SETS = [
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
     (models.ProfileQuestionKey, tables._PROFILE_QUESTION_KEYS),
+    (models.AnswerKind, tables._APPLICATION_QUESTION_ANSWER_KINDS),
+    (models.AnswerStatus, tables._APPLICATION_QUESTION_ANSWER_STATUSES),
+    (models.AnswerErrorCode, tables._APPLICATION_QUESTION_ANSWER_ERROR_CODES),
 ]
 
 

@@ -36,6 +36,13 @@ CONSTRAINED_COLUMNS = [
     ("title_suggestions", "status", tables._TITLE_SUGGESTION_STATUSES),
     ("title_suggestions", "error_code", tables._TITLE_SUGGESTION_ERROR_CODES),
     ("profile_answers", "question_key", tables._PROFILE_QUESTION_KEYS),
+    ("application_question_answers", "kind", tables._APPLICATION_QUESTION_ANSWER_KINDS),
+    ("application_question_answers", "status", tables._APPLICATION_QUESTION_ANSWER_STATUSES),
+    (
+        "application_question_answers",
+        "error_code",
+        tables._APPLICATION_QUESTION_ANSWER_ERROR_CODES,
+    ),
 ]
 
 

@@ -21,6 +21,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection
 
+from jfl_worker.handlers.application_questions import CHECK_KIND as CHECK_APPLICATION_ANSWER
+from jfl_worker.handlers.application_questions import DRAFT_KIND as DRAFT_APPLICATION_ANSWER
+from jfl_worker.handlers.application_questions import (
+    build_check_application_answer,
+    build_draft_application_answer,
+)
 from jfl_worker.handlers.boards import KIND as CHECK_BOARD
 from jfl_worker.handlers.boards import SCHEDULE_KIND as SCHEDULE_BOARD_CHECKS
 from jfl_worker.handlers.boards import (
@@ -42,14 +48,18 @@ from jfl_worker.registry import HandlerRegistry
 from jfl_worker.settings import WorkerSettings
 
 __all__ = [
+    "CHECK_APPLICATION_ANSWER",
     "CHECK_BOARD",
+    "DRAFT_APPLICATION_ANSWER",
     "EXTRACT_JOB_AD",
     "FETCH_JOB_DESCRIPTION",
     "PURGE_EXPIRED_SESSIONS",
     "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
     "SUGGEST_TITLES",
+    "build_check_application_answer",
     "build_check_board",
+    "build_draft_application_answer",
     "build_extract_job_ad",
     "build_fetch_job_description",
     "build_registry",
@@ -123,5 +133,18 @@ def build_registry(
         # and no Anthropic call. The `extract_job_ad` task it enqueues on
         # success is what the kill switch actually holds.
         calls_model=False,
+    )
+    registry.register(
+        CHECK_APPLICATION_ANSWER,
+        build_check_application_answer(master_key=settings.master_key, model=settings.model),
+        # True: the assessment call and the claim gate's own automatic pass are
+        # both Anthropic calls on the user's own key.
+        calls_model=True,
+    )
+    registry.register(
+        DRAFT_APPLICATION_ANSWER,
+        build_draft_application_answer(master_key=settings.master_key, model=settings.model),
+        # True, same reasoning: the draft call and its automatic gate pass.
+        calls_model=True,
     )
     return registry

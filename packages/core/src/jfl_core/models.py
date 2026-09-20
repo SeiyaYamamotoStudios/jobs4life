@@ -274,6 +274,64 @@ class ApplicationExtraction(BaseModel):
 
 
 # --------------------------------------------------------------------------
+# Application questions -- two equal paths, "check my answer" and "draft one
+# for me". See CLAUDE.md's 2026-09-18 decision and NEXT.md's task 4.
+# --------------------------------------------------------------------------
+
+
+class ApplicationQuestion(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    application_id: uuid.UUID
+    question_text: str
+    created_at: dt.datetime
+
+
+AnswerKind = Literal["user", "draft"]
+AnswerStatus = Literal["pending", "done", "failed"]
+
+# A closed set, never a message -- same reasoning as `ExtractionErrorCode`: the
+# worker writes this while holding the user's decrypted API key.
+# `no_requirements` is `draft_application_answer`'s own precondition failure
+# (see `jfl_worker.handlers.application_questions`), not an SDK error.
+AnswerErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+    "no_requirements",
+]
+
+
+class ApplicationQuestionAnswer(BaseModel):
+    """One attempt to answer a question -- append-only, like `ProfileAnswer`.
+    `kind='user'` is the user's own words, checked by the claim gate;
+    `kind='draft'` is generated from the corpus and gated automatically, with
+    `answer_text` empty until the draft call finishes. `gate_result` is
+    `jfl_gate.schema.GateOutput.model_dump()`, kept as a plain dict here for
+    the same reason `Draft.gate_result` is (jfl_core has no dependency on
+    jfl_gate). `assessment` is only ever populated for `kind='user'` -- see
+    `jfl_core.db.tables.application_question_answers`'s docstring for why a
+    draft is never asked to assess itself.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    question_id: uuid.UUID
+    kind: AnswerKind
+    answer_text: str = ""
+    status: AnswerStatus = "pending"
+    error_code: AnswerErrorCode | None = None
+    gate_result: dict[str, object] | None = None
+    assessment: dict[str, object] | None = None
+    model: str | None = None
+    trace_id: uuid.UUID | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+# --------------------------------------------------------------------------
 # Background work (slice B1). A row in `tasks`, as the queue and the worker see
 # it -- see `jfl_core.storage.tasks`.
 # --------------------------------------------------------------------------
