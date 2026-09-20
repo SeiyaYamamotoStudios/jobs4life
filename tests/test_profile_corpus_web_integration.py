@@ -125,12 +125,23 @@ def post(client: TestClient, path: str, **fields: object) -> Response:
 
 
 def live_spans(engine: Engine, user_id: uuid.UUID) -> list[tuple[str, str]]:
+    """(section, text) for every statement of this user's now grounding.
+
+    Bullets only. 15 and 16 are stored the way every corpus fact is -- as a
+    bullet in the user's corpus markdown (`jfl_core.corpus_source`, the one
+    write path) -- so the document also carries heading spans for its title and
+    for each section. Those are structure, not statements about the person, and
+    what these tests are about is which of the user's own words became corpus.
+    """
     with engine.begin() as conn:
         rows = conn.execute(
-            select(spans_table.c.section_path, spans_table.c.text).where(
+            select(spans_table.c.section_path, spans_table.c.text)
+            .where(
                 spans_table.c.user_id == user_id,
+                spans_table.c.kind == "bullet",
                 spans_table.c.retired_at.is_(None),
             )
+            .order_by(spans_table.c.ordinal)
         ).all()
     return [(row.section_path, row.text) for row in rows]
 
@@ -181,7 +192,12 @@ def test_re_answering_supersedes_the_earlier_statement(
     live = live_spans(engine, user_id)
     assert live == [(CORPUS_SECTIONS["depth_genuine"], "Actually my depth is in data.")]
     with engine.begin() as conn:
-        total = conn.execute(select(spans_table.c.id).where(spans_table.c.user_id == user_id)).all()
+        total = conn.execute(
+            select(spans_table.c.id).where(
+                spans_table.c.user_id == user_id,
+                spans_table.c.kind == "bullet",
+            )
+        ).all()
     assert len(total) == 2  # the old one is retired, not removed
 
 

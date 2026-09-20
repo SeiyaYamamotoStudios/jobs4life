@@ -11,8 +11,9 @@ lives on the corpus screens, not here.
 **Two of these answers are not preferences.** Questions 15 and 16 -- where your
 depth is genuine and where it is exposure only, and the gaps that keep coming
 up -- are claims about the person, so saving them also records the user's words
-in the corpus, verbatim, through `jfl_core.storage.user_corpus`: the same path a
-confirmed CV fact takes, deliberately not a second one. Everything else on this
+in the corpus, verbatim, through `jfl_core.storage.user_corpus` and so through
+`jfl_core.corpus_source`: literally the same write path a confirmed CV fact
+takes, deliberately not a second one. Everything else on this
 page is a preference and must never reach the corpus; the page says which is
 which in plain words, because a tool that quietly turned an answer about what
 you want into evidence about what you have done would be doing the exact thing

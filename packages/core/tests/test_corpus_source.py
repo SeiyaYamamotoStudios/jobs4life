@@ -20,6 +20,7 @@ from jfl_core.corpus_source import (
     SOURCE_URI,
     append_line,
     remove_line,
+    set_section,
 )
 from jfl_core.ingest.parser import parse_document
 
@@ -119,3 +120,44 @@ class TestRemoveLine:
         after = parse_document(SOURCE_URI, again, USER)
         wanted = [s.id for s in before.spans if s.kind == "bullet"]
         assert wanted == [s.id for s in after.spans if s.kind == "bullet"]
+
+
+class TestSetSection:
+    """`append_line`'s bulk form: the section ends up holding exactly what was
+    asked for. This is what a re-answered profile question needs -- the newer
+    words replace the older ones rather than joining them.
+    """
+
+    def test_a_section_ends_up_holding_exactly_what_was_given(self) -> None:
+        content = set_section(_HEADER, "Recurring gaps", ["Terraform.", "Kafka."])
+        assert bullets(content) == [("Recurring gaps", "Terraform."), ("Recurring gaps", "Kafka.")]
+
+    def test_a_replacement_supersedes_rather_than_joins(self) -> None:
+        content = set_section(_HEADER, "Depth and exposure", ["Deep in the JVM."])
+        content = set_section(content, "Depth and exposure", ["Actually, deep in data."])
+        assert bullets(content) == [("Depth and exposure", "Actually, deep in data.")]
+
+    def test_an_empty_replacement_clears_the_section_but_keeps_its_heading(self) -> None:
+        content = set_section(_HEADER, "Depth and exposure", ["Deep in the JVM."])
+        content = set_section(content, "Depth and exposure", [])
+        assert bullets(content) == []
+        assert "## Depth and exposure" in content
+
+    def test_other_sections_are_left_alone(self) -> None:
+        content = append_line(_HEADER, ROLE, "Ran the rota.")
+        content = set_section(content, "Recurring gaps", ["Terraform."])
+        content = set_section(content, "Recurring gaps", ["Kafka."])
+        assert bullets(content) == [(ROLE, "Ran the rota."), ("Recurring gaps", "Kafka.")]
+
+    def test_clearing_a_section_that_was_never_there_changes_nothing(self) -> None:
+        """Nothing is minted for a question the user never answered."""
+        assert set_section("", "Recurring gaps", []) == ""
+        assert set_section(_HEADER, "Recurring gaps", []) == _HEADER
+
+    def test_lines_that_normalise_alike_collapse_to_one(self) -> None:
+        """Two bullets in one section that normalise alike would parse to one
+        span with two occurrences, making the second's id depend on insertion
+        order. `append_line` refuses the duplicate; so does this.
+        """
+        content = set_section(_HEADER, "Recurring gaps", ["Terraform.", "Terraform."])
+        assert len(bullets(content)) == 1

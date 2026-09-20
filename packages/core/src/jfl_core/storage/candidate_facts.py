@@ -37,8 +37,7 @@ from typing import Any
 from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from jfl_core.corpus_source import _section as _section  # noqa: F401
-from jfl_core.corpus_source import append_confirmed_fact, remove_confirmed_fact
+from jfl_core.corpus_source import append_confirmed_fact, remove_confirmed_fact, section_name
 from jfl_core.db.tables import candidate_facts as table
 from jfl_core.models import (
     PROBE_JOIN,
@@ -98,7 +97,7 @@ def corpus_section(role_label: str) -> str:
     `jfl_core.corpus_source` will record it -- exported so callers and tests can
     find a fact's span without re-deriving the rule.
     """
-    return _section(role_label)
+    return section_name(role_label)
 
 
 class ProbeUnansweredError(ValueError):
@@ -158,7 +157,12 @@ class PostgresCandidateFactRepository(TenantScopedRepository):
         return len(result)
 
     def list_facts(self, *, state: CandidateFactState | None = None) -> list[CandidateFact]:
-        """In CV order within a role, roles in the order they were first seen."""
+        """Every fact, grouped by role and in CV order within each role.
+
+        Roles come out in `role_key` order, which is not CV order -- `roles()`
+        is what knows that, and the page groups by it. Ordering here only has to
+        be stable and keep a role's facts together.
+        """
         query = (
             select(*_COLUMNS)
             .where(table.c.user_id == self._user_id)

@@ -166,9 +166,17 @@ def a_cv(engine: Engine, user_id: uuid.UUID) -> uuid.UUID:
 def propose(
     engine: Engine, user_id: uuid.UUID, doc_id: uuid.UUID, *facts: ProposedFact
 ) -> list[uuid.UUID]:
+    """Seed facts as an extraction would, numbered in the order given.
+
+    `ordinal` is position within the CV and is the only thing that puts roles in
+    CV rather than alphabetical order -- `jfl_generate.cv_facts` assigns it the
+    same way, `len(proposed)` as it goes. Leaving every fact on 0 would not test
+    CV ordering, it would leave the order undefined and let `role_key` decide.
+    """
+    numbered = [f.model_copy(update={"ordinal": n}) for n, f in enumerate(facts)]
     with engine.begin() as conn:
         repo = PostgresCandidateFactRepository(conn, user_id)
-        repo.add_proposed(list(facts))
+        repo.add_proposed(numbered)
         return [f.id for f in repo.list_facts()]
 
 
@@ -197,12 +205,23 @@ def _facts_of(engine: Engine, user_id: uuid.UUID) -> list[CandidateFact]:
 
 
 def live_corpus_texts(engine: Engine, user_id: uuid.UUID) -> list[str]:
+    """The confirmed facts now grounding, in document order.
+
+    Bullets only. The hosted corpus document is ordinary markdown, so it also
+    holds heading spans -- its title, and one per role -- exactly as
+    `corpus/*.md` always has. Those are structure, not facts, and counting them
+    here would make every assertion below about the parser rather than about
+    what the user confirmed.
+    """
     with engine.begin() as conn:
         rows = conn.execute(
-            select(spans_table.c.text).where(
+            select(spans_table.c.text)
+            .where(
                 spans_table.c.user_id == user_id,
+                spans_table.c.kind == "bullet",
                 spans_table.c.retired_at.is_(None),
             )
+            .order_by(spans_table.c.ordinal)
         ).all()
     return [row.text for row in rows]
 
@@ -467,6 +486,9 @@ def test_rejecting_a_confirmed_fact_retires_its_corpus_span(
             select(spans_table.c.retired_at).where(
                 spans_table.c.user_id == user_id,
                 spans_table.c.section_path == corpus_section("Northwind"),
+                # The role's `## Northwind` heading span sits under the same
+                # section path and is not the fact being withdrawn.
+                spans_table.c.kind == "bullet",
             )
         ).all()
     assert len(still_there) == 1 and still_there[0].retired_at is not None

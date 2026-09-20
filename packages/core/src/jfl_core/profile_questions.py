@@ -13,7 +13,8 @@ is not modelled here -- it is the CV onboarding flow, not a profile answer.
 the user wants; those two record what is true about them -- where their depth is
 genuine and where it is exposure only, and the gaps that keep coming up. They
 are therefore the only answers on the page that also become corpus text, stored
-verbatim through the same path a confirmed CV fact takes (see
+verbatim through the same path a confirmed CV fact takes -- one write path, not
+two (`jfl_core.corpus_source`, reached through
 `jfl_core.storage.user_corpus`). `CORPUS_QUESTION_KEYS` below is the closed set,
 so "which answers reach the corpus" is one named constant rather than a
 condition repeated at each call site.
@@ -226,7 +227,7 @@ CORPUS_QUESTION_KEYS: tuple[str, ...] = tuple(q.key for q in QUESTIONS if q.to_c
 # The corpus section each of those answers is filed under. A section holds
 # exactly one live span per question -- re-answering replaces it and retires
 # what it replaced, so a superseded statement about the user can never keep
-# grounding a claim. See `jfl_core.storage.user_corpus.replace_section`.
+# grounding a claim. See `PostgresUserCorpusRepository.replace_section`.
 CORPUS_SECTIONS: dict[str, str] = {
     "depth_genuine": "Depth and exposure",
     "recurring_gaps": "Recurring gaps",
