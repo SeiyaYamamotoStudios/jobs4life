@@ -21,12 +21,14 @@ from jfl_core.storage.accounts import (
 )
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
+from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
 from sqlalchemy.engine import Connection
 
 from jfl_web.oauth import GoogleIdentityProvider
@@ -178,6 +180,27 @@ def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSu
 TitleSuggestionRepoDep = Annotated[
     PostgresTitleSuggestionRepository, Depends(title_suggestion_repo)
 ]
+
+
+def candidate_fact_repo(session: SessionDep, conn: ConnDep) -> PostgresCandidateFactRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresCandidateFactRepository(conn, session.user.id)
+
+
+CandidateFactRepoDep = Annotated[PostgresCandidateFactRepository, Depends(candidate_fact_repo)]
+
+
+def user_corpus_repo(session: SessionDep, conn: ConnDep) -> PostgresUserCorpusRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    One user's hand-confirmed corpus text -- the write side only. Grounding
+    still reads the corpus through `GroundingRepository`, which has no method
+    that could reach another tenant's spans.
+    """
+    return PostgresUserCorpusRepository(conn, session.user.id)
+
+
+UserCorpusRepoDep = Annotated[PostgresUserCorpusRepository, Depends(user_corpus_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

@@ -6,10 +6,17 @@ never change once shipped** -- they are what a stored `profile_answers.question_
 means, forever, so renaming one here silently orphans every answer already given
 under the old name.
 
-Scope: questions 1-14 and 17. Questions 15 and 16 become corpus spans and 18 is a
-CV upload to the sent-document store -- both depend on an undecided question
-about where the corpus lives on the server, and are deliberately not modelled
-here (see the profile page's "coming" note).
+Scope: questions 1-17. Question 18 is a CV upload to the sent-document store and
+is not modelled here -- it is the CV onboarding flow, not a profile answer.
+
+**Questions 15 and 16 are not preferences.** Every other question records what
+the user wants; those two record what is true about them -- where their depth is
+genuine and where it is exposure only, and the gaps that keep coming up. They
+are therefore the only answers on the page that also become corpus text, stored
+verbatim through the same path a confirmed CV fact takes (see
+`jfl_core.storage.user_corpus`). `CORPUS_QUESTION_KEYS` below is the closed set,
+so "which answers reach the corpus" is one named constant rather than a
+condition repeated at each call site.
 
 Every question is optional; a skipped one is simply absent, never defaulted or
 inferred (see `jfl_core.storage.profile`). Four of them -- 3, 4, 5, 9 -- also
@@ -30,7 +37,14 @@ from typing import Literal
 # trajectory -> signals about the place -> tells). Ruled-out decisions are their
 # own section, last, since they are not part of that assessment order.
 ProfileSection = Literal[
-    "hard_gates", "discipline", "objectives", "trajectory", "place", "tells", "ruled_out"
+    "hard_gates",
+    "discipline",
+    "objectives",
+    "trajectory",
+    "place",
+    "tells",
+    "depth_and_gaps",
+    "ruled_out",
 ]
 
 SECTION_TITLES: dict[ProfileSection, str] = {
@@ -40,6 +54,7 @@ SECTION_TITLES: dict[ProfileSection, str] = {
     "trajectory": "Trajectory",
     "place": "Signals about the place",
     "tells": "Tells",
+    "depth_and_gaps": "Depth and gaps",
     "ruled_out": "Ruled out",
 }
 
@@ -51,6 +66,7 @@ SECTION_ORDER: tuple[ProfileSection, ...] = (
     "trajectory",
     "place",
     "tells",
+    "depth_and_gaps",
     "ruled_out",
 )
 
@@ -75,6 +91,10 @@ class ProfileQuestion:
     stage: str
     section: ProfileSection
     structured: StructuredKind | None = None
+    # True for the two questions whose answers are claims about the person
+    # rather than preferences, and therefore also become corpus text. See the
+    # module docstring and `CORPUS_QUESTION_KEYS`.
+    to_corpus: bool = False
 
 
 QUESTIONS: tuple[ProfileQuestion, ...] = (
@@ -172,6 +192,22 @@ QUESTIONS: tuple[ProfileQuestion, ...] = (
         stage="tells",
         section="tells",
     ),
+    ProfileQuestion(
+        key="depth_genuine",
+        number=15,
+        wording="Where is your depth genuine, and where is it exposure only?",
+        stage="corpus, verbatim",
+        section="depth_and_gaps",
+        to_corpus=True,
+    ),
+    ProfileQuestion(
+        key="recurring_gaps",
+        number=16,
+        wording="Gaps that keep coming up in roles you want",
+        stage="corpus, verbatim; coverage, education planning",
+        section="depth_and_gaps",
+        to_corpus=True,
+    ),
 )
 
 QUESTIONS_BY_KEY: dict[str, ProfileQuestion] = {q.key: q for q in QUESTIONS}
@@ -180,6 +216,21 @@ QUESTIONS_BY_KEY: dict[str, ProfileQuestion] = {q.key: q for q in QUESTIONS}
 # jfl_core.models.ProfileQuestionKey (Literal) and in the migration's CHECK
 # constraint. See packages/core/tests/test_value_lists_agree.py.
 QUESTION_KEYS: tuple[str, ...] = tuple(q.key for q in QUESTIONS)
+
+# The answers that are claims about the person, not preferences, and therefore
+# also become corpus text. Derived from the questions themselves so there is one
+# place to say it -- a caller asking "does this answer reach the corpus?" never
+# gets to answer from a second list.
+CORPUS_QUESTION_KEYS: tuple[str, ...] = tuple(q.key for q in QUESTIONS if q.to_corpus)
+
+# The corpus section each of those answers is filed under. A section holds
+# exactly one live span per question -- re-answering replaces it and retires
+# what it replaced, so a superseded statement about the user can never keep
+# grounding a claim. See `jfl_core.storage.user_corpus.replace_section`.
+CORPUS_SECTIONS: dict[str, str] = {
+    "depth_genuine": "Depth and exposure",
+    "recurring_gaps": "Recurring gaps",
+}
 
 
 def questions_in_section(section: ProfileSection) -> tuple[ProfileQuestion, ...]:
@@ -262,18 +313,17 @@ class RuledOutQuestion:
 
 RULED_OUT_QUESTION = RuledOutQuestion()
 
-# Questions deliberately out of scope for this slice -- see the module
-# docstring. Named here only so the page can show a one-line "coming" note
-# without a second source of truth for their wording drifting from PLAN.md.
-DEFERRED_QUESTIONS: tuple[tuple[int, str], ...] = (
-    (15, "Where is your depth genuine, and where is it exposure only?"),
-    (16, "Gaps that keep coming up in roles you want"),
-    (18, "Your current CV"),
-)
+# Question 18 is answered by uploading CVs, not by typing into this page, so it
+# is named here only so the profile page can point at the upload rather than
+# leave a numbered gap. Not a `ProfileQuestion`: it produces no
+# `profile_answers` row at all.
+DEFERRED_QUESTIONS: tuple[tuple[int, str], ...] = ((18, "Your current CV"),)
 
 __all__ = [
     "COMMON_CURRENCIES",
     "CONTRACT_TYPE_CHOICES",
+    "CORPUS_QUESTION_KEYS",
+    "CORPUS_SECTIONS",
     "DEFAULT_COMP_CURRENCY",
     "DEFAULT_DISCIPLINE_CHOICES",
     "DEFERRED_QUESTIONS",

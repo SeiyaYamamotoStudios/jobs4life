@@ -1231,6 +1231,10 @@ _PROFILE_QUESTION_KEYS = (
     "trajectory",
     "employer_deal_breakers",
     "warning_signs",
+    # Questions 15/16: answers that also become corpus spans. See
+    # jfl_core.profile_questions.CORPUS_QUESTION_KEYS.
+    "depth_genuine",
+    "recurring_gaps",
 )
 
 # Append-only: a new answer to the same question_key is a new row, never an
@@ -1315,6 +1319,68 @@ profile_ruled_out = Table(
     _ts("reopened_at"),
     Index("ix_profile_ruled_out_user_id_recorded_at", "user_id", "recorded_at"),
 )
+
+# --------------------------------------------------------------------------
+# CV onboarding (PLAN.md B6, redesigned 2026-09-18): candidate facts a model
+# proposed from an uploaded CV, each awaiting the user's confirmation.
+#
+# This table is NOT corpus, and that is its whole reason for existing. The CV
+# itself lives in `sent_documents` (form, never truth); a fact extracted from it
+# becomes a `spans` row only when the user confirms it, at which point
+# `span_id` points at the span their words produced. Grounding on the CV
+# directly would make every later CV "supported" and silently switch the
+# over-claim measurement off.
+# --------------------------------------------------------------------------
+
+# Mirrors jfl_core.models.CandidateFactState. See test_value_lists_agree.py.
+_CANDIDATE_FACT_STATES = ("proposed", "confirmed", "rejected")
+
+candidate_facts = Table(
+    "candidate_facts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "sent_document_id",
+        UUID(as_uuid=True),
+        ForeignKey("sent_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("role_label", Text, nullable=False),
+    Column("role_key", Text, nullable=False),
+    # The CV line the fact was read from, verbatim. Shown beside the model's
+    # proposal so the user is confirming a reading they can check.
+    Column("source_line", Text, nullable=False),
+    # The model's words. Never grounding, never written to `spans`.
+    Column("fact_text", Text, nullable=False),
+    Column("probe", Text),
+    Column("probe_answer", Text),
+    Column("state", Text, nullable=False, server_default="proposed"),
+    # The user's words -- `fact_text` accepted as written, or their edit of it.
+    Column("confirmed_text", Text),
+    Column("span_id", UUID(as_uuid=True), ForeignKey("spans.id"), nullable=True),
+    # De-duplicates one fact restated across many CVs.
+    Column("fingerprint", String(64), nullable=False),
+    # `clock_timestamp()`, not `now()`: roles and facts are listed in CV order,
+    # which is insertion order, and one upload inserts every fact in a single
+    # transaction -- `now()` would tie all of them and lose that order.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=text("clock_timestamp()")),
+    CheckConstraint("state in ('" + "','".join(_CANDIDATE_FACT_STATES) + "')", name="state"),
+    # A confirmed fact always carries the user's own words. Deliberately
+    # one-way: a rejected or restored fact KEEPS whatever the user typed, so
+    # bringing one back does not hand them a blank box where their edit was.
+    CheckConstraint(
+        "state <> 'confirmed' or confirmed_text is not null",
+        name="confirmed_text_when_confirmed",
+    ),
+    UniqueConstraint("user_id", "fingerprint"),
+    Index("ix_candidate_facts_user_id_state", "user_id", "state"),
+    Index("ix_candidate_facts_user_id_created_at", "user_id", "created_at"),
+)
+
 
 # --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).

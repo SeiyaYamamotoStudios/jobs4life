@@ -722,6 +722,11 @@ ProfileQuestionKey = Literal[
     "trajectory",
     "employer_deal_breakers",
     "warning_signs",
+    # Questions 15 and 16. Unlike every other key above, these two are claims
+    # about the person rather than preferences, so saving them also records the
+    # user's words in the corpus -- see `jfl_core.profile_questions.CORPUS_QUESTION_KEYS`.
+    "depth_genuine",
+    "recurring_gaps",
 ]
 
 
@@ -776,3 +781,106 @@ class ProfileRuledOut(BaseModel):
     decision_text: str
     recorded_at: dt.datetime
     reopened_at: dt.datetime | None = None
+
+
+# --------------------------------------------------------------------------
+# CV onboarding (PLAN.md B6, redesigned 2026-09-18). A CV goes to the
+# sent-document store -- form, never truth -- and a model proposes candidate
+# facts from it. A proposed fact is NOT corpus: it becomes a span only when the
+# user confirms it, in their own words, one at a time or a role at a time.
+#
+# Three states, and the middle one is the point: a fact the user's CVs claim
+# but has not confirmed is kept and shown, and never grounds anything. Grounding
+# on a CV would make every later CV "supported" and switch the over-claim
+# measurement off silently.
+# --------------------------------------------------------------------------
+
+CandidateFactState = Literal["proposed", "confirmed", "rejected"]
+
+
+class CandidateFact(BaseModel):
+    """One fact a model proposed from one line of one CV.
+
+    `source_line` is that CV line verbatim, kept so the confirmation screen can
+    show the model's statement and what it came from side by side -- the user is
+    confirming a reading of their own document, and cannot judge it without the
+    original.
+
+    `fact_text` is the model's proposal and is never grounding. `confirmed_text`
+    is the user's: either `fact_text` accepted as written or their own edit of
+    it, stored verbatim with no tidying, and it is `confirmed_text` -- never
+    `fact_text` -- that becomes the corpus span named by `span_id`.
+
+    `probe` is a one-line question for a fact that asserts a number, a team size
+    or ownership ("led how many?"). A fact carrying one cannot be confirmed
+    until it is answered, because the unstated half is exactly what
+    `scope_inflation` and `ownership_inflation` turn on.
+
+    `fingerprint` de-duplicates the same fact appearing across several CVs, so
+    33 generated CVs do not become 33 confirmations of one thing.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    sent_document_id: uuid.UUID
+    role_label: str
+    role_key: str
+    source_line: str
+    fact_text: str
+    probe: str | None = None
+    probe_answer: str | None = None
+    state: CandidateFactState = "proposed"
+    confirmed_text: str | None = None
+    span_id: uuid.UUID | None = None
+    fingerprint: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @property
+    def needs_probe_answer(self) -> bool:
+        """A probe with nothing in the answer box yet. The per-role "all true as
+        written" control must skip these rather than confirm them -- see
+        `jfl_core.storage.candidate_facts`.
+        """
+        return bool(self.probe) and not (self.probe_answer or "").strip()
+
+
+class RoleGroup(BaseModel):
+    """One role's worth of candidate facts, with its progress. Roles are listed
+    in CV order (the order the extraction produced them), never alphabetically:
+    the user is reading their own career back, and reordering it makes the
+    screen harder to check against the document it came from.
+    """
+
+    role_key: str
+    role_label: str
+    proposed: int = 0
+    confirmed: int = 0
+    rejected: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.proposed + self.confirmed + self.rejected
+
+    @property
+    def still_to_check(self) -> int:
+        return self.proposed
+
+
+class FactCounts(BaseModel):
+    """Progress across every role. `still_to_check` is deliberately just the
+    proposed count: a rejected fact is a decision the user made, not outstanding
+    work.
+    """
+
+    proposed: int = 0
+    confirmed: int = 0
+    rejected: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.proposed + self.confirmed + self.rejected
+
+    @property
+    def still_to_check(self) -> int:
+        return self.proposed

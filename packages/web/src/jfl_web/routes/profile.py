@@ -5,9 +5,22 @@ conversations cannot remember it across sessions. Every answer is the user's
 own words, stored verbatim, and every question can be left blank -- a skipped
 question is simply absent, never defaulted or guessed at.
 
-Scope: questions 1-14 and 17 (`jfl_core.profile_questions`). 15/16 (which
-become corpus spans) and 18 (CV upload) are out of scope -- see the module
-docstring there -- and the page says only that they are coming.
+Scope: questions 1-17 (`jfl_core.profile_questions`). 18 is the CV upload and
+lives on the corpus screens, not here.
+
+**Two of these answers are not preferences.** Questions 15 and 16 -- where your
+depth is genuine and where it is exposure only, and the gaps that keep coming
+up -- are claims about the person, so saving them also records the user's words
+in the corpus, verbatim, through `jfl_core.storage.user_corpus`: the same path a
+confirmed CV fact takes, deliberately not a second one. Everything else on this
+page is a preference and must never reach the corpus; the page says which is
+which in plain words, because a tool that quietly turned an answer about what
+you want into evidence about what you have done would be doing the exact thing
+this project exists to oppose.
+
+Re-answering 15 or 16 *replaces* its corpus text rather than adding to it, and
+clearing the box clears the corpus text -- a statement the user has withdrawn
+must stop grounding claims. See `replace_section`.
 
 **Q2 reuses the saved job filter instead of duplicating it.** "Which working
 arrangements will you consider?" is exactly what `/jobs`'s workplace preset
@@ -33,6 +46,7 @@ Screens:
   POST /profile/trajectory           -- question 12
   POST /profile/place                -- question 13
   POST /profile/tells                -- question 14
+  POST /profile/depth-and-gaps       -- questions 15/16, ALSO to the corpus
   POST /profile/ruled-out            -- question 17: add an entry
   POST /profile/ruled-out/{id}/reopen -- question 17: mark one reopened
 """
@@ -46,6 +60,8 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.profile_questions import (
     CONTRACT_TYPE_CHOICES,
+    CORPUS_QUESTION_KEYS,
+    CORPUS_SECTIONS,
     DEFAULT_COMP_CURRENCY,
     DEFAULT_DISCIPLINE_CHOICES,
     DEFERRED_QUESTIONS,
@@ -56,7 +72,13 @@ from jfl_core.profile_questions import (
     RULED_OUT_QUESTION,
 )
 
-from jfl_web.deps import CsrfDep, JobFilterRepoDep, ProfileRepoDep, SessionDep
+from jfl_web.deps import (
+    CsrfDep,
+    JobFilterRepoDep,
+    ProfileRepoDep,
+    SessionDep,
+    UserCorpusRepoDep,
+)
 from jfl_web.jobfilter import WORKPLACE_MODE_NAMES, WORKPLACE_NAMES
 from jfl_web.profile import (
     MAX_ANSWER_TEXT,
@@ -128,6 +150,7 @@ def _context(
         "discipline_choices": DEFAULT_DISCIPLINE_CHOICES,
         "default_currency": DEFAULT_COMP_CURRENCY,
         "deferred_questions": DEFERRED_QUESTIONS,
+        "corpus_question_keys": CORPUS_QUESTION_KEYS,
         "selected_values": selected_values,
         "max_answer_text": MAX_ANSWER_TEXT,
         "max_ruled_out_text": MAX_RULED_OUT_TEXT,
@@ -359,3 +382,38 @@ def reopen_ruled_out(
     if profile.mark_reopened(ruled_out_id) is None:
         return _error(request, session, profile, filters, _RULED_OUT_NOT_FOUND, 404)
     return RedirectResponse("/profile?saved=1#ruled-out", status_code=303)
+
+
+@router.post("/profile/depth-and-gaps")
+def save_depth_and_gaps(
+    request: Request,
+    session: SessionDep,
+    profile: ProfileRepoDep,
+    filters: JobFilterRepoDep,
+    corpus: UserCorpusRepoDep,
+    _csrf: CsrfDep,
+    depth_genuine: Annotated[str, Form()] = "",
+    recurring_gaps: Annotated[str, Form()] = "",
+) -> Response:
+    """Questions 15 and 16 -- the only answers on this page that also become
+    corpus text.
+
+    Two writes, one transaction (`db_conn` owns the boundary): the versioned
+    answer, so what the user said and when stays readable, and the corpus
+    statement, so scoring and drafting can actually use it. `replace_section`
+    rather than an append, so re-answering supersedes the earlier statement
+    instead of leaving both live, and an emptied box clears the section.
+
+    No model call anywhere in this path; the text is stored exactly as typed.
+    """
+    try:
+        depth_value = checked_text(depth_genuine)
+        gaps_value = checked_text(recurring_gaps)
+    except FormTooLongError as exc:
+        return _error(request, session, profile, filters, str(exc), 400)
+
+    answers = {"depth_genuine": depth_value, "recurring_gaps": gaps_value}
+    profile.save_answers({key: (value, None) for key, value in answers.items()})
+    for key in CORPUS_QUESTION_KEYS:
+        corpus.replace_section(CORPUS_SECTIONS[key], [answers[key]])
+    return RedirectResponse("/profile?saved=1#depth-and-gaps", status_code=303)

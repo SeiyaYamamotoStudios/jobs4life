@@ -521,3 +521,40 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
   border-radius: 6px;
 }
 .ruled-out-entry form { margin: 0.4rem 0 0; }
+
+/* -- fact confirmation -- */
+
+.fact-progress {
+  margin: 1rem 0;
+  padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.fact-empty { margin-top: 1.5rem; }
+.fact-role { margin-top: 2rem; }
+.fact {
+  margin: 0.9rem 0;
+  padding: 0.8rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.fact form { margin: 0.5rem 0 0; }
+.fact-source { margin: 0 0 0.5rem; color: var(--ink-soft); }
+.fact-label { font-size: 0.85rem; color: var(--muted); margin-right: 0.3rem; }
+.fact-probe { color: var(--warn); }
+.fact-reject, .fact-restore { display: inline-block; margin: 0.4rem 0 0; }
+.confirm-role { margin: 0.9rem 0 0; }
+.fact-confirmed, .fact-rejected { margin-top: 0.8rem; }
+.fact-confirmed summary, .fact-rejected summary { cursor: pointer; color: var(--accent); }
+.fact-list { list-style: none; margin: 0.5rem 0; padding: 0; }
+.fact-list li { margin: 0.4rem 0; }
+.fact-list .gloss { color: var(--ink-soft); }
+.fact-list form { display: inline-block; margin: 0 0 0 0.5rem; }
+.corpus-note {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+}

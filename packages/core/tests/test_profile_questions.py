@@ -12,6 +12,8 @@ from typing import get_args
 from jfl_core import models
 from jfl_core.db import tables
 from jfl_core.profile_questions import (
+    CORPUS_QUESTION_KEYS,
+    CORPUS_SECTIONS,
     DEFAULT_DISCIPLINE_CHOICES,
     DEFERRED_QUESTIONS,
     MAX_OBJECTIVES,
@@ -34,10 +36,11 @@ def test_question_keys_are_unique() -> None:
 def test_question_numbers_are_unique_and_in_scope() -> None:
     numbers = [q.number for q in QUESTIONS]
     assert len(numbers) == len(set(numbers))
-    # Scope is 1-14 and 17; 10/11 (objectives) and 17 (ruled-out) are not
-    # simple keyed questions and so are not in QUESTIONS -- see the module
-    # docstring. 15/16/18 are out of scope entirely.
-    assert set(numbers) == {1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14}
+    # Scope is 1-17; 10/11 (objectives) and 17 (ruled-out) are not simple keyed
+    # questions and so are not in QUESTIONS -- see the module docstring. 15 and
+    # 16 are, even though they also become corpus text. 18 is the CV upload and
+    # produces no answer row at all.
+    assert set(numbers) == {1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16}
 
 
 def test_questions_by_key_matches_questions() -> None:
@@ -97,5 +100,24 @@ def test_objective_and_ruled_out_questions_are_outside_the_keyed_set() -> None:
     assert MAX_OBJECTIVES == 4
 
 
-def test_deferred_questions_are_15_16_and_18_only() -> None:
-    assert {n for n, _ in DEFERRED_QUESTIONS} == {15, 16, 18}
+def test_deferred_questions_are_18_only() -> None:
+    """15 and 16 are built (they are the two answers that also become corpus
+    text); 18 is answered by uploading a CV, not by typing into the page.
+    """
+    assert {n for n, _ in DEFERRED_QUESTIONS} == {18}
+
+
+def test_only_15_and_16_reach_the_corpus() -> None:
+    """The one place that distinction is written down. Every other answer is a
+    preference about what the user wants; these two are claims about them, and
+    a preference that leaked into the corpus would become evidence the tool
+    then cites back at them.
+    """
+    assert set(CORPUS_QUESTION_KEYS) == {"depth_genuine", "recurring_gaps"}
+    assert {QUESTIONS_BY_KEY[k].number for k in CORPUS_QUESTION_KEYS} == {15, 16}
+    assert {q.key for q in QUESTIONS if q.to_corpus} == set(CORPUS_QUESTION_KEYS)
+
+
+def test_every_corpus_question_has_a_section_to_land_in() -> None:
+    assert set(CORPUS_SECTIONS) == set(CORPUS_QUESTION_KEYS)
+    assert len(set(CORPUS_SECTIONS.values())) == len(CORPUS_SECTIONS)
