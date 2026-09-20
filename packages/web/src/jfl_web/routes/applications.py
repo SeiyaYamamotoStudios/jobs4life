@@ -20,6 +20,9 @@ Screens:
   POST /applications/{id}/status     -- change status; appends an event
   POST /applications/{id}/notes      -- replace the notes field
   GET  /applications/{id}/extraction -- the extraction panel, for htmx polling
+  GET  /applications/{id}/score      -- the scoring panel, for htmx polling
+  POST /applications/{id}/score      -- score it: two axes, never composited;
+                                         explicit, because it costs the user
   POST /applications/{id}/extract    -- read the ad again; explicit, never
                                          automatic, because it costs the user
   POST /applications/{id}/archive    -- soft delete: off the lists, status and
@@ -42,16 +45,28 @@ from typing import Annotated, get_args
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.models import ApplicationDetail, ApplicationExtraction, ApplicationStatus
+from jfl_core.models import (
+    ApplicationDetail,
+    ApplicationExtraction,
+    ApplicationScore,
+    ApplicationStatus,
+)
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
 
-from jfl_web.deps import ApplicationRepoDep, CsrfDep, SessionDep, TaskRepoDep
+from jfl_web.deps import ApplicationRepoDep, CsrfDep, ScoreRepoDep, SessionDep, TaskRepoDep
 from jfl_web.jobads import (
     MAX_AD_CHARS,
     extraction_failure,
     normalise_url,
     provisional_title,
+)
+from jfl_web.scores import (
+    COST_NOTE,
+    COULD_GET_LABEL,
+    UNMEASURED,
+    WANT_IT_LABEL,
+    score_failure,
 )
 from jfl_web.templating import render
 
@@ -61,6 +76,10 @@ from jfl_web.templating import render
 # no deployed worker knows stays `pending` rather than failing, which is the
 # safe direction for a rolling deploy.
 EXTRACT_JOB_AD_KIND = "extract_job_ad"
+
+# The worker's kind for "score this application". A string on both sides, for
+# the same reason as above.
+SCORE_APPLICATION_KIND = "score_application"
 
 router = APIRouter()
 
@@ -256,6 +275,7 @@ def _form(
 def _detail_context(
     session: AuthenticatedSession,
     applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
     application_id: uuid.UUID,
     detail: ApplicationDetail,
     **extra: object,
@@ -275,6 +295,7 @@ def _detail_context(
         "next_labels": _NEXT_LABEL,
         "application_id": application_id,
         **_extraction_context(extraction),
+        **_score_context(scores.latest(application_id)),
         **extra,
     }
 
@@ -285,6 +306,7 @@ def application_detail(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -293,7 +315,7 @@ def application_detail(
     return render(
         request,
         "application_detail.html",
-        _detail_context(session, applications, application_id, detail),
+        _detail_context(session, applications, scores, application_id, detail),
     )
 
 
@@ -353,6 +375,7 @@ def attach_ad(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
@@ -384,7 +407,13 @@ def attach_ad(
             request,
             "application_detail.html",
             _detail_context(
-                session, applications, application_id, detail, ad_error=message, ad_value=job_ad
+                session,
+                applications,
+                scores,
+                application_id,
+                detail,
+                ad_error=message,
+                ad_value=job_ad,
             ),
             status_code=400,
         )
@@ -392,6 +421,100 @@ def attach_ad(
     applications.attach_job_ad(application_id, ad)
     tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+@router.get("/applications/{application_id}/score")
+def score_panel(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+) -> Response:
+    """The scoring panel on its own, for htmx to poll while a run is pending.
+
+    The fragment carries its own polling trigger only while the latest run is
+    `pending`, so the poll stops by virtue of what came back -- same shape as
+    the extraction panel, and for the same reason: no timer left running, no
+    client-side state to get out of step with the row.
+
+    The application is looked up first so an id belonging to someone else is a
+    404 here exactly as it is on the page, rather than an empty panel.
+    """
+    if applications.get_application(application_id) is None:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+    return render(
+        request,
+        "_score.html",
+        {
+            "session": session,
+            "application_id": application_id,
+            **_score_context(scores.latest(application_id)),
+        },
+    )
+
+
+@router.post("/applications/{application_id}/score")
+def score_application(
+    request: Request,
+    application_id: uuid.UUID,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Score this application. A button, never automatic.
+
+    CLAUDE.md's 2026-09-15 decision: a job is scored only when the user turns
+    it into an application and asks, never on arrival and never for a job they
+    merely browsed -- they pay for the call with their own key. So this row and
+    this task exist because a person pressed something.
+
+    A run already in flight is not duplicated: pressing twice while the panel
+    says "scoring" would buy a second charge for the same answer. A finished
+    run *is* re-scored, because that is what the button is for, and the earlier
+    row is kept rather than overwritten.
+
+    Both writes are in the request's single transaction, so the row and its
+    task are committed together: there is no state where a `pending` score sits
+    with nothing queued to move it.
+    """
+    if applications.get_application(application_id) is None:
+        context = {"session": session, "user": session.user, "message": _NOT_FOUND}
+        return render(request, "error.html", context, status_code=404)
+
+    latest = scores.latest(application_id)
+    if latest is None or latest.status != "pending":
+        row = scores.create_pending(application_id)
+        tasks.enqueue(
+            kind=SCORE_APPLICATION_KIND,
+            # Ids only. Nothing about the job, the profile or the key is in a
+            # payload that admin queries read back.
+            payload={"score_id": str(row.id)},
+        )
+    # POST/redirect/GET: a refresh must not enqueue a second run.
+    return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+def _score_context(score: ApplicationScore | None) -> dict[str, object]:
+    """One shape for both the full page and the polled fragment, so the panel
+    cannot render differently depending on which route produced it.
+
+    The two axes are handed over as two separate values with two separate
+    labels, and nothing here derives a third from them.
+    """
+    failed = score is not None and score.status == "failed"
+    failure = score_failure(score.error_code) if score is not None and failed else None
+    return {
+        "score": score,
+        "score_failure": failure,
+        "score_unmeasured": UNMEASURED,
+        "score_cost_note": COST_NOTE,
+        "could_get_label": COULD_GET_LABEL,
+        "want_it_label": WANT_IT_LABEL,
+    }
 
 
 def _extraction_context(extraction: ApplicationExtraction | None) -> dict[str, object]:

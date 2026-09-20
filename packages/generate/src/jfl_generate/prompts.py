@@ -9,12 +9,29 @@ duplicated.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 from anthropic.types import TextBlockParam
-from jfl_core.models import DraftKind, Job, JobRequirement, RequirementCoverage, Span
+from jfl_core.models import (
+    DraftKind,
+    Job,
+    JobRequirement,
+    ProfileAnswer,
+    ProfileObjective,
+    ProfileRuledOut,
+    RequirementCoverage,
+    Span,
+)
+from jfl_core.profile_questions import (
+    OBJECTIVE_QUESTIONS,
+    QUESTIONS,
+    RULED_OUT_QUESTION,
+    ProfileQuestion,
+)
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -358,4 +375,306 @@ def build_draft_user_message(
         lines.append(f"   coverage: {status} -- {evidence_note}")
     lines.append("")
     lines.append("Write the draft now.")
+    return "\n".join(lines)
+
+
+########################################################################
+# Slice B4: two scores for one application. One model call, no corpus in
+# the prompt -- "could I get this" is judged from the requirements and the
+# corpus coverage verdicts already recorded for the job, which is what
+# keeps it grounded on confirmed corpus facts only (coverage is computed
+# against spans, and spans are the confirmed corpus). See CLAUDE.md's
+# 2026-09-18 decision and PLAN.md B4.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.ScoreOutput.
+#
+# There is deliberately no third number in this schema. CLAUDE.md's standing
+# decision: "do I want this" and "could I get this" are reported separately and
+# never averaged, so a composite has nowhere to be returned to.
+#
+# Nothing here is named `reason` -- see CLAUDE.md's 2026-09-02 decision, where a
+# labelling prompt plus a schema demanding a label and a `reason` per item
+# tripped the API's reverse-engineering classifier on every call. The paragraph
+# behind each number is an `assessment`.
+SCORE_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "could_get_score": {"type": "integer"},
+        "could_get_assessment": {"type": "string"},
+        "want_it_score": {"type": "integer"},
+        "want_it_assessment": {"type": "string"},
+        "objective_verdicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ordinal": {"type": "integer"},
+                    "verdict": {"type": "string"},
+                },
+                "required": ["ordinal", "verdict"],
+                "additionalProperties": False,
+            },
+        },
+        "hard_gate_breaches": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "gate": {"type": "string"},
+                    "breach": {"type": "string"},
+                },
+                "required": ["gate", "breach"],
+                "additionalProperties": False,
+            },
+        },
+        "levers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    # The index of an unconfirmed claim in the user message's
+                    # numbered list -- never the claim's text. The stored fact's
+                    # own words are copied back by `jfl_generate.scoring`, so a
+                    # lever can never quietly paraphrase what the user's CV said.
+                    "fact_index": {"type": "integer"},
+                    "would_move_to": {"type": "integer"},
+                    "note": {"type": "string"},
+                },
+                "required": ["fact_index", "would_move_to", "note"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": [
+        "could_get_score",
+        "could_get_assessment",
+        "want_it_score",
+        "want_it_assessment",
+        "objective_verdicts",
+        "hard_gate_breaches",
+        "levers",
+    ],
+    "additionalProperties": False,
+}
+
+NOT_STATED = "not stated"
+
+_SCORE_INSTRUCTIONS = """\
+You are scoring one job for jobs4life, a tool that measures the distance between what a \
+person's own record actually evidences and what is being claimed, and shows the number \
+rather than flattering anyone.
+
+Score the job on two SEPARATE axes, each an integer from 1 to 10. Never combine, average \
+or reconcile them, and never return a third number. A role this person would love and \
+will not get, and one they would dislike and would walk into, must land on different \
+numbers on different axes: the disagreement between the two is the useful signal, and \
+merging them destroys it.
+
+**could_get_score (1-10)** -- how far this person's recorded evidence covers what the job \
+asks for. Judge it ONLY from the requirements and the corpus coverage verdicts given in \
+the next message. Coverage is a report of what their corpus documents, never a judgement \
+of the person: "evidenced" means the corpus documents it, "partial" means something \
+adjacent, "absent" means the corpus is SILENT -- a gap in the record, not a shortcoming \
+-- and "contradicted" means the corpus rules it out. Weigh essential requirements more \
+than desirable ones. Do not credit anything coverage does not evidence, and do not credit \
+the unconfirmed CV claims listed in that message: those are handled by `levers` below.
+
+**want_it_score (1-10)** -- how well this job matches what this person has said they \
+want. Judge it against their profile answers, in this order: hard gates, discipline, each \
+objective separately, trajectory, signals about the employer, tells. Where an answer is \
+given as "{not_stated}", say so in your assessment and do NOT guess what they would have \
+said. An unanswered question narrows what you can conclude; it never raises or lowers the \
+score by assumption.
+
+**could_get_assessment** and **want_it_assessment** are one paragraph each, in plain \
+words, explaining that number: what drove it, and what is unknown. Write about the record \
+and the job, not about the person's worth.
+
+**hard_gate_breaches** -- one entry for every hard gate this ad breaks: location or \
+commute, working arrangement, the lowest package they would accept, contract type, notice \
+or start date, right to work or clearance, or anything they said they categorically will \
+not do. `gate` names which one; `breach` states in plain words what the ad does about it \
+("the ad is on-site in Manchester five days a week; they will travel to an office at most \
+one day a week"). State every breach even though the number already reflects it -- a gate \
+the ad breaks must never be folded silently into a score. Never invent one from a question \
+answered "{not_stated}", and return an empty list if the ad breaks none.
+
+**objective_verdicts** -- one short verdict per objective listed, keyed by its `ordinal`, \
+each judged on its own evidence. Never merge two objectives into one verdict. Give a \
+verdict for every objective listed and for none that is not.
+
+**levers** -- only about the numbered unconfirmed CV claims in the next message. Those are \
+things this person's own CVs claim that they have not confirmed, so they are not evidence \
+and did not count towards could_get_score. Where confirming one would raise that score, \
+return its `fact_index`, the score it would move to (`would_move_to`, 1-10, higher than \
+could_get_score), and a `note` naming which requirement it would cover. Return an empty \
+list when none of them would change anything.
+
+Do not soften either number to be encouraging, and do not deflate it to look rigorous. \
+The whole product is that these numbers are honest.
+"""
+
+
+def build_score_system_prompt() -> str:
+    """Constant: everything volatile -- the job, the coverage verdicts, the
+    profile answers, the unconfirmed claims and the current time -- goes in the
+    user message, so this block can be cached across every scoring call.
+    """
+    return _SCORE_INSTRUCTIONS.format(not_stated=NOT_STATED)
+
+
+def build_score_system_blocks() -> list[TextBlockParam]:
+    """One cacheable `system` block. Unlike coverage and drafting there is no
+    corpus here to split off -- see the section comment above for why this call
+    reads coverage verdicts rather than the corpus itself.
+    """
+    return [
+        {
+            "type": "text",
+            "text": build_score_system_prompt(),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class ProposedFactView:
+    """The three fields scoring needs off a CV-derived candidate fact.
+
+    A structural view rather than an import of the candidate-facts model: that
+    module is being built alongside this slice (see
+    `jfl_core.storage.candidate_facts`), and nothing here should have to change
+    when the real one lands.
+    """
+
+    fact_text: str
+    role_label: str = ""
+    source_line: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ScoreInputs:
+    """Everything one scoring call is told, assembled by the caller.
+
+    `answers` is `PostgresProfileRepository.get_current_answers()` -- a key
+    absent from it means the question was never answered, which is rendered
+    "not stated" and never guessed at (PLAN.md B3a). `objectives` are the
+    in-use slots, each carried separately. `proposed_facts` are the
+    **unconfirmed** CV claims: they are not evidence and appear in the prompt
+    only so the model can name which of them would move the first number.
+    """
+
+    job: Job
+    requirements: Sequence[JobRequirement]
+    coverage: Sequence[RequirementCoverage]
+    answers: Mapping[str, ProfileAnswer]
+    objectives: Sequence[ProfileObjective] = ()
+    ruled_out: Sequence[ProfileRuledOut] = ()
+    proposed_facts: Sequence[ProposedFactView] = ()
+    now: datetime | None = None
+
+
+def unanswered_questions(answers: Mapping[str, ProfileAnswer]) -> list[ProfileQuestion]:
+    """The profile questions this user has not answered, in assessment order.
+
+    An answer whose text is blank and whose structured value is empty counts as
+    unanswered: the storage layer keeps such a row to record that a previous
+    answer was cleared, and a cleared answer is not an answer.
+    """
+    unanswered: list[ProfileQuestion] = []
+    for question in QUESTIONS:
+        answer = answers.get(question.key)
+        if answer is None or (not answer.answer_text.strip() and not answer.structured):
+            unanswered.append(question)
+    return unanswered
+
+
+def _answer_line(question: ProfileQuestion, answer: ProfileAnswer | None) -> list[str]:
+    if answer is None or (not answer.answer_text.strip() and not answer.structured):
+        return [f"- {question.wording}", f"  {NOT_STATED}"]
+    lines = [f"- {question.wording}", f"  {answer.answer_text.strip() or NOT_STATED}"]
+    if answer.structured:
+        lines.append(f"  (structured: {json.dumps(answer.structured, sort_keys=True)})")
+    return lines
+
+
+def build_score_user_message(inputs: ScoreInputs) -> str:
+    """The volatile half of the request -- goes in `messages`, never in
+    `system`, so a byte change here never invalidates the cached instructions.
+
+    Told what time it is, per CLAUDE.md's 2026-09-07 decision: a judgement about
+    notice periods, start dates or how long a search has been running is
+    guessing without it.
+    """
+    job = inputs.job
+    lines: list[str] = []
+    if inputs.now is not None:
+        lines.append(f"The current date and time is {inputs.now.isoformat()}.")
+        lines.append("")
+    lines.append(f"Job: {job.title or '(unknown title)'} at {job.employer or '(unknown employer)'}")
+    lines.append(f"Location as the ad states it: {job.location or NOT_STATED}")
+    lines.append("")
+
+    lines.append("## The job ad")
+    lines.append(job.raw_text)
+    lines.append("")
+
+    lines.append("## Requirements, and what this person's corpus can evidence")
+    if inputs.requirements:
+        coverage_by_requirement = {c.requirement_id: c for c in inputs.coverage}
+        for i, requirement in enumerate(inputs.requirements, start=1):
+            row = coverage_by_requirement.get(requirement.id)
+            status = row.status if row else "not checked"
+            note = row.evidence_note if row else "(no coverage recorded)"
+            lines.append(f"{i}. [{requirement.necessity}] {requirement.text}")
+            lines.append(f"   coverage: {status} -- {note}")
+    else:
+        lines.append("(none extracted)")
+    lines.append("")
+
+    lines.append("## What this person has said they want, in their own words")
+    for question in QUESTIONS:
+        lines.extend(_answer_line(question, inputs.answers.get(question.key)))
+    lines.append("")
+
+    lines.append("## Objectives for this move, each to be judged on its own")
+    if inputs.objectives:
+        for objective in inputs.objectives:
+            lines.append(f"- ordinal {objective.ordinal}")
+            lines.append(
+                f"  {OBJECTIVE_QUESTIONS.wording_what} "
+                f"{objective.objective_text.strip() or NOT_STATED}"
+            )
+            lines.append(
+                f"  {OBJECTIVE_QUESTIONS.wording_evidence} "
+                f"{objective.evidence_text.strip() or NOT_STATED}"
+            )
+    else:
+        lines.append(NOT_STATED)
+    lines.append("")
+
+    lines.append(f"## {RULED_OUT_QUESTION.wording}")
+    live_ruled_out = [r for r in inputs.ruled_out if r.reopened_at is None]
+    if live_ruled_out:
+        for entry in live_ruled_out:
+            lines.append(f"- {entry.decision_text} (recorded {entry.recorded_at.date()})")
+    else:
+        lines.append(NOT_STATED)
+    lines.append("")
+
+    lines.append("## Unconfirmed claims from this person's own CVs -- NOT evidence")
+    lines.append(
+        "These have not been confirmed, so they did not count towards could_get_score. "
+        "Cite one by its number in `levers` if confirming it would raise that score."
+    )
+    if inputs.proposed_facts:
+        for i, fact in enumerate(inputs.proposed_facts, start=1):
+            label = f" [{fact.role_label}]" if fact.role_label else ""
+            lines.append(f"{i}.{label} {fact.fact_text}")
+    else:
+        lines.append("(none)")
+    lines.append("")
+
+    lines.append("Score this job on both axes now, separately.")
     return "\n".join(lines)

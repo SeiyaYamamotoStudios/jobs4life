@@ -26,6 +26,7 @@ from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.profile import PostgresProfileRepository
+from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
@@ -126,6 +127,14 @@ def application_repo(session: SessionDep, conn: ConnDep) -> PostgresApplicationR
 
 
 ApplicationRepoDep = Annotated[PostgresApplicationRepository, Depends(application_repo)]
+
+
+def score_repo(session: SessionDep, conn: ConnDep) -> PostgresScoreRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresScoreRepository(conn, session.user.id)
+
+
+ScoreRepoDep = Annotated[PostgresScoreRepository, Depends(score_repo)]
 
 
 def task_repo(session: SessionDep, conn: ConnDep) -> PostgresTaskRepository:

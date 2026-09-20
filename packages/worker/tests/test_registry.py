@@ -13,6 +13,7 @@ from jfl_worker.handlers import (
     PURGE_EXPIRED_SESSIONS,
     PURGE_STALE_FEED_MARKS,
     SCHEDULE_BOARD_CHECKS,
+    SCORE_APPLICATION,
     SUGGEST_TITLES,
     build_registry,
 )
@@ -74,6 +75,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
+                SCORE_APPLICATION,
                 SUGGEST_TITLES,
                 FETCH_JOB_DESCRIPTION,
             )
@@ -93,6 +95,12 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # key, same as extraction -- the kill switch must stop it too.
     suggest = registry.get(SUGGEST_TITLES)
     assert suggest is not None and suggest.calls_model is True
+
+    # Slice B4's two scores: one Anthropic call on the user's own key, and two
+    # when the job has no corpus coverage recorded yet and the handler has to
+    # run that first. Either way the kill switch must stop it.
+    score = registry.get(SCORE_APPLICATION)
+    assert score is not None and score.calls_model is True
 
     # Watched boards call public ATS APIs and pure rules -- no model, no spend --
     # so the kill switch must not stop them, and they must say so. Slice C7's

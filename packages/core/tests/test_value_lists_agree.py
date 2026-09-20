@@ -39,6 +39,8 @@ VALUE_SETS = [
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
     (models.ProfileQuestionKey, tables._PROFILE_QUESTION_KEYS),
     (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
+    (models.ScoreStatus, tables._SCORE_STATUSES),
+    (models.ScoreErrorCode, tables._SCORE_ERROR_CODES),
 ]
 
 

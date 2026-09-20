@@ -884,3 +884,116 @@ class FactCounts(BaseModel):
     @property
     def still_to_check(self) -> int:
         return self.proposed
+
+
+# -- two scores for one application, PLAN.md slice B4 ------------------------
+#
+# **Two axes, 1-10 each, never composited.** CLAUDE.md's standing decision and
+# PLAN.md's B4: "do I want this" and "could I get this" diverge constantly and
+# averaging them destroys exactly the signal that makes them worth having, so
+# there is deliberately no third number anywhere in this file, in the table, in
+# the repository or on the page. Both ship **unmeasured and labelled as such**
+# -- there is no golden set for fit, and the measured over-claim rate is a
+# different number about a different thing.
+#
+# Nothing here is named `reason`: see CLAUDE.md's 2026-09-02 decision. The
+# paragraph behind each number is an `assessment`.
+
+ScoreStatus = Literal["pending", "done", "failed"]
+
+# A subset of ExtractionErrorCode's codes plus one of this call's own. Closed
+# set, never a message: the worker writes this column while holding the user's
+# decrypted API key, and a free-text column is where a careless `str(exc)` from
+# the SDK ends up.
+ScoreErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+    # The ad has not been read yet, so there are no requirements to score
+    # "could I get this" against. Not a model failure -- nothing was called.
+    "no_requirements",
+]
+
+
+class ObjectiveVerdict(BaseModel):
+    """One of the user's objectives (profile questions 10/11), judged on its
+    own. `ordinal` is the objective's slot, `objective` is the user's own words
+    echoed back so the page never has to re-read the profile to label a
+    verdict. Deliberately no number: PLAN.md B3a asks for each objective to be
+    judged separately, and inventing a per-objective scale nobody asked for is
+    the first step towards something that gets averaged.
+    """
+
+    ordinal: int
+    objective: str = ""
+    verdict: str = ""
+
+
+class HardGateBreach(BaseModel):
+    """A hard gate the ad breaks, stated in plain words rather than folded
+    silently into a number. `gate` names which one (location, workplace, comp
+    floor, contract, right to work, a categorical no); `breach` says what the
+    ad does about it.
+    """
+
+    gate: str
+    breach: str
+
+
+class ScoreLever(BaseModel):
+    """An **unconfirmed** CV-derived fact that would move "could I get this".
+
+    The facts themselves are never evidence -- only confirmed corpus facts are
+    (CLAUDE.md, 2026-09-18) -- so a lever is the honest way to say "your CVs
+    claim X; confirm it and this moves from 5 to 7" without quietly crediting
+    the claim. `fact_text` and `role_label` are copied verbatim from the stored
+    candidate fact, never from the model's paraphrase of it.
+    """
+
+    fact_text: str
+    role_label: str = ""
+    would_move_to: int | None = None
+    note: str = ""
+
+
+class NotStated(BaseModel):
+    """A profile question this user has not answered. Reported as "not stated"
+    and never guessed at (PLAN.md B3a). `question_key` is deliberately `str`
+    rather than `ProfileQuestionKey`: this is stored JSONB, and a row written
+    before a key was retired must still parse back.
+    """
+
+    question_key: str
+    wording: str = ""
+
+
+class ApplicationScore(BaseModel):
+    """One scoring run against one application. Append-only across runs: a
+    re-score inserts a new row, the page shows the latest, and the history
+    stays readable. A row's own `status` moves `pending` -> `done`/`failed`
+    once, which is the run's state, not a rewrite of an earlier score.
+
+    `cost_usd` is the whole run's cost -- the scoring call, plus the coverage
+    call when this run had to make one -- because that is what the user was
+    billed for pressing the button. `trace_id` ties it to the `runs` rows.
+    """
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    status: ScoreStatus
+    error_code: ScoreErrorCode | None = None
+    could_get_score: int | None = None
+    could_get_assessment: str = ""
+    want_it_score: int | None = None
+    want_it_assessment: str = ""
+    objective_verdicts: list[ObjectiveVerdict] = Field(default_factory=list)
+    hard_gate_breaches: list[HardGateBreach] = Field(default_factory=list)
+    levers: list[ScoreLever] = Field(default_factory=list)
+    not_stated: list[NotStated] = Field(default_factory=list)
+    model: str | None = None
+    cost_usd: Decimal | None = None
+    trace_id: uuid.UUID | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime

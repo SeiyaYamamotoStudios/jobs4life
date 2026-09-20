@@ -34,6 +34,8 @@ from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.feed_marks import KIND as PURGE_STALE_FEED_MARKS
 from jfl_worker.handlers.feed_marks import purge_stale_feed_marks
+from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION
+from jfl_worker.handlers.scoring import build_score_application
 from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
 from jfl_worker.handlers.sessions import purge_expired_sessions
 from jfl_worker.handlers.title_suggestions import KIND as SUGGEST_TITLES
@@ -48,12 +50,14 @@ __all__ = [
     "PURGE_EXPIRED_SESSIONS",
     "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
+    "SCORE_APPLICATION",
     "SUGGEST_TITLES",
     "build_check_board",
     "build_extract_job_ad",
     "build_fetch_job_description",
     "build_registry",
     "build_schedule_board_checks",
+    "build_score_application",
     "build_suggest_titles",
     "purge_expired_sessions",
     "purge_stale_feed_marks",
@@ -114,6 +118,13 @@ def build_registry(
         # claude-haiku-4-5, never the deployment's configured model.
         build_suggest_titles(master_key=settings.master_key),
         # True: one Anthropic call on the user's own key, same as extraction.
+        calls_model=True,
+    )
+    registry.register(
+        SCORE_APPLICATION,
+        build_score_application(master_key=settings.master_key, model=settings.model),
+        # True: one Anthropic call on the user's own key -- two, when the job
+        # has no corpus coverage recorded yet and this has to run it first.
         calls_model=True,
     )
     registry.register(
