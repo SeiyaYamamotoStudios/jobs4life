@@ -55,67 +55,42 @@ that mattered was found that way and none by review.
 
 ## Next
 
-### Resume here — agreed 2026-09-18, pick straight up
+### Resume here — end of session, 2026-09-20
 
-The owner's goal: **score a job against ourselves as a candidate, with a paragraph saying
-why; generate a CV for it; and answer its application questions.** All three need a
-corpus big enough to matter, so onboarding from CVs comes first. Decisions are in
-CLAUDE.md (2026-09-18) and PLAN.md B4–B6; this is the task list, in order.
+**Everything from the 2026-09-18 list is built and deployed** (commit `48c177a`,
+migration `c4d9a1f6e207`), by five parallel agents plus one reconciliation pass.
 
-**0. Housekeeping, first thing.**
-- **Deploy.** Production is still at the 2026-09-15 deploy (migration `a56076494b99`);
-  GitHub `main` carries 16+ commits and five migrations on top — error references, the
-  email constraint, the remote-only ruling, feed-mark purge, the prompt batch, and B3a
-  profile storage and `/profile`. Deploy, then check `/profile` in production.
-- **Open question for the owner:** add one dated line to the frozen demo page ("produced
-  by the pipeline as it stood on 2026-09-07; the tool has changed since")? No model spend,
-  a static redeploy. Not yet answered.
-- The old `git stash` and the now-redundant `scaffold-and-schema` branch can both go.
+- **CV onboarding (B6, redesigned).** `/corpus` takes `.md`/`.txt` CVs (PDF/Word refused
+  deliberately: a mis-extracted line quoted back as "your own words" is the one thing this
+  must not do), stores them in the sent-document store, and one Haiku-priced model call per
+  CV proposes candidate facts, each tied to its CV line, de-duplicated across CVs.
+  `/corpus/facts` confirms them **role by role, never globally**; a fact asserting a number
+  or ownership carries a probe that must be answered first, and the answer joins the fact
+  in the one corpus line (`PROBE_JOIN`). Confirmed facts reach the corpus as **hosted
+  markdown** re-parsed into spans — `jfl_core.corpus_source` is the **one** write path, and
+  profile questions 15/16 go through it too.
+- **B4 scoring.** Two axes 1–10, each with a paragraph, objectives judged separately,
+  breached hard gates stated plainly, unconfirmed CV facts named as levers ("confirm X and
+  this moves to 7"), labelled unmeasured on screen. Runs coverage first when none exists,
+  and says so before spending.
+- **B5 drafting.** "Generate a CV" per application behind the queue, per-sentence verdicts
+  with citations, framing as NOT CHECKED, per-run cost, drafts kept as history.
+- **Application questions.** "Check my answer" and "draft one" side by side, both gated;
+  the page advises answering first and does not enforce it.
 
-**1. CV onboarding — B6, redesigned (the prerequisite for everything below).**
-- Upload **every** CV the user has (the owner: hand-written ones plus the 33 generated
-  ones). Stored verbatim in the **sent-document store** — form, never truth.
-- One model call per CV extracts **candidate facts** (role, dates, scope, numbers,
-  outcomes), each linked to the CV line it came from, de-duplicated across CVs.
-- **Confirmation screen, grouped by role.** Per role: see its facts, then "all true as
-  written" for that role, or edit / reject individually. **No global accept-all.** Facts
-  with a number, a team size, "led" or "owned" are pulled out for a one-line answer
-  ("led how many?"). Confirmed or edited facts become corpus spans, verbatim, like gap
-  answers.
-- Every fact has one of **three states: confirmed, claimed-in-a-CV-unconfirmed, absent.**
-  Unconfirmed facts are kept, never grounding.
-- The same pass **pre-fills profile answers** (location, levels, disciplines) as
-  suggestions the user accepts — preferences, not grounding.
-- Profile questions **15 and 16** go to the corpus verbatim; **18** (current CV) goes
-  through this same upload.
-
-**2. B4 scoring — two axes, 1–10 each, never composited.**
-- **Could I get this** (corpus coverage, confirmed facts only) and **do I want this**
-  (B3a profile: hard gates, discipline, each objective scored separately, trajectory,
-  signals, tells). Each with a paragraph. Labelled **unmeasured**.
-- Runs when a job is tracked or an application is added, on the user's key; cost shown.
-- Where an **unconfirmed** CV fact would cover a requirement, say so: "your CVs claim X;
-  confirm it and this moves from 5 to 7" — the score stays honest and names what to
-  confirm next.
-- Schema: **no property named `reason`** — e.g. `assessment` for the paragraph.
-
-**3. Generate a CV for an application — B5.** Existing drafting (2b-core) behind the
-queue, grounded on confirmed facts only, the claim gate automatic, framing shown NOT
-CHECKED, per-run cost shown. Previous CVs influence form only.
-
-**4. Application questions — both ways, advised not prescribed.** Paste a question. Two
-paths with equal standing: **"check my answer"** (claim gate on the user's draft, plus
-feedback on how well it answers the question and the role) and **"draft one for me"**
-(generated, and gated). The page *advises* answering first — the owner's words: "we do
-not want to prescribe, but advise" — it does not enforce it.
-
-**5. Still owed before drafting reaches anyone but the owner:** the ~$2.07 eval re-run
-against the 2026-09-05 baseline (find the baseline `.eval` logs first).
-
-Parallelisable: 2, 3 and 4 can be built against the existing span repository while 1 is
-built, as five agents were on 2026-09-15 — give each its own worktree created from the
-current commit (the harness's own worktrees started from a stale commit last time) and
-its own database, with `JFL_DATABASE_URL` inline on every command.
+**Do next, in this order.**
+1. **Use it on real material** — the whole point, and nothing below is trustworthy until
+   it happens. Upload the real CVs, confirm a role's facts, then score a live application.
+   Expect the first defects to be in the extraction prompt's role labels and probes; they
+   have never seen a real CV.
+2. **Measure what it costs.** `runs` now carries `extract_cv_facts`, `score_application`,
+   `generate_coverage`, `generate_cv_draft`, `check_application_answer`,
+   `draft_application_answer`. The per-CV and per-score estimates are guesses until then.
+3. **The ~$2.07 eval re-run** against the 2026-09-05 baseline (find the baseline `.eval`
+   logs first). Still owed before drafting reaches anyone but the owner.
+4. Smaller: the dev database holds orphaned spans under the retired
+   `upload:corpus/confirmed.md` document from the superseded write path (nothing deployed
+   was affected); the old `git stash`; and the demo page's missing dated line.
 
 ### Earlier — end of session, 2026-09-15
 
