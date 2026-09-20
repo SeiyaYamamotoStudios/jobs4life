@@ -46,6 +46,10 @@ CONSTRAINED_COLUMNS = [
         "error_code",
         tables._APPLICATION_QUESTION_ANSWER_ERROR_CODES,
     ),
+    ("documents", "storage_kind", tables._DOCUMENT_STORAGE_KINDS),
+    ("cv_extractions", "status", tables._CV_EXTRACTION_STATUSES),
+    ("cv_extractions", "error_code", tables._CV_EXTRACTION_ERROR_CODES),
+    ("candidate_facts", "state", tables._CANDIDATE_FACT_STATES),
 ]
 
 

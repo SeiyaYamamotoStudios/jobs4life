@@ -28,6 +28,7 @@ from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_core.storage.scores import PostgresScoreRepository
+from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
@@ -202,6 +203,18 @@ def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSu
 TitleSuggestionRepoDep = Annotated[
     PostgresTitleSuggestionRepository, Depends(title_suggestion_repo)
 ]
+
+
+def sent_document_repo(session: SessionDep, conn: ConnDep) -> PostgresSentDocumentRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    The sent-document store, which nothing grounding may reach -- see
+    `jfl_core.storage.sent_documents`.
+    """
+    return PostgresSentDocumentRepository(conn, session.user.id)
+
+
+SentDocumentRepoDep = Annotated[PostgresSentDocumentRepository, Depends(sent_document_repo)]
 
 
 def candidate_fact_repo(session: SessionDep, conn: ConnDep) -> PostgresCandidateFactRepository:

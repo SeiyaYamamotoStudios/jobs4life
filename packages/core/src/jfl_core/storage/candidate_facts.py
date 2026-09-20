@@ -1,108 +1,75 @@
-"""Candidate facts read out of a CV, and the one place they become corpus.
+"""Candidate facts: what a CV claims, until the user says otherwise -- slice B6.
 
-PLAN.md B6 as redesigned on 2026-09-18. A CV is stored verbatim in the
-sent-document store -- form, never truth -- and a model proposes facts from it.
-Those proposals are held here, in a table that is deliberately not `spans`:
-nothing in this module is grounding until a person says so.
+A CV cannot simply become the corpus. Grounding on CVs makes every later CV
+"supported" and switches the over-claim measurement off silently -- the
+33-CV analysis found exactly that drift. So a model proposes facts from the CV,
+this table holds them, and only what the user **confirms, one at a time**,
+reaches the corpus. CLAUDE.md's 2026-09-18 decision, and the reason there is no
+global accept-all anywhere in this slice.
 
-The rule this module exists to enforce: **a fact becomes corpus only through
-`confirm`, only one fact per call, and only with the user's own words.** There
-is no method that confirms everything, and a per-role control is built in the
-route by calling `confirm` once per fact it was shown -- so "no global
-accept-all" is a property of this surface, not of a page that happens not to
-offer a button.
+Three states and no fourth:
 
-`fact_text` is the model's wording and never reaches `spans`; `confirmed_text`
-is the user's -- the proposal accepted as written, or their edit of it -- and it
-is that which `jfl_core.storage.user_corpus` records verbatim, with no model
-anywhere in the path.
+  * `proposed` -- claimed in a CV, not confirmed. Kept, shown, and **never
+    grounding**. Scoring may name it ("your CVs claim X; confirm it and this
+    moves from 5 to 7"), which is what makes confirming worth the user's time;
+  * `confirmed` -- the user said it is true, in their own words where they
+    edited it. Only this state carries a `span_id`, and the database enforces
+    that rather than trusting a caller;
+  * `rejected` -- the user said it is not.
 
-A fact carrying a `probe` ("led how many?") cannot be confirmed until the probe
-is answered. That is not fussiness: the unstated number is exactly what
-`scope_inflation` and `ownership_inflation` turn on, and a CV line that says
-"led the platform team" supports a very different claim at six people than at
-sixty.
+**Confirming is the only path into the corpus, and it goes through markdown.**
+`confirm` calls `jfl_core.corpus_source.append_confirmed_fact`, which appends
+the user's words to their corpus document and re-parses it, so the result is an
+ordinary `provenance='document'` span. Never a direct span insert: see that
+module for why, and note that `reject` and a re-confirm with different wording
+both call its inverse, so there is never a corpus line the user cannot get rid
+of.
+
+No model is on any path in this file.
 """
 
 from __future__ import annotations
 
-import datetime as dt
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import case, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from jfl_core.db.tables import candidate_facts as facts_table
-from jfl_core.models import CandidateFact, CandidateFactState, FactCounts, RoleGroup
+from jfl_core.corpus_source import _section as _section  # noqa: F401
+from jfl_core.corpus_source import append_confirmed_fact, remove_confirmed_fact
+from jfl_core.db.tables import candidate_facts as table
+from jfl_core.models import (
+    PROBE_JOIN,
+    CandidateFact,
+    CandidateFactState,
+    FactCounts,
+    ProposedFact,
+    RoleGroup,
+)
 from jfl_core.storage.tenancy import TenantScopedRepository
-from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
-
-# The corpus section confirmed CV facts are filed under, one sub-section per
-# role, so a span's `section_path` says which job it belongs to.
-CORPUS_SECTION_ROOT = "Confirmed from CVs"
-
-# The only punctuation this module adds to anything a user typed: it joins a
-# confirmed statement to the answer the probe asked for, so one fact stays one
-# span. It contributes no words -- see the module docstring on why no model may.
-PROBE_JOIN = " — "
-
-
-def corpus_section(role_label: str) -> str:
-    return f"{CORPUS_SECTION_ROOT} > {role_label}"
-
-
-class ProbeUnansweredError(ValueError):
-    """`confirm` was called on a fact whose probe has no answer.
-
-    Deliberately an error rather than a silent skip: a caller that confirms one
-    named fact is acting on a user's click, and quietly doing nothing would
-    report success for a fact that did not become corpus.
-    """
-
-    def __init__(self, fact_id: uuid.UUID) -> None:
-        super().__init__(
-            f"candidate fact {fact_id} cannot be confirmed until its probe is answered"
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ProposedFact:
-    """One extraction result, before it is stored. Flat and dumb on purpose --
-    the extraction step owns what a good proposal looks like; this module owns
-    only that a proposal is not yet evidence.
-    """
-
-    sent_document_id: uuid.UUID
-    role_label: str
-    role_key: str
-    source_line: str
-    fact_text: str
-    fingerprint: str
-    probe: str | None = None
-
 
 _COLUMNS = (
-    facts_table.c.id,
-    facts_table.c.user_id,
-    facts_table.c.sent_document_id,
-    facts_table.c.role_label,
-    facts_table.c.role_key,
-    facts_table.c.source_line,
-    facts_table.c.fact_text,
-    facts_table.c.probe,
-    facts_table.c.probe_answer,
-    facts_table.c.state,
-    facts_table.c.confirmed_text,
-    facts_table.c.span_id,
-    facts_table.c.fingerprint,
-    facts_table.c.created_at,
-    facts_table.c.updated_at,
+    table.c.id,
+    table.c.user_id,
+    table.c.sent_document_id,
+    table.c.role_label,
+    table.c.role_key,
+    table.c.source_line,
+    table.c.fact_text,
+    table.c.probe,
+    table.c.probe_answer,
+    table.c.state,
+    table.c.confirmed_text,
+    table.c.span_id,
+    table.c.fingerprint,
+    table.c.created_at,
+    table.c.updated_at,
 )
 
 
-def _fact_from_row(row: Any) -> CandidateFact:
+def _from_row(row: Any) -> CandidateFact:
     return CandidateFact(
         id=row.id,
         user_id=row.user_id,
@@ -122,83 +89,110 @@ def _fact_from_row(row: Any) -> CandidateFact:
     )
 
 
-class PostgresCandidateFactRepository(TenantScopedRepository):
-    """One user's candidate facts. Bound to that user at construction; there is
-    no per-call override, so no call site can name another tenant.
+def _counter(state: str) -> Any:
+    return func.count(case((table.c.state == state, 1)))
+
+
+def corpus_section(role_label: str) -> str:
+    """The corpus section a role's confirmed facts land under, as
+    `jfl_core.corpus_source` will record it -- exported so callers and tests can
+    find a fact's span without re-deriving the rule.
+    """
+    return _section(role_label)
+
+
+class ProbeUnansweredError(ValueError):
+    """A fact carrying a probe cannot be confirmed until the probe is answered.
+
+    The probe exists because the fact asserts a number, a team size or
+    ownership, and the unstated half is exactly what `scope_inflation` and
+    `ownership_inflation` turn on -- so "confirm as written" must not be a way
+    past it. Raised rather than returned so no caller can ignore it by
+    accident.
     """
 
-    def _corpus(self) -> PostgresUserCorpusRepository:
-        return PostgresUserCorpusRepository(self._conn, self._user_id)
+    def __init__(self, fact_id: uuid.UUID) -> None:
+        super().__init__(f"fact {fact_id} has an unanswered probe")
 
-    # -- writing proposals ----------------------------------------------------
+
+class PostgresCandidateFactRepository(TenantScopedRepository):
+    """This user's candidate facts, and no one else's."""
 
     def add_proposed(self, facts: Sequence[ProposedFact]) -> int:
-        """Store newly extracted proposals and return how many were new.
+        """Insert what a CV proposed, skipping anything already proposed.
 
-        De-duplicated on `fingerprint` per user: the same fact restated across
-        many CVs is one row and one confirmation, not one per document. A
-        fingerprint already on the record is left exactly as it is -- including
-        a fact the user has already rejected, which a later upload must not
-        resurrect as unchecked work.
+        `ON CONFLICT (user_id, fingerprint) DO NOTHING` rather than a read then
+        a write: the owner has thirty-three CVs saying much the same thing, and
+        two extractions finishing at once must not mint two rows for one fact.
+        Returns how many rows were actually inserted, which is what the
+        extraction records as `facts_proposed`.
+
+        A conflict deliberately does **not** update the existing row. A fact the
+        user has already confirmed or rejected must not be quietly reset to
+        `proposed` because another CV mentioned it again.
         """
-        added = 0
-        for fact in facts:
-            existing = self._conn.execute(
-                select(facts_table.c.id).where(
-                    facts_table.c.user_id == self._user_id,
-                    facts_table.c.fingerprint == fact.fingerprint,
-                )
-            ).first()
-            if existing is not None:
-                continue
-            self._conn.execute(
-                insert(facts_table).values(
-                    id=uuid.uuid4(),
-                    user_id=self._user_id,
-                    sent_document_id=fact.sent_document_id,
-                    role_label=fact.role_label,
-                    role_key=fact.role_key,
-                    source_line=fact.source_line,
-                    fact_text=fact.fact_text,
-                    probe=fact.probe,
-                    state="proposed",
-                    fingerprint=fact.fingerprint,
-                )
-            )
-            added += 1
-        return added
-
-    # -- reading --------------------------------------------------------------
+        if not facts:
+            return 0
+        rows = [
+            {
+                "id": uuid.uuid4(),
+                "user_id": self._user_id,
+                "sent_document_id": fact.sent_document_id,
+                "role_label": fact.role_label,
+                "role_key": fact.role_key,
+                "source_line": fact.source_line,
+                "fact_text": fact.fact_text,
+                "probe": fact.probe,
+                "state": "proposed",
+                "fingerprint": fact.fingerprint,
+                "ordinal": fact.ordinal,
+            }
+            for fact in facts
+        ]
+        result = self._conn.execute(
+            pg_insert(table)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["user_id", "fingerprint"])
+            .returning(table.c.id)
+        ).all()
+        return len(result)
 
     def list_facts(self, *, state: CandidateFactState | None = None) -> list[CandidateFact]:
-        """Every fact, or every fact in one state, in CV order.
-
-        CV order is insertion order (`created_at`, which uses
-        `clock_timestamp()` so one upload's rows do not tie). The user is
-        reading their own career back and must be able to follow it against the
-        document it came from.
-        """
-        stmt = select(*_COLUMNS).where(facts_table.c.user_id == self._user_id)
+        """In CV order within a role, roles in the order they were first seen."""
+        query = (
+            select(*_COLUMNS)
+            .where(table.c.user_id == self._user_id)
+            .order_by(table.c.role_key, table.c.ordinal, table.c.created_at)
+        )
         if state is not None:
-            stmt = stmt.where(facts_table.c.state == state)
-        rows = self._conn.execute(stmt.order_by(facts_table.c.created_at, facts_table.c.id)).all()
-        return [_fact_from_row(row) for row in rows]
+            query = query.where(table.c.state == state)
+        return [_from_row(row) for row in self._conn.execute(query).all()]
 
     def roles(self) -> list[RoleGroup]:
-        """One entry per role, in CV order, with its counts per state."""
-        first_seen = func.min(facts_table.c.created_at).label("first_seen")
+        """One entry per role, with its counts, in CV order.
+
+        `role_label` is the label of the role's earliest fact: the same role can
+        be written slightly differently across CVs, `role_key` folds those
+        together (`jfl_core.ids.role_key`), and one of the spellings has to be
+        the one shown. The earliest is the least surprising choice and is
+        stable, which matters more than which spelling wins.
+        """
+        first_ordinal = func.min(table.c.ordinal).label("first_ordinal")
+        first_seen = func.min(table.c.created_at).label("first_seen")
+        label = func.min(table.c.role_label).label("role_label")
         rows = self._conn.execute(
             select(
-                facts_table.c.role_key,
-                func.min(facts_table.c.role_label).label("role_label"),
-                func.count().filter(facts_table.c.state == "proposed").label("proposed"),
-                func.count().filter(facts_table.c.state == "confirmed").label("confirmed"),
-                func.count().filter(facts_table.c.state == "rejected").label("rejected"),
+                table.c.role_key,
+                label,
+                _counter("proposed").label("proposed"),
+                _counter("confirmed").label("confirmed"),
+                _counter("rejected").label("rejected"),
+                first_ordinal,
                 first_seen,
             )
-            .where(facts_table.c.user_id == self._user_id)
-            .group_by(facts_table.c.role_key)
-            .order_by(first_seen)
+            .where(table.c.user_id == self._user_id)
+            .group_by(table.c.role_key)
+            .order_by(first_ordinal, first_seen, table.c.role_key)
         ).all()
         return [
             RoleGroup(
@@ -212,28 +206,10 @@ class PostgresCandidateFactRepository(TenantScopedRepository):
         ]
 
     def get_fact(self, fact_id: uuid.UUID) -> CandidateFact | None:
-        """None for a fact that does not exist OR belongs to someone else --
-        the caller cannot tell those apart, and must not be able to.
-        """
         row = self._conn.execute(
-            select(*_COLUMNS).where(
-                facts_table.c.id == fact_id,
-                facts_table.c.user_id == self._user_id,
-            )
+            select(*_COLUMNS).where(table.c.id == fact_id, table.c.user_id == self._user_id)
         ).first()
-        return None if row is None else _fact_from_row(row)
-
-    def counts(self) -> FactCounts:
-        row = self._conn.execute(
-            select(
-                func.count().filter(facts_table.c.state == "proposed").label("proposed"),
-                func.count().filter(facts_table.c.state == "confirmed").label("confirmed"),
-                func.count().filter(facts_table.c.state == "rejected").label("rejected"),
-            ).where(facts_table.c.user_id == self._user_id)
-        ).one()
-        return FactCounts(proposed=row.proposed, confirmed=row.confirmed, rejected=row.rejected)
-
-    # -- state changes --------------------------------------------------------
+        return None if row is None else _from_row(row)
 
     def confirm(
         self,
@@ -242,100 +218,120 @@ class PostgresCandidateFactRepository(TenantScopedRepository):
         text: str | None = None,
         probe_answer: str | None = None,
     ) -> CandidateFact | None:
-        """Confirm ONE fact and record it in the corpus, verbatim.
+        """Confirm a fact and put it in the corpus. None if there is no such
+        fact for this user.
 
-        `text` is the user's edit; blank or absent means "true as written", in
-        which case the model's `fact_text` becomes their statement because they
-        said so. Either way what is stored is what will be shown back to them,
-        untouched.
+        `text` is the user's edit, stored verbatim and used instead of the
+        model's proposal; leave it out to confirm the proposal as written.
+        `probe_answer` is likewise the user's own words -- no model touches
+        either on the way in or on the way to the corpus.
 
-        `probe_answer` is folded into the same statement, so a fact and the
-        number it turned on stay one span rather than two half-facts.
-
-        None if there is no such fact for this user. Raises
-        `ProbeUnansweredError` if the fact has a probe and neither this call nor
-        the record supplies an answer.
+        Confirming an already-confirmed fact with different words is an edit:
+        the old line comes out of the corpus markdown and the new one goes in,
+        so the fact never has two spans and the corpus never keeps a sentence
+        the user has replaced.
         """
-        fact = self.get_fact(fact_id)
-        if fact is None:
+        existing = self.get_fact(fact_id)
+        if existing is None:
             return None
 
-        answer = (probe_answer if probe_answer is not None else fact.probe_answer) or ""
-        answer = answer.strip()
-        if fact.probe and not answer:
+        edited = (text or "").strip() or None
+        answer = (probe_answer or "").strip() or existing.probe_answer
+        if existing.probe and not answer:
             raise ProbeUnansweredError(fact_id)
+        wanted = edited or existing.fact_text
+        # One fact, one line, one span: the probe's answer belongs in the corpus
+        # text, not only in this row -- see PROBE_JOIN.
+        statement = f"{wanted}{PROBE_JOIN}{answer}" if answer else wanted
 
-        confirmed = (text or "").strip() or fact.fact_text
-        statement = confirmed if not answer else f"{confirmed}{PROBE_JOIN}{answer}"
-        span = self._corpus().record(statement, section=corpus_section(fact.role_label))
+        if existing.state == "confirmed" and existing.span_id is not None:
+            if statement == existing.corpus_text:
+                if answer != existing.probe_answer:
+                    self._set(fact_id, probe_answer=answer)
+                return self.get_fact(fact_id)
+            self._release(existing)
 
-        return self._set_state(
+        span_id = append_confirmed_fact(
+            self._conn, self._user_id, statement, section=existing.role_label
+        )
+        self._set(
             fact_id,
             state="confirmed",
-            confirmed_text=confirmed,
-            probe_answer=answer or None,
-            span_id=span,
+            confirmed_text=edited,
+            probe_answer=answer,
+            span_id=span_id,
         )
+        return self.get_fact(fact_id)
 
     def reject(self, fact_id: uuid.UUID) -> CandidateFact | None:
-        """Mark a fact "not true as written". Nothing is deleted: the row stays,
-        the page keeps showing it, and it can be brought back.
+        """Reject a fact. None if there is no such fact for this user.
 
-        If it had already been confirmed, its span is retired -- a statement the
-        user has withdrawn must stop grounding claims the moment they withdraw
-        it, not at the next re-ingestion.
+        Rejecting one that was confirmed takes its line back out of the corpus
+        markdown and retires its span, so "I changed my mind" actually stops the
+        tool grounding on it -- see `jfl_core.corpus_source`.
         """
-        fact = self.get_fact(fact_id)
-        if fact is None:
+        existing = self.get_fact(fact_id)
+        if existing is None:
             return None
-        if fact.span_id is not None:
-            self._corpus().retire(fact.span_id)
-        return self._set_state(fact_id, state="rejected", span_id=None)
+        if existing.state == "confirmed" and existing.span_id is not None:
+            self._release(existing)
+        self._set(fact_id, state="rejected", span_id=None)
+        return self.get_fact(fact_id)
 
     def restore(self, fact_id: uuid.UUID) -> CandidateFact | None:
-        """Bring a rejected fact back to unchecked. Their edit, if they made
-        one, is kept -- see `candidate_facts.confirmed_text` in `db.tables` --
-        so restoring does not hand the user a blank box where their words were.
+        """Put a rejected fact back in front of the user, as `proposed`. None if
+        there is no such fact for this user.
+
+        Nothing is deleted on this screen, so "not true as written" is
+        reversible: the user may have rejected a fact they later want to word
+        differently. It comes back unconfirmed and ungrounded -- restoring is
+        not confirming.
         """
-        fact = self.get_fact(fact_id)
-        if fact is None:
+        existing = self.get_fact(fact_id)
+        if existing is None:
             return None
-        if fact.span_id is not None:
-            self._corpus().retire(fact.span_id)
-        return self._set_state(fact_id, state="proposed", span_id=None)
+        if existing.state != "rejected":
+            return existing
+        self._set(fact_id, state="proposed", span_id=None)
+        return self.get_fact(fact_id)
 
-    def _set_state(
-        self,
-        fact_id: uuid.UUID,
-        *,
-        state: CandidateFactState,
-        span_id: uuid.UUID | None,
-        confirmed_text: str | None = None,
-        probe_answer: str | None = None,
-    ) -> CandidateFact | None:
-        values: dict[str, Any] = {
-            "state": state,
-            "span_id": span_id,
-            "updated_at": dt.datetime.now(dt.UTC),
-        }
-        if confirmed_text is not None:
-            values["confirmed_text"] = confirmed_text
-        if probe_answer is not None:
-            values["probe_answer"] = probe_answer
-        row = self._conn.execute(
-            update(facts_table)
-            .where(facts_table.c.id == fact_id, facts_table.c.user_id == self._user_id)
-            .values(**values)
-            .returning(*_COLUMNS)
+    def _release(self, fact: CandidateFact) -> None:
+        """Take this fact's line out of the corpus -- unless another confirmed
+        fact resolved to the same span.
+
+        Two facts can land on one span only if their confirmed wording is
+        identical under the same role, which the markdown treats as one bullet.
+        Rare, and silently un-grounding the other one would be exactly the kind
+        of quiet wrongness this project measures.
+        """
+        shared = self._conn.execute(
+            select(table.c.id)
+            .where(
+                table.c.user_id == self._user_id,
+                table.c.span_id == fact.span_id,
+                table.c.id != fact.id,
+                table.c.state == "confirmed",
+            )
+            .limit(1)
         ).first()
-        return None if row is None else _fact_from_row(row)
+        if shared is None:
+            remove_confirmed_fact(
+                self._conn, self._user_id, fact.corpus_text, section=fact.role_label
+            )
 
+    def counts(self) -> FactCounts:
+        row = self._conn.execute(
+            select(
+                _counter("proposed").label("proposed"),
+                _counter("confirmed").label("confirmed"),
+                _counter("rejected").label("rejected"),
+            ).where(table.c.user_id == self._user_id)
+        ).one()
+        return FactCounts(proposed=row.proposed, confirmed=row.confirmed, rejected=row.rejected)
 
-__all__ = [
-    "CORPUS_SECTION_ROOT",
-    "PROBE_JOIN",
-    "PostgresCandidateFactRepository",
-    "ProbeUnansweredError",
-    "ProposedFact",
-    "corpus_section",
-]
+    def _set(self, fact_id: uuid.UUID, **values: Any) -> None:
+        self._conn.execute(
+            update(table)
+            .where(table.c.id == fact_id, table.c.user_id == self._user_id)
+            .values(**values, updated_at=func.now())
+        )

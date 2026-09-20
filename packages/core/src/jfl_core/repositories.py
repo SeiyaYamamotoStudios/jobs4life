@@ -11,6 +11,7 @@ import uuid
 from typing import Protocol
 
 from jfl_core.models import (
+    DocumentStorageKind,
     Draft,
     GapQuestion,
     Job,
@@ -36,15 +37,38 @@ class IngestRepository(Protocol):
         source_uri: str,
         title: str | None,
         content_hash: str,
+        storage_kind: DocumentStorageKind = "local_file",
+        text: str | None = None,
     ) -> bool:
-        """Insert or refresh a document row (source_uri, storage_kind='local_file').
+        """Insert or refresh a document row. Returns True if this created a new row.
 
-        Returns True if this created a new row.
+        `storage_kind` defaults to `local_file`, which is the CLI walking
+        `corpus/*.md`: the markdown is a file on disk and this row only indexes
+        it. A `hosted` document has no file -- this deployment holds the
+        markdown in `text`, which is what keeps "markdown is the source of
+        truth" true for a user who has no disk here. See
+        `jfl_core.corpus_source`.
+        """
+        ...
+
+    def document_text(self, user_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+        """The stored markdown for a hosted document, or None.
+
+        None for a `local_file` document too: the file is the source of truth
+        there, and `jfl_core.ingest.source` is what reads it.
         """
         ...
 
     def upsert_span(self, span: Span) -> bool:
         """Insert or refresh a span and its sentences. Returns True if newly created."""
+        ...
+
+    def retire_document_spans(
+        self, user_id: uuid.UUID, document_id: uuid.UUID, seen: set[uuid.UUID]
+    ) -> int:
+        """Retire one document's spans not in `seen`, leaving every other
+        document alone. What re-parsing a single edited document needs.
+        """
         ...
 
     def retire_missing_documents(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:

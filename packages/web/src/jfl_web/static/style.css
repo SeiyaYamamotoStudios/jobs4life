@@ -541,6 +541,21 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .application-question-list { display: flex; flex-direction: column; gap: 0.9rem; }
 .application-question {
   padding: 0.75rem 1rem;
+
+/* -- cv intake -- */
+
+.cv-upload form { margin: 0.75rem 0; }
+.cv-upload label { display: block; margin: 0.6rem 0 0.2rem; font-weight: 600; }
+.cv-upload input[type="file"] { display: block; margin-bottom: 0.6rem; }
+.cv-paste textarea { width: 100%; font-family: inherit; }
+table.cvs .status-badge { white-space: nowrap; }
+table.cvs .note { display: block; margin-top: 0.2rem; }
+.status-badge.status-done { color: var(--good); border-color: var(--good); }
+.status-badge.status-failed { color: var(--warn); border-color: var(--warn); }
+ul.cv-roles { list-style: none; margin: 0.5rem 0; padding: 0; }
+ul.cv-roles li {
+  padding: 0.5rem 0.9rem;
+  margin: 0.35rem 0;
   background: var(--panel);
   border: 1px solid var(--rule);
   border-radius: 6px;
@@ -628,3 +643,5 @@ ul.verdicts li.verdict:last-child { border-bottom: none; }
 .add-question summary { cursor: pointer; color: var(--accent); }
 .add-question form { margin-top: 0.5rem; }
 .add-question textarea { width: 100%; }
+
+ul.cv-roles li .note { display: block; }

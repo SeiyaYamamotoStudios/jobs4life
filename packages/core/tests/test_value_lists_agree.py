@@ -44,6 +44,10 @@ VALUE_SETS = [
     (models.AnswerKind, tables._APPLICATION_QUESTION_ANSWER_KINDS),
     (models.AnswerStatus, tables._APPLICATION_QUESTION_ANSWER_STATUSES),
     (models.AnswerErrorCode, tables._APPLICATION_QUESTION_ANSWER_ERROR_CODES),
+    (models.DocumentStorageKind, tables._DOCUMENT_STORAGE_KINDS),
+    (models.CvExtractionStatus, tables._CV_EXTRACTION_STATUSES),
+    (models.CvExtractionErrorCode, tables._CV_EXTRACTION_ERROR_CODES),
+    (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
 ]
 
 

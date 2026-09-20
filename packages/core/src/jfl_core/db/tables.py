@@ -176,6 +176,13 @@ job_sources = Table(
 # Corpus: the grounding store. Rebuildable from corpus/*.md at any time.
 # --------------------------------------------------------------------------
 
+# Where the markdown behind a document actually lives. `hosted` was added with
+# CV intake (slice B6): a hosted user has no `corpus/` directory, so "markdown
+# is the source of truth, the database is a rebuildable index over it" can only
+# stay true if the markdown itself is stored -- see `documents.text` below and
+# `jfl_core.corpus_source`.
+_DOCUMENT_STORAGE_KINDS = ("local_file", "upload", "paste", "hosted")
+
 documents = Table(
     "documents",
     metadata,
@@ -189,10 +196,20 @@ documents = Table(
     Column("storage_kind", Text, nullable=False),
     Column("title", Text),
     Column("content_hash", String(64), nullable=False),
+    # The markdown itself, when this deployment is the only place it exists
+    # (storage_kind='hosted'). NULL for a `local_file` document, whose source
+    # of truth is a file on the owner's machine and which this table only
+    # indexes. Never read by the gate -- spans are what grounding sees; this is
+    # here so a hosted corpus document can be re-parsed, shown back to its
+    # author, and edited by them.
+    Column("text", Text),
     _ts("first_seen_at", nullable=False, server_default=func.now()),
     _ts("last_seen_at", nullable=False, server_default=func.now()),
     _ts("retired_at"),  # set when the source disappears; rows are never deleted
-    CheckConstraint("storage_kind in ('local_file','upload','paste')", name="storage_kind"),
+    CheckConstraint(
+        "storage_kind in ('" + "','".join(_DOCUMENT_STORAGE_KINDS) + "')",
+        name="storage_kind",
+    ),
     UniqueConstraint("user_id", "source_uri"),
 )
 
@@ -1449,58 +1466,6 @@ profile_ruled_out = Table(
 # directly would make every later CV "supported" and silently switch the
 # over-claim measurement off.
 # --------------------------------------------------------------------------
-
-# Mirrors jfl_core.models.CandidateFactState. See test_value_lists_agree.py.
-_CANDIDATE_FACT_STATES = ("proposed", "confirmed", "rejected")
-
-candidate_facts = Table(
-    "candidate_facts",
-    metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    Column(
-        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    ),
-    Column(
-        "sent_document_id",
-        UUID(as_uuid=True),
-        ForeignKey("sent_documents.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("role_label", Text, nullable=False),
-    Column("role_key", Text, nullable=False),
-    # The CV line the fact was read from, verbatim. Shown beside the model's
-    # proposal so the user is confirming a reading they can check.
-    Column("source_line", Text, nullable=False),
-    # The model's words. Never grounding, never written to `spans`.
-    Column("fact_text", Text, nullable=False),
-    Column("probe", Text),
-    Column("probe_answer", Text),
-    Column("state", Text, nullable=False, server_default="proposed"),
-    # The user's words -- `fact_text` accepted as written, or their edit of it.
-    Column("confirmed_text", Text),
-    Column("span_id", UUID(as_uuid=True), ForeignKey("spans.id"), nullable=True),
-    # De-duplicates one fact restated across many CVs.
-    Column("fingerprint", String(64), nullable=False),
-    # `clock_timestamp()`, not `now()`: roles and facts are listed in CV order,
-    # which is insertion order, and one upload inserts every fact in a single
-    # transaction -- `now()` would tie all of them and lose that order.
-    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
-    _ts("updated_at", nullable=False, server_default=text("clock_timestamp()")),
-    CheckConstraint("state in ('" + "','".join(_CANDIDATE_FACT_STATES) + "')", name="state"),
-    # A confirmed fact always carries the user's own words. Deliberately
-    # one-way: a rejected or restored fact KEEPS whatever the user typed, so
-    # bringing one back does not hand them a blank box where their edit was.
-    CheckConstraint(
-        "state <> 'confirmed' or confirmed_text is not null",
-        name="confirmed_text_when_confirmed",
-    ),
-    UniqueConstraint("user_id", "fingerprint"),
-    Index("ix_candidate_facts_user_id_state", "user_id", "state"),
-    Index("ix_candidate_facts_user_id_created_at", "user_id", "created_at"),
-)
-
-
-# --------------------------------------------------------------------------
 # Instrumentation. One row per model call (and per non-model stage worth timing).
 # Flat and wide on purpose: this is queried with GROUP BY for the writeup, not
 # rendered on a dashboard.
@@ -1626,4 +1591,113 @@ application_scores = Table(
         "application_id",
         "created_at",
     ),
+)
+
+
+# --------------------------------------------------------------------------
+# CV intake (PLAN.md slice B6, redesigned 2026-09-18).
+#
+# The uploaded CVs themselves live in `sent_documents` above -- the separate
+# store that grounding cannot reach. These two tables are what happens to them:
+# `cv_extractions` records the one model call per CV, and `candidate_facts`
+# holds what that call proposed, one row per fact, until the user confirms,
+# edits or rejects it.
+#
+# **A confirmed fact does not become a span from here.** It goes through
+# markdown (`jfl_core.corpus_source`) and comes back as an ordinary
+# `provenance='document'` span, so there is exactly one write path into the
+# corpus and the user can read, edit and delete the text that was recorded
+# about them. `candidate_facts.span_id` records which span that produced.
+# --------------------------------------------------------------------------
+
+_CV_EXTRACTION_STATUSES = ("pending", "done", "failed")
+
+# A closed set, never free text -- same reasoning as `_EXTRACTION_ERROR_CODES`.
+_CV_EXTRACTION_ERROR_CODES = (
+    "no_cv_text",
+    "no_api_key",
+    "api_key_rejected",
+    "credential_unreadable",
+    "cv_too_long",
+    "model_refused",
+    "model_error",
+)
+
+_CANDIDATE_FACT_STATES = ("proposed", "confirmed", "rejected")
+
+cv_extractions = Table(
+    "cv_extractions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "sent_document_id",
+        UUID(as_uuid=True),
+        ForeignKey("sent_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("error_code", Text),
+    Column("facts_proposed", Integer, nullable=False, server_default=text("0")),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_CV_EXTRACTION_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('" + "','".join(_CV_EXTRACTION_ERROR_CODES) + "')",
+        name="error_code",
+    ),
+    # One extraction row per CV: re-reading a CV re-uses it rather than
+    # accumulating a history of attempts, which is what makes a redelivered
+    # task able to ask "is this already done?" with one read.
+    UniqueConstraint("sent_document_id"),
+    Index("ix_cv_extractions_user_id_status", "user_id", "status"),
+)
+
+candidate_facts = Table(
+    "candidate_facts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    # SET NULL rather than CASCADE: deleting the CV a fact came from must not
+    # delete a fact the user has already confirmed. The citation of which CV
+    # said it is lost; the fact, and its corpus span, are not.
+    Column(
+        "sent_document_id",
+        UUID(as_uuid=True),
+        ForeignKey("sent_documents.id", ondelete="SET NULL"),
+    ),
+    Column("role_label", Text, nullable=False),
+    Column("role_key", Text, nullable=False),  # jfl_core.ids.role_key(role_label)
+    Column("source_line", Text, nullable=False),  # the CV's own words, verbatim
+    Column("fact_text", Text, nullable=False),  # the model's proposed statement
+    Column("probe", Text),  # one-line question, where the shape needs one
+    Column("probe_answer", Text),  # the user's own words, never a model's
+    Column("state", Text, nullable=False, server_default="proposed"),
+    Column("confirmed_text", Text),  # the user's words, if they edited
+    # The corpus span this fact became. No FK ON DELETE: spans are retired,
+    # never deleted (see `spans.retired_at`), so a dangling id cannot arise.
+    Column("span_id", UUID(as_uuid=True), ForeignKey("spans.id")),
+    Column("fingerprint", String(64), nullable=False),  # jfl_core.ids.fact_fingerprint
+    Column("ordinal", Integer, nullable=False, server_default=text("0")),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "state in ('" + "','".join(_CANDIDATE_FACT_STATES) + "')",
+        name="state",
+    ),
+    # Only a confirmed fact may carry a span. Structural, because "we grounded
+    # on something the user rejected" is the failure this whole slice exists to
+    # prevent, and a WHERE clause is not enforcement.
+    CheckConstraint("span_id is null or state = 'confirmed'", name="span_iff_confirmed"),
+    # The dedupe across 33 near-identical CVs: same role, same fact, one row.
+    UniqueConstraint("user_id", "fingerprint"),
+    Index("ix_candidate_facts_user_id_role_key_ordinal", "user_id", "role_key", "ordinal"),
+    Index("ix_candidate_facts_user_id_state", "user_id", "state"),
 )

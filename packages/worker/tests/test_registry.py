@@ -10,6 +10,7 @@ from jfl_worker.handlers import (
     CHECK_APPLICATION_ANSWER,
     CHECK_BOARD,
     DRAFT_APPLICATION_ANSWER,
+    EXTRACT_CV_FACTS,
     EXTRACT_JOB_AD,
     FETCH_JOB_DESCRIPTION,
     PURGE_EXPIRED_SESSIONS,
@@ -75,6 +76,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 CHECK_APPLICATION_ANSWER,
                 CHECK_BOARD,
                 DRAFT_APPLICATION_ANSWER,
+                EXTRACT_CV_FACTS,
                 EXTRACT_JOB_AD,
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
@@ -94,6 +96,12 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
 
     extract = registry.get(EXTRACT_JOB_AD)
     assert extract is not None and extract.calls_model is True
+
+    # Slice B6 reads one uploaded CV per call, on the user's own key. Uploading
+    # thirty-three CVs is thirty-three calls, which is exactly the shape of
+    # spend the kill switch exists to stop.
+    cv_facts = registry.get(EXTRACT_CV_FACTS)
+    assert cv_facts is not None and cv_facts.calls_model is True
 
     # Slice C7a's title-suggestion call: one Anthropic call on the user's own
     # key, same as extraction -- the kill switch must stop it too.

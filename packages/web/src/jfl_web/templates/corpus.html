@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Corpus — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Your CVs</h1>
+</div>
+<p class="lede">
+  Upload every CV you have. They are stored exactly as you wrote them and are never
+  used as evidence — a CV is a set of claims you once made, not proof of them. Each
+  one is read once, and what it claims comes back as separate facts for you to
+  confirm, edit or reject, one at a time.
+</p>
+
+<section class="cv-upload">
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if added or already %}
+    <p class="ok" role="status">
+      {% if added %}{{ added }} CV{{ '' if added == 1 else 's' }} queued for reading.{% endif %}
+      {% if already %}{{ already }} already uploaded, so nothing was read again.{% endif %}
+    </p>
+  {% endif %}
+
+  <form method="post" action="/corpus/upload" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="files">CV files</label>
+    <input type="file" id="files" name="files" multiple accept=".md,.txt,.markdown,.text">
+    <button type="submit">Upload</button>
+  </form>
+  <p class="note">
+    Plain text only in this step: <code>.md</code> and <code>.txt</code>. PDF and Word
+    files are not read yet — open one and paste the text below instead. Up to
+    {{ max_files }} files at a time, each up to {{ "{:,}".format(max_cv_chars) }} characters.
+  </p>
+
+  <form method="post" action="/corpus/paste" class="cv-paste">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="name">Name for this CV</label>
+    <input type="text" id="name" name="name" placeholder="2024 CV, product roles">
+    <label for="cv_text">Or paste a CV</label>
+    <textarea id="cv_text" name="cv_text" rows="12"
+              placeholder="Paste the whole CV, headings and all."></textarea>
+    <button type="submit">Add pasted CV</button>
+  </form>
+</section>
+
+<section>
+  <h2>Uploaded</h2>
+  {% if cvs %}
+  <div class="table-wrap">
+    <table class="cvs">
+      <thead>
+        <tr><th>CV</th><th>Uploaded</th><th>Reading</th><th>Facts proposed</th></tr>
+      </thead>
+      <tbody>
+        {% for cv in cvs %}
+        <tr>
+          <td>{{ cv.title or cv.path }}</td>
+          <td>{{ cv.created_at | humanize_dt }}</td>
+          <td>
+            {% if cv.extraction_status == "pending" %}
+              <span class="status-badge">Queued</span>
+            {% elif cv.extraction_status == "done" %}
+              <span class="status-badge status-done">Read</span>
+            {% else %}
+              {% set failure = extraction_failure(cv.extraction_error_code) %}
+              <span class="status-badge status-failed">Failed</span>
+              <span class="note">{{ failure.message }}</span>
+              {% if failure.fix_url %}
+                <a href="{{ failure.fix_url }}">{{ failure.fix_label }}</a>
+              {% endif %}
+            {% endif %}
+          </td>
+          <td>{{ cv.facts_proposed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="note">Nothing uploaded yet.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Facts from your CVs</h2>
+  <p class="note">
+    {{ counts.confirmed }} confirmed · {{ counts.proposed }} waiting on you ·
+    {{ counts.rejected }} rejected. Only confirmed facts are used to score a job or
+    draft anything; the rest are kept, and named where they would change a score,
+    but they ground nothing.
+  </p>
+  {% if roles %}
+  <ul class="cv-roles">
+    {% for role in roles %}
+    <li>
+      <strong>{{ role.role_label }}</strong>
+      <span class="note">
+        {{ role.confirmed }} confirmed, {{ role.proposed }} to confirm,
+        {{ role.rejected }} rejected
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
