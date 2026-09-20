@@ -39,6 +39,9 @@
 
 {% include "_score.html" %}
 {% include "_application_questions.html" %}
+{% if application.job_id %}
+<p class="note"><a href="/applications/{{ application.id }}/drafts">Generate a CV or cover letter for this application →</a></p>
+{% endif %}
 
 <section>
   <h2>Status</h2>

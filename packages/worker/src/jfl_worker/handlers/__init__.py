@@ -34,10 +34,14 @@ from jfl_worker.handlers.boards import (
     build_check_board,
     build_schedule_board_checks,
 )
+from jfl_worker.handlers.coverage_generation import KIND as GENERATE_COVERAGE
+from jfl_worker.handlers.coverage_generation import build_generate_coverage
 from jfl_worker.handlers.cv_facts import KIND as EXTRACT_CV_FACTS
 from jfl_worker.handlers.cv_facts import build_extract_cv_facts
 from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
 from jfl_worker.handlers.description import build_fetch_job_description
+from jfl_worker.handlers.draft_generation import KIND as GENERATE_CV_DRAFT
+from jfl_worker.handlers.draft_generation import build_generate_cv_draft
 from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.feed_marks import KIND as PURGE_STALE_FEED_MARKS
@@ -58,6 +62,8 @@ __all__ = [
     "EXTRACT_CV_FACTS",
     "EXTRACT_JOB_AD",
     "FETCH_JOB_DESCRIPTION",
+    "GENERATE_COVERAGE",
+    "GENERATE_CV_DRAFT",
     "PURGE_EXPIRED_SESSIONS",
     "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
@@ -69,6 +75,8 @@ __all__ = [
     "build_extract_cv_facts",
     "build_extract_job_ad",
     "build_fetch_job_description",
+    "build_generate_coverage",
+    "build_generate_cv_draft",
     "build_registry",
     "build_schedule_board_checks",
     "build_score_application",
@@ -169,6 +177,19 @@ def build_registry(
         DRAFT_APPLICATION_ANSWER,
         build_draft_application_answer(master_key=settings.master_key, model=settings.model),
         # True, same reasoning: the draft call and its automatic gate pass.
+        calls_model=True,
+    )
+    registry.register(
+        GENERATE_COVERAGE,
+        build_generate_coverage(master_key=settings.master_key, model=settings.model),
+        # True: one Anthropic call on the user's own key, same as extraction.
+        calls_model=True,
+    )
+    registry.register(
+        GENERATE_CV_DRAFT,
+        build_generate_cv_draft(master_key=settings.master_key, model=settings.model),
+        # True: two Anthropic calls on the user's own key -- the draft, then
+        # the automatic claim-gate pass (see jfl_generate.draft).
         calls_model=True,
     )
     return registry

@@ -1,0 +1,50 @@
+{# The status panel for one `generate_coverage` or `generate_cv_draft` task --
+   rendered both inline on the drafting screen (when it was reached via
+   `?task=<id>`) and on its own by GET .../drafts/tasks/{task_id}.
+
+   The polling trigger lives on this element and only while the task is still
+   `pending` or `running`, so a finished task stops the poll by virtue of what
+   came back -- same pattern as `_extraction.html`. `hx-swap="outerHTML"`
+   because the element replaces itself.
+
+   `task` = {"id", "kind", "status", "last_error", and for a succeeded
+   `generate_cv_draft` task, "draft": {"draft": Draft, "cost": Decimal|None}
+   or None if the row has not shown up in a read yet}. #}
+<section id="draft-task"
+         {% if task.status in ("pending", "running") %}
+         hx-get="/applications/{{ application_id }}/drafts/tasks/{{ task.id }}"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML"
+         {% endif %}>
+
+  {% if task.status in ("pending", "running") %}
+    {% if task.kind == "generate_coverage" %}
+    <p class="note" role="status">Checking corpus coverage against this job's requirements… this takes about half a minute.</p>
+    {% else %}
+    <p class="note" role="status">Generating a draft… this takes about a minute, and runs the claim gate automatically once it is done.</p>
+    {% endif %}
+
+  {% elif task.status == "failed" %}
+    {% if task.kind == "generate_coverage" %}
+    {% set failure = task.last_error | coverage_failure %}
+    {% else %}
+    {% set failure = task.last_error | draft_failure %}
+    {% endif %}
+    <p class="error" role="alert">
+      {{ failure.message }}
+      {% if failure.fix_url %}<a href="{{ failure.fix_url }}">{{ failure.fix_label }}</a>.{% endif %}
+    </p>
+
+  {% elif task.status == "succeeded" %}
+    {% if task.kind == "generate_coverage" %}
+    <p class="note" role="status">Coverage checked -- see the requirements above.</p>
+    {% elif task.draft %}
+    <p class="note" role="status">Draft generated:</p>
+    {% with entry = task.draft %}
+    {% include "_draft.html" %}
+    {% endwith %}
+    {% else %}
+    <p class="note" role="status">Draft generated -- reload the page to see it in the history below.</p>
+    {% endif %}
+  {% endif %}
+</section>

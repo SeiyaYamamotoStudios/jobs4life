@@ -14,6 +14,7 @@ connection, inside its transaction, so tearing that down undoes everything.
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import delete, func, insert, select, update
@@ -319,6 +320,14 @@ class PostgresRunRepository:
             )
         )
 
+    def cost_for_trace(self, user_id: uuid.UUID, trace_id: uuid.UUID) -> Decimal | None:
+        total = self._conn.execute(
+            select(func.sum(runs_table.c.cost_usd)).where(
+                runs_table.c.user_id == user_id, runs_table.c.trace_id == trace_id
+            )
+        ).scalar_one()
+        return None if total is None else Decimal(total)
+
 
 def _row_to_job(row: Any) -> Job:
     return Job(
@@ -366,6 +375,7 @@ def _row_to_draft(row: Any) -> Draft:
         text=row.text,
         gate_result=row.gate_result,
         trace_id=row.trace_id,
+        created_at=row.created_at,
     )
 
 
@@ -613,3 +623,14 @@ class PostgresJobRepository:
             .order_by(drafts_table.c.created_at.desc())
         )
         return [_row_to_draft(row) for row in self._conn.execute(stmt).all()]
+
+    def coverage_run_exists(self, user_id: uuid.UUID, trace_id: uuid.UUID) -> bool:
+        row = self._conn.execute(
+            select(requirement_coverage_table.c.id)
+            .where(
+                requirement_coverage_table.c.user_id == user_id,
+                requirement_coverage_table.c.trace_id == trace_id,
+            )
+            .limit(1)
+        ).first()
+        return row is not None

@@ -26,6 +26,11 @@ from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
+from jfl_core.storage.postgres import (
+    PostgresGroundingRepository,
+    PostgresJobRepository,
+    PostgresRunRepository,
+)
 from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
@@ -236,6 +241,41 @@ def user_corpus_repo(session: SessionDep, conn: ConnDep) -> PostgresUserCorpusRe
 
 
 UserCorpusRepoDep = Annotated[PostgresUserCorpusRepository, Depends(user_corpus_repo)]
+
+
+def job_repo(conn: ConnDep) -> PostgresJobRepository:
+    """Not tenant-bound at construction, unlike the repositories above -- see
+    `tests/test_tenancy_enforcement.py`'s `_LEGACY_MODULES`, which names
+    `jfl_core.storage.postgres` explicitly: it is the CLI-era storage layer,
+    written before structural tenancy and taking `user_id` per call. B5's
+    routes (`jfl_web.routes.drafts`) must therefore pass `session.user.id`
+    explicitly on every call, the same discipline `jfl_worker.handlers.extraction`
+    already follows for this same repository.
+    """
+    return PostgresJobRepository(conn)
+
+
+JobRepoDep = Annotated[PostgresJobRepository, Depends(job_repo)]
+
+
+def grounding_repo(conn: ConnDep) -> PostgresGroundingRepository:
+    """Same caveat as `job_repo` above -- `user_id` goes on every call."""
+    return PostgresGroundingRepository(conn)
+
+
+GroundingRepoDep = Annotated[PostgresGroundingRepository, Depends(grounding_repo)]
+
+
+def run_repo(conn: ConnDep) -> PostgresRunRepository:
+    """Same caveat as `job_repo` above -- `user_id` goes on every call. Used by
+    B5's drafting screen only to read back what a draft or a coverage check
+    cost (`cost_for_trace`); nothing in the request path writes a `runs` row
+    directly -- that happens in the worker, where the model is actually called.
+    """
+    return PostgresRunRepository(conn)
+
+
+RunRepoDep = Annotated[PostgresRunRepository, Depends(run_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

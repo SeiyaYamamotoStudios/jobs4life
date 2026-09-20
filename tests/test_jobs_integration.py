@@ -581,3 +581,59 @@ def test_answer_question_reingest_is_idempotent(
     after = {s.id for s in grounding_repo.all_spans(user)}
     assert summary.spans_created == 0
     assert after == before
+
+
+# --- coverage_run_exists (B5's idempotency check for generate_coverage) --------
+
+
+def test_coverage_run_exists_is_true_after_a_run_and_false_before(
+    conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository
+) -> None:
+    job = _job(user)
+    job_repo.upsert_job(job)
+    requirements = _requirements(user, job, ["Kubernetes"])
+    job_repo.replace_requirements(user, job.id, requirements)
+
+    trace_id = uuid.uuid4()
+    assert job_repo.coverage_run_exists(user, trace_id) is False
+
+    job_repo.record_coverage(
+        RequirementCoverage(
+            user_id=user,
+            requirement_id=requirements[0].id,
+            trace_id=trace_id,
+            status="evidenced",
+            cited_span_ids=[],
+            evidence_note="Traces cleanly.",
+        )
+    )
+    assert job_repo.coverage_run_exists(user, trace_id) is True
+    # A different trace -- a fresh "check again" -- is a different question.
+    assert job_repo.coverage_run_exists(user, uuid.uuid4()) is False
+
+
+def test_coverage_run_exists_is_scoped_to_the_given_user(
+    conn: Connection, user: uuid.UUID, job_repo: PostgresJobRepository
+) -> None:
+    other_user = uuid.uuid4()
+    conn.execute(insert(users).values(id=other_user, email=f"{other_user}@test.invalid"))
+
+    job = _job(user)
+    job_repo.upsert_job(job)
+    requirements = _requirements(user, job, ["Kubernetes"])
+    job_repo.replace_requirements(user, job.id, requirements)
+
+    trace_id = uuid.uuid4()
+    job_repo.record_coverage(
+        RequirementCoverage(
+            user_id=user,
+            requirement_id=requirements[0].id,
+            trace_id=trace_id,
+            status="evidenced",
+            cited_span_ids=[],
+            evidence_note="Traces cleanly.",
+        )
+    )
+
+    assert job_repo.coverage_run_exists(user, trace_id) is True
+    assert job_repo.coverage_run_exists(other_user, trace_id) is False
