@@ -150,6 +150,11 @@ class Draft(BaseModel):
     text: str
     gate_result: dict[str, object]
     trace_id: uuid.UUID
+    # None on the object `generate_draft` builds before it is stored -- Postgres
+    # sets it (`drafts.created_at`, server-defaulted). Populated whenever a draft
+    # is read back (`list_drafts`), which is where B5's screen gets the
+    # timestamp it shows alongside each draft.
+    created_at: dt.datetime | None = None
 
 
 # --------------------------------------------------------------------------

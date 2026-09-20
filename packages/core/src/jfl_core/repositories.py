@@ -85,6 +85,17 @@ class RunRepository(Protocol):
     def record(self, run: RunRecord) -> None: ...
 
 
+# `RunRepository` above is deliberately narrow -- everything that writes a
+# `runs` row (the gate, coverage, drafting, a worker's `_RunRecorder`) needs
+# only `record`. `PostgresRunRepository.cost_for_trace` (summing a trace's
+# cost for B5's drafting screen) is a *read*, used only by web routes that
+# already depend on the concrete Postgres implementation directly -- the same
+# way `jfl_web.deps` depends on `PostgresApplicationRepository` and not a
+# protocol. Adding it here would force every `RunRepository` implementer
+# (including every worker handler's `_RunRecorder` and every test double) to
+# grow a method none of them need to write a run.
+
+
 class JobRepository(Protocol):
     """What slice 2a (job intake, requirement extraction, coverage, gap questions)
     needs. Separate from `GroundingRepository` because coverage *reads* the corpus
@@ -150,6 +161,18 @@ class JobRepository(Protocol):
 
     def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
         """Drafts for a job, most recent first."""
+        ...
+
+    def coverage_run_exists(self, user_id: uuid.UUID, trace_id: uuid.UUID) -> bool:
+        """Did this exact coverage run already write its rows?
+
+        The worker's idempotency check for `generate_coverage`: at-least-once
+        delivery can redeliver a task, and `RequestContext.trace_id` is set to
+        the task's own id, so a second delivery of the same task sees its own
+        earlier `requirement_coverage` rows here and skips re-calling the model.
+        A person pressing "check coverage" again gets a new task and a new
+        trace_id, so this never blocks a genuine re-check.
+        """
         ...
 
 

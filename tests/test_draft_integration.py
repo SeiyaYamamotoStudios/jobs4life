@@ -244,3 +244,88 @@ def test_a_drafts_two_runs_rows_share_one_trace_id(
     # draft's cost a single query.
     stored = job_repo.list_drafts(user, job.id)[0]
     assert stored.trace_id == ctx.trace_id
+
+
+# --- cost_for_trace (B5's per-run cost, shown because the user pays for it) ----
+
+
+def test_cost_for_trace_sums_every_run_sharing_a_trace(conn: Connection, user: uuid.UUID) -> None:
+    run_repo = PostgresRunRepository(conn)
+    trace_id = uuid.uuid4()
+    run_repo.record(
+        RunRecord(
+            user_id=user,
+            trace_id=trace_id,
+            component="generate",
+            stage="draft",
+            model="claude-opus-5",
+            cost_usd=Decimal("0.010"),
+            outcome="ok",
+            started_at=datetime.now(UTC),
+        )
+    )
+    run_repo.record(
+        RunRecord(
+            user_id=user,
+            trace_id=trace_id,
+            component="gate",
+            stage="baseline",
+            model="claude-opus-5",
+            cost_usd=Decimal("0.320"),
+            outcome="ok",
+            started_at=datetime.now(UTC),
+        )
+    )
+
+    assert run_repo.cost_for_trace(user, trace_id) == Decimal("0.330")
+
+
+def test_cost_for_trace_is_none_when_nothing_was_billed(conn: Connection, user: uuid.UUID) -> None:
+    """A failed attempt before usage was returned writes a `runs` row with no
+    `cost_usd` (see `jfl_generate.draft.generate_draft`'s `record` closure) --
+    that must read back as "nothing billed yet", not as zero.
+    """
+    run_repo = PostgresRunRepository(conn)
+    trace_id = uuid.uuid4()
+    run_repo.record(
+        RunRecord(
+            user_id=user,
+            trace_id=trace_id,
+            component="generate",
+            stage="draft",
+            model="claude-opus-5",
+            cost_usd=None,
+            outcome="error",
+            error="connection_error: reset",
+            started_at=datetime.now(UTC),
+        )
+    )
+
+    assert run_repo.cost_for_trace(user, trace_id) is None
+
+
+def test_cost_for_trace_with_no_rows_at_all_is_none(conn: Connection, user: uuid.UUID) -> None:
+    assert PostgresRunRepository(conn).cost_for_trace(user, uuid.uuid4()) is None
+
+
+def test_cost_for_trace_is_scoped_to_the_given_user(conn: Connection, user: uuid.UUID) -> None:
+    other_user = uuid.uuid4()
+    conn.execute(insert(users).values(id=other_user, email=f"{other_user}@test.invalid"))
+
+    run_repo = PostgresRunRepository(conn)
+    trace_id = uuid.uuid4()
+    run_repo.record(
+        RunRecord(
+            user_id=user,
+            trace_id=trace_id,
+            component="generate",
+            stage="draft",
+            model="claude-opus-5",
+            cost_usd=Decimal("0.010"),
+            outcome="ok",
+            started_at=datetime.now(UTC),
+        )
+    )
+
+    assert run_repo.cost_for_trace(user, trace_id) == Decimal("0.010")
+    assert run_repo.cost_for_trace(other_user, trace_id) is None

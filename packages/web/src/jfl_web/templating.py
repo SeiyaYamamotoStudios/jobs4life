@@ -15,6 +15,15 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from jfl_web.boards import check_error_message
+from jfl_web.drafts import (
+    coverage_failure,
+    draft_failure,
+    generate_label,
+    kind_label,
+    sentence_label,
+    sentence_style,
+    usd,
+)
 from jfl_web.jobfilter import workplace_display
 from jfl_web.timeformat import humanize
 
@@ -32,6 +41,21 @@ _templates.env.filters["board_error_message"] = check_error_message
 # `{{ job | workplace_display }}` -> the employer's own label where one was
 # given ("On-Site"), else our word. See jfl_web.jobfilter.
 _templates.env.filters["workplace_display"] = workplace_display
+# `{{ sentence | sentence_label }}` -> "SUPPORTED" / "REVIEW" / "UNSUPPORTED" /
+# "NOT CHECKED". `{{ sentence | sentence_style }}` -> the matching CSS class.
+# See jfl_web.drafts -- B5's drafting screen, framing rendered as NOT CHECKED.
+_templates.env.filters["sentence_label"] = sentence_label
+_templates.env.filters["sentence_style"] = sentence_style
+# `{{ draft.kind | kind_label }}` -> "CV" / "cover letter".
+_templates.env.filters["kind_label"] = kind_label
+# `{{ kind | generate_label }}` -> "Generate a CV" / "Generate a cover letter".
+_templates.env.filters["generate_label"] = generate_label
+# `{{ cost | usd }}` -> "$0.4123", or "—" when nothing was billed yet.
+_templates.env.filters["usd"] = usd
+# `{{ task.last_error | coverage_failure }}` / `{{ ... | draft_failure }}` ->
+# a GenerationFailure for a failed generate_coverage / generate_cv_draft task.
+_templates.env.filters["coverage_failure"] = coverage_failure
+_templates.env.filters["draft_failure"] = draft_failure
 
 
 def _asset_url(name: str) -> str:

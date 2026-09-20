@@ -199,6 +199,9 @@ class _FakeJobRepository:
     def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
         return [d for d in self.drafts if d.job_id == job_id]
 
+    def coverage_run_exists(self, user_id: uuid.UUID, trace_id: uuid.UUID) -> bool:
+        return any(c.trace_id == trace_id for c in self.coverage)
+
 
 def _ctx() -> RequestContext:
     return RequestContext(user_id=USER, anthropic_api_key="test-key", database_url="unused")

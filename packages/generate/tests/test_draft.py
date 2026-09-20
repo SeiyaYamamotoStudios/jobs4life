@@ -139,6 +139,9 @@ class _FakeJobRepository:
     def list_drafts(self, user_id: uuid.UUID, job_id: uuid.UUID) -> list[Draft]:
         return [d for d in self.drafts if d.job_id == job_id]
 
+    def coverage_run_exists(self, user_id: uuid.UUID, trace_id: uuid.UUID) -> bool:
+        raise NotImplementedError
+
 
 class _FakeMessages:
     def __init__(self, response: Message | None = None, exception: Exception | None = None):

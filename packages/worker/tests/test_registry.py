@@ -10,6 +10,8 @@ from jfl_worker.handlers import (
     CHECK_BOARD,
     EXTRACT_JOB_AD,
     FETCH_JOB_DESCRIPTION,
+    GENERATE_COVERAGE,
+    GENERATE_CV_DRAFT,
     PURGE_EXPIRED_SESSIONS,
     PURGE_STALE_FEED_MARKS,
     SCHEDULE_BOARD_CHECKS,
@@ -71,6 +73,8 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
             (
                 CHECK_BOARD,
                 EXTRACT_JOB_AD,
+                GENERATE_COVERAGE,
+                GENERATE_CV_DRAFT,
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
@@ -93,6 +97,15 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # key, same as extraction -- the kill switch must stop it too.
     suggest = registry.get(SUGGEST_TITLES)
     assert suggest is not None and suggest.calls_model is True
+
+    # B5's coverage check and draft generation: one Anthropic call each (the
+    # draft handler makes two, including the automatic claim-gate pass), both
+    # on the user's own key -- the kill switch must stop both.
+    coverage = registry.get(GENERATE_COVERAGE)
+    assert coverage is not None and coverage.calls_model is True
+
+    draft = registry.get(GENERATE_CV_DRAFT)
+    assert draft is not None and draft.calls_model is True
 
     # Watched boards call public ATS APIs and pure rules -- no model, no spend --
     # so the kill switch must not stop them, and they must say so. Slice C7's

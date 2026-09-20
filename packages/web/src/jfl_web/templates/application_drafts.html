@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Drafts{% if job and job.title %} — {{ job.title }}{% endif %} — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Drafts{% if job and job.title %} — {{ job.title }}{% endif %}</h1>
+  <a href="/applications/{{ application_id }}">Back to the application</a>
+</div>
+
+{% if job_id is none %}
+<p class="note">No job ad is linked to this application yet.</p>
+
+{% elif job is none %}
+<p class="note">The job for this application could not be found.</p>
+
+{% elif not requirements %}
+<p class="note">
+  The ad has not been read yet, so there are no requirements to draft
+  against. <a href="/applications/{{ application_id }}">Read the ad on the application page</a>.
+</p>
+
+{% else %}
+<section>
+  <h2>Requirements</h2>
+  <ul class="requirements">
+    {% for requirement in requirements %}
+    {% set row = coverage | selectattr("requirement_id", "equalto", requirement.id) | list | first %}
+    <li>
+      <span class="necessity necessity-{{ requirement.necessity }}">{{ requirement.necessity }}</span>
+      {% if row %}<span class="status-badge coverage-{{ row.status }}">{{ row.status }}</span>{% endif %}
+      {{ requirement.text }}
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if not coverage %}
+  <p class="note">
+    Corpus coverage has not been checked for this job yet. Checking it is a
+    model call, billed to your own API key -- and drafting needs it first, so
+    it never runs silently on the way to a draft.
+  </p>
+  <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit">Check coverage</button>
+  </form>
+  {% else %}
+  <details class="status-more">
+    <summary>Check coverage again</summary>
+    <p class="note">
+      Worth it after answering a gap question or editing the corpus -- this
+      calls the model again and is billed to your own API key.
+    </p>
+    <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="secondary">Check again</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+{% if coverage %}
+<section>
+  <h2>Generate</h2>
+  <p class="note">
+    Each generation is a model call, billed to your own API key, and runs the
+    claim gate on the result automatically. A flagged draft is still shown in
+    full -- the gate informs, it never blocks.
+  </p>
+  <div class="quick-actions">
+    {% for kind in draft_kinds %}
+    <form method="post" action="/applications/{{ application_id }}/drafts">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <button type="submit">{{ kind | generate_label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endif %}
+
+{% if task %}
+{% include "_draft_task.html" %}
+{% endif %}
+
+{% if drafts %}
+<section>
+  <h2>Draft history</h2>
+  <p class="note">Most recent first. Generating again never overwrites one -- every draft stays.</p>
+  {% for entry in drafts %}
+  {% include "_draft.html" %}
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
