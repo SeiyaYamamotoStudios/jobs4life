@@ -69,6 +69,25 @@ class DraftOutput(BaseModel):
     draft: str
 
 
+class AssessAnswerOutput(BaseModel):
+    """The wire shape of `assess_answer`'s response -- never a property named
+    `reason`, see CLAUDE.md's 2026-09-02 decision. `gaps` is "" when there is
+    nothing worth flagging.
+    """
+
+    assessment: str
+    gaps: str = ""
+
+    @field_validator("gaps", mode="before")
+    @classmethod
+    def _normalise(cls, value: str | None) -> str:
+        return "" if value is None else value
+
+
+class DraftAnswerOutput(BaseModel):
+    draft: str
+
+
 class SuggestedTitleItem(BaseModel):
     """The wire shape one suggested title comes back as. Sanitised into
     `jfl_core.models.SuggestedTitle` by `jfl_generate.titles.suggest_titles`

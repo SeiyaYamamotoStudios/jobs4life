@@ -644,6 +644,124 @@ application_events = Table(
     ),
 )
 
+# --------------------------------------------------------------------------
+# Application questions -- two equal paths, "check my answer" and "draft one
+# for me". See CLAUDE.md's 2026-09-18 decision ("check my answer" / "draft one
+# for me" side by side, advising, never prescribing) and NEXT.md's task 4.
+#
+# `application_questions` is the question itself, written once. Every attempt
+# to answer it -- typed by the user and checked, or generated and gated -- is a
+# fresh row in `application_question_answers`, never an UPDATE to a previous
+# one: the same append-only rule `profile_answers` follows, and for the same
+# reason -- a tool whose whole claim is measuring distance from what someone
+# actually said must never let that record be silently edited out from under
+# them. `kind` says which path produced the row; `answer_text` is the user's
+# own words for `kind='user'` and starts `''` for `kind='draft'`, filled in
+# once the model has written something.
+#
+# Cost is not stored on the row. `trace_id` groups the model call(s) one
+# attempt made -- one for a check (the assessment call; the claim gate's own
+# call already writes its own `runs` row automatically), two for a draft (the
+# draft call, then the automatic gate pass) -- the same pattern
+# `jfl_core.models.Draft.trace_id` uses, so the per-attempt cost is one query:
+# `SELECT sum(cost_usd) FROM runs WHERE trace_id = ...`.
+# --------------------------------------------------------------------------
+
+application_questions = Table(
+    "application_questions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("question_text", Text, nullable=False),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    Index(
+        "ix_application_questions_user_id_application_id",
+        "user_id",
+        "application_id",
+    ),
+)
+
+_APPLICATION_QUESTION_ANSWER_KINDS = ("user", "draft")
+
+_APPLICATION_QUESTION_ANSWER_STATUSES = ("pending", "done", "failed")
+
+# A subset of `_EXTRACTION_ERROR_CODES`'s shape -- the ones this pair of calls
+# can actually produce. No `no_job_ad` / `ad_too_long` (there is no ad here).
+# `no_requirements` is `draft_application_answer`'s own precondition failure:
+# there is nothing job-specific to draft from until the ad has been read.
+_APPLICATION_QUESTION_ANSWER_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+    "no_requirements",
+)
+
+application_question_answers = Table(
+    "application_question_answers",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "question_id",
+        UUID(as_uuid=True),
+        ForeignKey("application_questions.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("kind", Text, nullable=False),
+    Column("answer_text", Text, nullable=False, server_default=""),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("error_code", Text),
+    # jfl_gate.schema.GateOutput.model_dump(), same convention as
+    # jfl_core.models.Draft.gate_result -- a plain JSONB dict here rather than
+    # typed against that model, since jfl_core has no dependency on jfl_gate
+    # (see CLAUDE.md's architectural constraints). NULL until `status='done'`.
+    Column("gate_result", JSONB),
+    # {"assessment": ..., "gaps": ...} -- jfl_generate.schema.AssessAnswerOutput
+    # dumped. Only `kind='user'` ever populates this: a draft is judged by the
+    # gate the same as any generated text, and asking the model to assess its
+    # own draft against the question it was just given would be circular.
+    Column("assessment", JSONB),
+    Column("model", Text),
+    Column("trace_id", UUID(as_uuid=True)),
+    # `clock_timestamp()`, not `now()` -- same reasoning as
+    # `profile_answers.created_at`: two versions of one question's answer
+    # written in the same transaction must still order correctly, since "the
+    # latest row" is what "the current answer" means.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "kind in ('" + "','".join(_APPLICATION_QUESTION_ANSWER_KINDS) + "')",
+        name="kind",
+    ),
+    CheckConstraint(
+        "status in ('" + "','".join(_APPLICATION_QUESTION_ANSWER_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('"
+        + "','".join(_APPLICATION_QUESTION_ANSWER_ERROR_CODES)
+        + "')",
+        name="error_code",
+    ),
+    Index(
+        "ix_application_question_answers_question_id_created_at",
+        "question_id",
+        "created_at",
+    ),
+)
+
 
 # --------------------------------------------------------------------------
 # Background work (slice B1). A claim-gate call takes ~2 minutes and an

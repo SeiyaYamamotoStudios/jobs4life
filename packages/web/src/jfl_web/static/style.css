@@ -535,6 +535,11 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .score-axes { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.75rem 0; }
 .score-axis {
   flex: 1 1 16rem;
+
+/* -- application answers -- */
+
+.application-question-list { display: flex; flex-direction: column; gap: 0.9rem; }
+.application-question {
   padding: 0.75rem 1rem;
   background: var(--panel);
   border: 1px solid var(--rule);
@@ -579,3 +584,47 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .score-not-stated li { margin: 0.15rem 0; color: var(--ink-soft); }
 .score-objectives .note, .score-levers .note { margin: 0.15rem 0 0; }
 .score-lever-role { color: var(--ink-soft); font-size: 0.85rem; margin-left: 0.35rem; }
+
+.application-question h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.answer-kind { margin-top: 0; }
+.answer-text {
+  white-space: pre-wrap;
+  padding: 0.5rem 0.75rem;
+  background: var(--ground);
+  border-radius: 4px;
+}
+.answer-assessment, .gate-verdicts { margin-top: 0.75rem; }
+.answer-assessment h4, .gate-verdicts h4 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin: 0 0 0.3rem;
+}
+ul.verdicts { list-style: none; padding: 0; margin: 0; }
+ul.verdicts li.verdict {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.92rem;
+}
+ul.verdicts li.verdict:last-child { border-bottom: none; }
+.verdict-label {
+  display: inline-block;
+  min-width: 6.5rem;
+  font-weight: 650;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  margin-right: 0.5rem;
+}
+.verdict-supported .verdict-label { color: var(--good); }
+.verdict-review .verdict-label { color: var(--warn); }
+.verdict-unsupported .verdict-label { color: var(--bad); }
+.verdict-not-checked .verdict-label { color: var(--muted); }
+.answer-actions { margin-top: 0.75rem; }
+.answer-actions summary { cursor: pointer; color: var(--accent); }
+.answer-forms { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem; }
+.answer-forms form { flex: 1 1 220px; margin: 0; }
+.answer-forms textarea { width: 100%; }
+.add-question summary { cursor: pointer; color: var(--accent); }
+.add-question form { margin-top: 0.5rem; }
+.add-question textarea { width: 100%; }

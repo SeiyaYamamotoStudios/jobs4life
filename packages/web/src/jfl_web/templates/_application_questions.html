@@ -1,0 +1,27 @@
+{# Application questions -- NEXT.md's task 4. `question_views` is built by
+   `jfl_web.applicationanswers.question_views`, one per question added under
+   this application, oldest first. #}
+<section id="application-questions">
+  <h2>Application questions</h2>
+
+  {% if question_views %}
+  <div class="application-question-list">
+    {% for view in question_views %}
+    {% include "_application_question.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="note">No questions added yet -- paste one below.</p>
+  {% endif %}
+
+  <details class="add-question">
+    <summary>Add a question</summary>
+    <form method="post" action="/applications/{{ application_id }}/questions">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <label for="question_text">Question</label>
+      <textarea id="question_text" name="question_text" rows="2" required
+                placeholder="e.g. Why do you want to work here?"></textarea>
+      <button type="submit">Add question</button>
+    </form>
+  </details>
+</section>

@@ -41,6 +41,9 @@ VALUE_SETS = [
     (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
     (models.ScoreStatus, tables._SCORE_STATUSES),
     (models.ScoreErrorCode, tables._SCORE_ERROR_CODES),
+    (models.AnswerKind, tables._APPLICATION_QUESTION_ANSWER_KINDS),
+    (models.AnswerStatus, tables._APPLICATION_QUESTION_ANSWER_STATUSES),
+    (models.AnswerErrorCode, tables._APPLICATION_QUESTION_ANSWER_ERROR_CODES),
 ]
 
 

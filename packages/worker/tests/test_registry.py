@@ -7,7 +7,9 @@ from collections.abc import Mapping
 import pytest
 from jfl_core.crypto.envelope import MasterKey
 from jfl_worker.handlers import (
+    CHECK_APPLICATION_ANSWER,
     CHECK_BOARD,
+    DRAFT_APPLICATION_ANSWER,
     EXTRACT_JOB_AD,
     FETCH_JOB_DESCRIPTION,
     PURGE_EXPIRED_SESSIONS,
@@ -70,7 +72,9 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     assert registry.kinds() == tuple(
         sorted(
             (
+                CHECK_APPLICATION_ANSWER,
                 CHECK_BOARD,
+                DRAFT_APPLICATION_ANSWER,
                 EXTRACT_JOB_AD,
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
@@ -101,6 +105,13 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # run that first. Either way the kill switch must stop it.
     score = registry.get(SCORE_APPLICATION)
     assert score is not None and score.calls_model is True
+    # NEXT.md's task 4: the assessment call, the draft call, and each one's
+    # automatic gate pass are all Anthropic calls on the user's own key.
+    check_answer = registry.get(CHECK_APPLICATION_ANSWER)
+    assert check_answer is not None and check_answer.calls_model is True
+
+    draft_answer = registry.get(DRAFT_APPLICATION_ANSWER)
+    assert draft_answer is not None and draft_answer.calls_model is True
 
     # Watched boards call public ATS APIs and pure rules -- no model, no spend --
     # so the kill switch must not stop them, and they must say so. Slice C7's

@@ -1,0 +1,96 @@
+{# One question: its text, its latest answer attempt if any, and two equally
+   weighted forms -- "check my answer" and "draft one for me". Rendered in a
+   loop from `_application_questions.html` (as `view`, a
+   `jfl_web.applicationanswers.QuestionView`) and standalone by
+   GET /applications/{id}/questions/{qid} for htmx polling. Both callers build
+   the same `view` shape, so this partial never has to guess which caller it
+   is in.
+
+   The page advises, it does not prescribe (CLAUDE.md's 2026-09-18 decision):
+   one line of copy says answering first usually helps, and that is the whole
+   of the nudge -- both buttons are always present, neither is hidden behind
+   the other. #}
+<div class="application-question" id="question-{{ view.question.id }}"
+     {% if view.latest and view.latest.status == "pending" %}
+     hx-get="/applications/{{ application_id }}/questions/{{ view.question.id }}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+  <h3>{{ view.question.question_text }}</h3>
+
+  {% if view.latest and view.latest.status == "pending" %}
+  <p class="note" role="status">
+    {% if view.latest.kind == "draft" %}Drafting an answer…{% else %}Checking your answer…{% endif %}
+    this can take about half a minute.
+  </p>
+
+  {% elif view.latest and view.latest.status == "failed" %}
+  <p class="error" role="alert">
+    {{ view.failure.message }}
+    {% if view.failure.fix_url %}<a href="{{ view.failure.fix_url }}">{{ view.failure.fix_label }}</a>.{% endif %}
+  </p>
+
+  {% elif view.latest and view.latest.status == "done" %}
+  <p class="answer-kind note">
+    {% if view.latest.kind == "draft" %}Drafted for you{% else %}Your answer{% endif %} --
+    checked <time title="{{ view.latest.updated_at.isoformat() }}">{{ view.latest.updated_at | humanize_dt }}</time>.
+  </p>
+  <p class="answer-text">{{ view.latest.answer_text }}</p>
+
+  {% if view.latest.assessment %}
+  <div class="answer-assessment">
+    <h4>How well this answers it</h4>
+    <p>{{ view.latest.assessment.assessment }}</p>
+    {% if view.latest.assessment.gaps %}<p class="note">{{ view.latest.assessment.gaps }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if view.latest.gate_result and view.latest.gate_result.sentences %}
+  <div class="gate-verdicts">
+    <h4>Grounding</h4>
+    {# Framing renders as NOT CHECKED, never as SUPPORTED -- the same rule the
+       CLI and the demo page obey (CLAUDE.md, "Known to be wrong": framing is
+       the one path nothing ever compares to the corpus). `kind="title"` never
+       occurs here (a short application answer carries no markdown h1), but the
+       same fallback covers it if it ever did. #}
+    <ul class="verdicts">
+      {% for sentence in view.latest.gate_result.sentences %}
+      {% if sentence.kind == "claim" and sentence.verdict %}
+      <li class="verdict verdict-{{ sentence.verdict }}">
+        <span class="verdict-label">{{ sentence.verdict.upper() }}</span>
+        {{ sentence.text }}
+      </li>
+      {% else %}
+      <li class="verdict verdict-not-checked">
+        <span class="verdict-label">NOT CHECKED</span>
+        {{ sentence.text }}
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <details class="answer-actions">
+    <summary>{% if view.latest %}Try again{% else %}Answer this question{% endif %}</summary>
+    <p class="note">
+      Answering it yourself first usually produces a better answer and a cheaper check to
+      run -- but both are here, and neither is required.
+    </p>
+    <div class="answer-forms">
+      <form method="post"
+            action="/applications/{{ application_id }}/questions/{{ view.question.id }}/check">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <label for="answer-{{ view.question.id }}">Your answer</label>
+        <textarea id="answer-{{ view.question.id }}" name="answer_text" rows="4" required>{% if view.latest and view.latest.kind == "user" %}{{ view.latest.answer_text }}{% endif %}</textarea>
+        <button type="submit">Check my answer</button>
+      </form>
+      <form method="post"
+            action="/applications/{{ application_id }}/questions/{{ view.question.id }}/draft">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="secondary">Draft one for me</button>
+      </form>
+    </div>
+  </details>
+</div>

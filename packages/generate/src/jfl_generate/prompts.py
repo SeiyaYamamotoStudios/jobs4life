@@ -256,6 +256,172 @@ def build_draft_system_blocks(
 
 
 ########################################################################
+# Application questions -- two equal paths, "check my answer" and "draft one
+# for me". See CLAUDE.md's 2026-09-18 decision and NEXT.md's task 4. The claim
+# gate itself (`jfl_gate.gate.check_text`) is reused unchanged for both paths;
+# what lives here is the *assessment* call (how well the answer answers the
+# question, separate from grounding) and the draft call.
+########################################################################
+
+
+def _format_question_requirements(requirements: Sequence[JobRequirement]) -> str:
+    """Numbered, necessity-tagged requirement lines, or a plain statement that
+    none are known yet -- an application's ad may not have been extracted, and
+    both calls below must still produce something useful rather than fail.
+    """
+    if not requirements:
+        return "(no requirements extracted from this job's ad yet)"
+    return "\n".join(f"{i}. [{r.necessity}] {r.text}" for i, r in enumerate(requirements, start=1))
+
+
+def _format_question_job(job: Job | None) -> str:
+    if job is None:
+        return "(no job ad linked to this application yet)"
+    bits = [job.title or "(unknown title)", "at", job.employer or "(unknown employer)"]
+    return " ".join(bits)
+
+
+# Kept in exact correspondence with jfl_generate.schema.AssessAnswerOutput.
+ASSESS_ANSWER_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "assessment": {"type": "string"},
+        # Never `reason` -- see CLAUDE.md's 2026-09-02 decision: a schema
+        # property named `reason`, combined with a labelling system prompt,
+        # has tripped the API's reverse-engineering/duplication classifier
+        # before.
+        "gaps": {"type": "string"},  # "" if nothing worth flagging
+    },
+    "required": ["assessment", "gaps"],
+    "additionalProperties": False,
+}
+
+_ASSESS_ANSWER_INSTRUCTIONS = """\
+You are assessing, for jobs4life, how well a candidate's own answer actually answers one \
+application question for one role. A separate check already compares the answer's claims \
+against the candidate's corpus -- that is grounding, and it is not your job. Judge only \
+whether the answer addresses the question, given what this role is asking for.
+
+The current date and time is {now}.
+
+Role: {job}
+
+Requirements this role states:
+{requirements}
+
+Question: {question}
+
+Candidate's answer:
+{answer}
+
+Return:
+  - assessment: a short paragraph on how well the answer addresses the question for this \
+role -- what it covers, and how what it covers connects to the role's requirements.
+  - gaps: what the answer leaves out, and what a reader would still ask. "" if there is \
+nothing worth flagging.
+"""
+
+
+def build_assess_answer_prompt(
+    *,
+    job: Job | None,
+    requirements: Sequence[JobRequirement],
+    question_text: str,
+    answer_text: str,
+    now: datetime,
+) -> str:
+    """Constant per call -- no corpus, so no system/message cache split (this
+    call never touches the candidate's corpus at all; grounding is the claim
+    gate's job). `now` is the caller's clock (CLAUDE.md's 2026-09-07 decision:
+    every model call is told what time it is), not read here.
+    """
+    return _ASSESS_ANSWER_INSTRUCTIONS.format(
+        now=now.isoformat(),
+        job=_format_question_job(job),
+        requirements=_format_question_requirements(requirements),
+        question=question_text,
+        answer=answer_text,
+    )
+
+
+# Kept in exact correspondence with jfl_generate.schema.DraftAnswerOutput. No
+# separate `title` field -- unlike `DRAFT_OUTPUT_SCHEMA`, an application
+# question's answer is never a whole document with a heading of its own.
+DRAFT_ANSWER_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {"draft": {"type": "string"}},
+    "required": ["draft"],
+    "additionalProperties": False,
+}
+
+# Deliberately short -- see CLAUDE.md, "How to develop the model-facing parts".
+_DRAFT_ANSWER_INSTRUCTIONS = """\
+You are drafting an answer to one application question for jobs4life, a tool that measures \
+the distance between what a candidate's corpus documents and what is claimed on their \
+behalf. Write a short, direct answer in the candidate's own voice -- a few sentences to a \
+short paragraph, not a full letter.
+
+Ground every factual claim in the corpus below, and do not assert anything the corpus does \
+not support -- where the corpus is silent or only partial on something relevant, either \
+omit the claim or write around it rather than inventing evidence to fill the gap.
+
+The current date and time is {now}.
+
+Role: {job}
+
+Requirements this role states:
+{requirements}
+
+Question: {question}
+
+## Corpus
+
+{corpus}
+"""
+
+
+def build_draft_answer_system_blocks(
+    spans: Sequence[Span],
+    *,
+    job: Job | None,
+    requirements: Sequence[JobRequirement],
+    question_text: str,
+    now: datetime,
+    cache: Literal["instructions", "corpus"],
+) -> list[TextBlockParam]:
+    """Two cacheable `system` blocks -- instructions (with the job and
+    question folded in, since both are volatile per call but far smaller than
+    the corpus) first, corpus second. See
+    `jfl_gate.prompt.build_system_blocks`'s docstring for the full rationale.
+
+    The job, its requirements and the question text go in `system` rather than
+    `messages` here (unlike `build_draft_user_message`'s job/requirements,
+    which are large enough and change often enough to belong in the volatile
+    half) because this call has no other user message to carry them in --
+    keeping one block cache-broken per call is simpler than inventing a user
+    message whose only content is "draft it now" plus a duplicate of the
+    question.
+    """
+    template = _DRAFT_ANSWER_INSTRUCTIONS.format(
+        now=now.isoformat(),
+        job=_format_question_job(job),
+        requirements=_format_question_requirements(requirements),
+        question=question_text,
+        corpus="{corpus}",
+    )
+    return _split_system_blocks(template, format_corpus(spans), cache=cache)
+
+
+def build_draft_answer_user_message() -> str:
+    """The volatile half of the request. Everything that actually varies (the
+    job, its requirements, the question) is already in the system blocks above
+    -- see `build_draft_answer_system_blocks`'s docstring for why -- so this is
+    a fixed instruction, not a template.
+    """
+    return "Write the answer now."
+
+
+########################################################################
 # Slice C7a: suggested title expansions. A short, cheap, standalone call --
 # no corpus, no system/message split to cache. See CLAUDE.md's "How to
 # develop the model-facing parts" (near-default judgement, no elaborate
