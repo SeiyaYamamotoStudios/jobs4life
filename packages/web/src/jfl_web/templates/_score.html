@@ -1,0 +1,134 @@
+{# The scoring panel (PLAN.md B4), rendered both inside the detail page and on
+   its own by GET /applications/{id}/score.
+
+   Two axes, side by side, never averaged and never ordered against each other:
+   a role the owner would love and will not get, and one they would dislike and
+   would walk into, must read as two different answers. There is no combined
+   number anywhere in this file, on purpose.
+
+   The polling trigger lives on this element and only while the latest run is
+   `pending`, so a finished run stops the poll by virtue of what came back --
+   same shape as `_extraction.html`. #}
+<section id="score"
+         {% if score and score.status == "pending" %}
+         hx-get="/applications/{{ application_id }}/score"
+         hx-trigger="every 5s"
+         hx-swap="outerHTML"
+         {% endif %}>
+  <h2>Score</h2>
+
+  <p class="note unmeasured" role="note">{{ score_unmeasured }}</p>
+
+  {% if not score %}
+  <p class="note">Not scored yet.</p>
+  <p class="note">{{ score_cost_note }}</p>
+  <form method="post" action="/applications/{{ application_id }}/score">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit">Score this application</button>
+  </form>
+
+  {% elif score.status == "pending" %}
+  <p class="note" role="status">Scoring… this takes a minute or two, and longer
+    if your corpus has not been checked against this job yet.</p>
+
+  {% elif score.status == "failed" %}
+  <p class="error" role="alert">
+    {{ score_failure.message }}
+    {% if score_failure.fix_url %}<a href="{{ score_failure.fix_url }}">{{ score_failure.fix_label }}</a>.{% endif %}
+  </p>
+  <form method="post" action="/applications/{{ application_id }}/score">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Try scoring it again</button>
+  </form>
+
+  {% else %}
+  {# Two axes. Kept in two separate blocks with two separate headings so
+     nothing reads as one score with two parts. #}
+  <div class="score-axes">
+    <div class="score-axis">
+      <h3>{{ could_get_label }}</h3>
+      <p class="score-number"><strong>{{ score.could_get_score }}</strong><span class="score-of">/10</span></p>
+      <p>{{ score.could_get_assessment }}</p>
+    </div>
+    <div class="score-axis">
+      <h3>{{ want_it_label }}</h3>
+      <p class="score-number"><strong>{{ score.want_it_score }}</strong><span class="score-of">/10</span></p>
+      <p>{{ score.want_it_assessment }}</p>
+    </div>
+  </div>
+
+  {# A hard gate the ad breaks is stated in plain words, never folded silently
+     into the number above it. #}
+  {% if score.hard_gate_breaches %}
+  <h3>Hard gates this ad breaks</h3>
+  <ul class="score-breaches">
+    {% for breach in score.hard_gate_breaches %}
+    <li><strong>{{ breach.gate }}</strong> — {{ breach.breach }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if score.objective_verdicts %}
+  <h3>Your objectives, each judged on its own</h3>
+  <ul class="score-objectives">
+    {% for verdict in score.objective_verdicts %}
+    <li>
+      <span class="score-objective-text">{{ verdict.objective }}</span>
+      <p class="note">{{ verdict.verdict }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {# Levers: unconfirmed CV claims. They are not evidence and did not raise the
+     first number -- this is what confirming one would be worth. #}
+  {% if score.levers %}
+  <h3>What confirming a CV claim would change</h3>
+  <p class="note">Your CVs claim these and you have not confirmed them, so they
+    are not evidence yet and did not count towards “{{ could_get_label }}”.</p>
+  <ul class="score-levers">
+    {% for lever in score.levers %}
+    <li>
+      <span class="score-lever-fact">{{ lever.fact_text }}</span>
+      {% if lever.role_label %}<span class="score-lever-role">{{ lever.role_label }}</span>{% endif %}
+      <p class="note">
+        {% if lever.would_move_to %}Confirm it and “{{ could_get_label }}” moves from
+        {{ score.could_get_score }} to {{ lever.would_move_to }}. {% endif %}{{ lever.note }}
+      </p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if score.not_stated %}
+  <h3>Not stated</h3>
+  <p class="note">You have not answered these, so nothing above assumed an
+    answer to them. <a href="/profile">Answer them</a> and the next score can
+    use them.</p>
+  <ul class="score-not-stated">
+    {% for item in score.not_stated %}
+    <li>{{ item.wording }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <dl class="facts">
+    <dt>Scored</dt>
+    <dd title="{{ score.updated_at.isoformat() }}">{{ score.updated_at | humanize_dt }}</dd>
+    <dt>Model</dt><dd>{{ score.model or "—" }}</dd>
+    <dt>Cost of this run</dt>
+    <dd>{% if score.cost_usd is not none %}${{ "%.4f" | format(score.cost_usd) }}{% else %}—{% endif %}</dd>
+  </dl>
+
+  {# Explicit, never automatic: a re-score is another model call on the user's
+     own key, so it happens because they pressed something. #}
+  <details class="status-more">
+    <summary>Score it again</summary>
+    <p class="note">{{ score_cost_note }} The score you have now is kept either way.</p>
+    <form method="post" action="/applications/{{ application_id }}/score">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="secondary">Score it again</button>
+    </form>
+  </details>
+  {% endif %}
+</section>

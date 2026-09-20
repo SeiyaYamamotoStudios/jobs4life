@@ -1349,3 +1349,97 @@ runs = Table(
     Index("ix_runs_trace_id", "trace_id"),
     Index("ix_runs_user_id_stage_created_at", "user_id", "stage", "created_at"),
 )
+
+
+# --------------------------------------------------------------------------
+# Two scores for one application -- PLAN.md slice B4.
+#
+# **Two axes, 1-10 each, and there is deliberately no third column.** CLAUDE.md
+# and PLAN.md B4: "do I want this" and "could I get this" are reported
+# separately and never averaged, so a composite has nowhere to live in this
+# schema. The CHECKs pin each to 1-10.
+#
+# Append-only across runs, like `requirement_coverage`: a re-score inserts a
+# new row and the page reads the latest, so the history of what the tool said
+# and what it cost stays readable. A row's own `status` moves `pending` ->
+# `done`/`failed` once (the run's state), which is not a rewrite of an earlier
+# score.
+# --------------------------------------------------------------------------
+
+_SCORE_STATUSES = ("pending", "done", "failed")
+
+# A subset of `_EXTRACTION_ERROR_CODES` plus `no_requirements`, which is this
+# call's own: the ad has not been read, so there is nothing to score against
+# and nothing was called. No `ad_too_long` -- the ad is not in this prompt.
+_SCORE_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+    "no_requirements",
+)
+
+application_scores = Table(
+    "application_scores",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # random: one id per run
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("error_code", Text),
+    # Both NULL until the run finishes. Two columns, two paragraphs, no third
+    # number -- see the section comment above.
+    Column("could_get_score", Integer),
+    Column("could_get_assessment", Text, nullable=False, server_default=""),
+    Column("want_it_score", Integer),
+    Column("want_it_assessment", Text, nullable=False, server_default=""),
+    # JSONB lists of the shapes in jfl_core.models: ObjectiveVerdict,
+    # HardGateBreach, ScoreLever, NotStated. Read back whole and rendered;
+    # never queried structurally, same convention as `runs.attributes`.
+    Column("objective_verdicts", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("hard_gate_breaches", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("levers", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("not_stated", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("model", Text),
+    # The whole run's cost: the scoring call, plus the coverage call when this
+    # run had to make one. Same precision as `runs.cost_usd`.
+    Column("cost_usd", Numeric(12, 6)),
+    # Ties this row to its `runs` rows -- cost attribution, not a foreign key.
+    Column("trace_id", UUID(as_uuid=True)),
+    # `clock_timestamp()`, not `now()`, for the reason `profile_answers` gives:
+    # this is an append-only history table, `now()` is transaction-start time,
+    # and two runs written in one transaction would share a timestamp, making
+    # "the latest run" ambiguous exactly where the page reads it.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_SCORE_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('" + "','".join(_SCORE_ERROR_CODES) + "')",
+        name="error_code",
+    ),
+    CheckConstraint(
+        "could_get_score is null or (could_get_score between 1 and 10)",
+        name="could_get_score",
+    ),
+    CheckConstraint(
+        "want_it_score is null or (want_it_score between 1 and 10)",
+        name="want_it_score",
+    ),
+    Index(
+        "ix_application_scores_user_id_application_id_created_at",
+        "user_id",
+        "application_id",
+        "created_at",
+    ),
+)

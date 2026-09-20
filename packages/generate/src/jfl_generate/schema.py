@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 Necessity = Literal["essential", "desirable", "unstated"]
 
@@ -82,3 +82,45 @@ class SuggestedTitleItem(BaseModel):
 
 class TitleSuggestionsOutput(BaseModel):
     titles: list[SuggestedTitleItem]
+
+
+# -- slice B4: two scores for one application --------------------------------
+#
+# Field-for-field with SCORE_OUTPUT_SCHEMA in prompts.py. There is deliberately
+# no composite field and no property named `reason` -- see that schema's comment
+# and CLAUDE.md's standing decisions.
+
+
+class ObjectiveVerdictItem(BaseModel):
+    ordinal: int
+    verdict: str
+
+
+class HardGateBreachItem(BaseModel):
+    gate: str
+    breach: str
+
+
+class LeverItem(BaseModel):
+    """`fact_index` is 1-based into the numbered unconfirmed claims in the user
+    message. `jfl_generate.scoring` resolves it back to the stored fact's own
+    words, so a lever can never paraphrase what the user's CV actually said.
+    """
+
+    fact_index: int
+    would_move_to: int
+    note: str
+
+
+class ScoreOutput(BaseModel):
+    # Bounded here rather than in the JSON schema: the wire schema stays to the
+    # plain types the API's structured output takes, and an out-of-range number
+    # becomes an ordinary parse failure with a `runs` row, not a stored score
+    # the CHECK constraint would reject at INSERT.
+    could_get_score: int = Field(ge=1, le=10)
+    could_get_assessment: str
+    want_it_score: int = Field(ge=1, le=10)
+    want_it_assessment: str
+    objective_verdicts: list[ObjectiveVerdictItem]
+    hard_gate_breaches: list[HardGateBreachItem]
+    levers: list[LeverItem]
