@@ -776,3 +776,154 @@ class ProfileRuledOut(BaseModel):
     decision_text: str
     recorded_at: dt.datetime
     reopened_at: dt.datetime | None = None
+
+
+# -- CV intake, PLAN.md slice B6 ---------------------------------------------
+#
+# A new user's corpus is too small to score or draft against, so onboarding
+# starts from their CVs. But a CV cannot simply *become* the corpus: grounding
+# on a CV makes every later CV "supported" and switches the over-claim
+# measurement off silently (CLAUDE.md, 2026-09-18). So a CV is stored verbatim
+# in the sent-document store -- form, never truth -- a model proposes candidate
+# facts from it, and only what the user confirms, fact by fact, becomes a
+# corpus span.
+
+# Where the markdown behind a corpus document actually lives. `local_file` is
+# the CLI's `corpus/*.md` on the owner's disk; `hosted` is markdown this
+# deployment holds in `documents.text`, because a hosted user has no file --
+# see `jfl_core.corpus_source`.
+DocumentStorageKind = Literal["local_file", "upload", "paste", "hosted"]
+
+# Three states, and the middle one is the point: a fact a CV claims but the
+# user has not confirmed is *kept* and never grounds anything (CLAUDE.md's
+# "confirmed, claimed-unconfirmed, absent"). `proposed` is that middle state.
+CandidateFactState = Literal["proposed", "confirmed", "rejected"]
+
+CvExtractionStatus = Literal["pending", "done", "failed"]
+
+# A closed set, never free text -- same reasoning as `ExtractionErrorCode`:
+# the worker writes this column while holding the user's decrypted API key, and
+# a formatted exception is where a credential leaks. Wording lives in the web
+# layer.
+CvExtractionErrorCode = Literal[
+    "no_cv_text",
+    "no_api_key",
+    "api_key_rejected",
+    "credential_unreadable",
+    "cv_too_long",
+    "model_refused",
+    "model_error",
+]
+
+
+class StoredCv(BaseModel):
+    """One CV in the sent-document store, plus how its extraction went.
+
+    Deliberately carries no span ids and no corpus anything: this is the store
+    that must never be reachable from a grounding query, and the type that
+    describes it should not tempt anyone to join it to one.
+    """
+
+    id: uuid.UUID
+    path: str
+    title: str | None = None
+    content_hash: str
+    created_at: dt.datetime
+    extraction_status: CvExtractionStatus = "pending"
+    extraction_error_code: CvExtractionErrorCode | None = None
+    facts_proposed: int = 0
+    # Character count, not the text: a CV listing page has no business
+    # rendering the CV, and `text` on this model would invite it.
+    length_chars: int = 0
+
+
+class ProposedFact(BaseModel):
+    """One candidate fact on its way into `candidate_facts`, before it has an
+    id or a state. Built by `jfl_generate.cv_facts.to_proposed_facts` from what
+    the model returned; written by
+    `PostgresCandidateFactRepository.add_proposed`, which supplies the user.
+
+    No `user_id` field on purpose -- the repository is constructed with the one
+    user it may act on, and a caller that could name a user is a caller that
+    could name the wrong one.
+    """
+
+    sent_document_id: uuid.UUID | None = None
+    role_label: str
+    role_key: str
+    source_line: str
+    fact_text: str
+    probe: str | None = None
+    fingerprint: str
+    # Position within the CV it came from, used only to order roles the way the
+    # CV ordered them. Never part of any identity -- see `jfl_core.ids`.
+    ordinal: int = 0
+
+
+class CandidateFact(BaseModel):
+    """A fact a CV claims, in one of three states.
+
+    `confirmed_text` is the user's own words where they edited the model's
+    proposal, and it -- not `fact_text` -- is what reaches the corpus. A model
+    tidying a user's answer into a neater corpus fact is the ratchet in
+    miniature (CLAUDE.md, "A gap answer is stored verbatim"), so nothing on the
+    path from `confirmed_text` to a span involves a model.
+
+    `span_id` is set once the fact is in the corpus, and is the only link from
+    here into the grounding store. It points at an ordinary
+    `provenance='document'` span, because the write-back goes through markdown
+    -- see `jfl_core.corpus_source`.
+    """
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    sent_document_id: uuid.UUID | None = None
+    role_label: str
+    role_key: str
+    source_line: str
+    fact_text: str
+    probe: str | None = None
+    probe_answer: str | None = None
+    state: CandidateFactState = "proposed"
+    confirmed_text: str | None = None
+    span_id: uuid.UUID | None = None
+    fingerprint: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @property
+    def corpus_text(self) -> str:
+        """What would go to the corpus if this were confirmed as it stands:
+        the user's edit where there is one, the proposal otherwise.
+        """
+        edited = (self.confirmed_text or "").strip()
+        return edited or self.fact_text
+
+
+class RoleGroup(BaseModel):
+    """One role's worth of candidate facts, for the confirmation screen.
+
+    Grouped by `role_key` rather than by CV: the same role appears in every CV
+    that mentions it, and confirming it thirty-three times is exactly the
+    friction that gets a tool abandoned.
+    """
+
+    role_key: str
+    role_label: str
+    proposed: int = 0
+    confirmed: int = 0
+    rejected: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.proposed + self.confirmed + self.rejected
+
+
+class FactCounts(BaseModel):
+    proposed: int = 0
+    confirmed: int = 0
+    rejected: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.proposed + self.confirmed + self.rejected

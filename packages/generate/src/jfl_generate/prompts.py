@@ -359,3 +359,77 @@ def build_draft_user_message(
     lines.append("")
     lines.append("Write the draft now.")
     return "\n".join(lines)
+
+
+# -- CV intake (slice B6) ----------------------------------------------------
+#
+# Kept in exact correspondence with jfl_generate.schema.CvFactsOutput.
+CV_FACTS_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "role_label": {"type": "string"},
+                    "source_line": {"type": "string"},
+                    "fact_text": {"type": "string"},
+                    # A question to put to the person, not a justification of
+                    # the label above it -- and never named `reason`. See
+                    # CLAUDE.md's 2026-09-02 decision: a long labelling prompt
+                    # plus a schema demanding a label and a reason per item
+                    # reads to the API as a distillation harvest, and every call
+                    # comes back refused.
+                    "probe": {"type": "string"},  # "" when no question is needed
+                },
+                "required": ["role_label", "source_line", "fact_text", "probe"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["facts"],
+    "additionalProperties": False,
+}
+
+_CV_FACTS_INSTRUCTIONS = """\
+You are reading someone's CV for jobs4life, a tool that measures the distance between what \
+a person's record can evidence and what they claim. Treat this CV as a set of claims the \
+person once made about themselves, NOT as evidence: nothing in it counts until they \
+confirm it. Your job is to turn it into small, separate facts they can confirm, edit or \
+reject one at a time.
+
+The current date and time is {now}. CV dates are often relative ("2021-present", "last \
+year"), so use it to read them rather than guessing how much time has passed.
+
+Return one entry per fact. For each one:
+
+- role_label: the role the fact belongs to, written the way the CV writes it -- employer, \
+title and dates, for instance "Acme Ltd -- Engineering Manager, 2021-2024". Use the same \
+wording for every fact from the same role. For a fact belonging to no particular role \
+(education, a certification, a personal project) use the CV's own heading for that section.
+- source_line: the CV's own words that the fact came from, copied exactly. Nothing added, \
+reworded, corrected or tidied -- this is quoted back to the person, and a line they did not \
+write is worse than no line at all.
+- fact_text: one short statement of the fact in plain words. One fact per entry: "led a team \
+of eight and owned the payments platform" is two entries, not one. Never make the claim \
+stronger than the line does, and never add a number, a scope or an outcome the line does \
+not state.
+- probe: a single short question to put to the person, or "" for no question. Write a probe \
+whenever the fact carries a number of any kind, a team or budget size, or the words led, \
+owned, drove or delivered -- those are the shapes where a CV most often says more than the \
+person would say out loud. Ask what actually happened ("How many people reported to you?", \
+"What did owning it involve -- decisions, budget, on-call?"). Never ask a leading question \
+that invites a better answer than the truth.
+
+Skip anything that is not a checkable fact about this person: contact details, the summary \
+paragraph's self-description ("a passionate engineer"), referees, and bare lists of \
+technologies with no claim attached.
+"""
+
+
+def build_cv_facts_prompt(*, now: datetime) -> str:
+    """Constant apart from the clock: the CV is volatile and belongs in the user
+    message, assembled by the caller.
+    """
+    return _CV_FACTS_INSTRUCTIONS.format(now=now.isoformat())

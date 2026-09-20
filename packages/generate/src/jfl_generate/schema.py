@@ -82,3 +82,25 @@ class SuggestedTitleItem(BaseModel):
 
 class TitleSuggestionsOutput(BaseModel):
     titles: list[SuggestedTitleItem]
+
+
+class CvFactItem(BaseModel):
+    """One candidate fact as it comes back over the wire. Sanitised into
+    `jfl_core.models.ProposedFact` by `jfl_generate.cv_facts.to_proposed_facts`
+    before anything downstream sees it -- same split as `SuggestedTitleItem`.
+    """
+
+    role_label: str
+    source_line: str
+    fact_text: str
+    # "" from the model means "no question needed" -- see prompts.py.
+    probe: str | None = None
+
+    @field_validator("probe", mode="before")
+    @classmethod
+    def _normalise(cls, value: str | None) -> str | None:
+        return _blank_to_none(value)
+
+
+class CvFactsOutput(BaseModel):
+    facts: list[CvFactItem]

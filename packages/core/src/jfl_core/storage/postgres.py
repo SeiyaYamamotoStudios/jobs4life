@@ -30,6 +30,7 @@ from jfl_core.db.tables import span_sentences
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.ids import sentence_id
 from jfl_core.models import (
+    DocumentStorageKind,
     Draft,
     GapQuestion,
     Job,
@@ -58,6 +59,8 @@ class PostgresIngestRepository:
         source_uri: str,
         title: str | None,
         content_hash: str,
+        storage_kind: DocumentStorageKind = "local_file",
+        text: str | None = None,
     ) -> bool:
         exists = self._conn.execute(
             select(documents_table.c.id).where(documents_table.c.id == document_id)
@@ -68,9 +71,10 @@ class PostgresIngestRepository:
                     id=document_id,
                     user_id=user_id,
                     source_uri=source_uri,
-                    storage_kind="local_file",
+                    storage_kind=storage_kind,
                     title=title,
                     content_hash=content_hash,
+                    text=text,
                 )
             )
             return True
@@ -80,11 +84,22 @@ class PostgresIngestRepository:
             .values(
                 title=title,
                 content_hash=content_hash,
+                storage_kind=storage_kind,
+                text=text,
                 last_seen_at=func.now(),
                 retired_at=None,  # a file that reappears is live again
             )
         )
         return False
+
+    def document_text(self, user_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+        row = self._conn.execute(
+            select(documents_table.c.text).where(
+                documents_table.c.id == document_id,
+                documents_table.c.user_id == user_id,
+            )
+        ).first()
+        return None if row is None else row.text
 
     def upsert_span(self, span: Span) -> bool:
         exists = self._conn.execute(
@@ -144,10 +159,38 @@ class PostgresIngestRepository:
             )
         return created
 
+    def retire_document_spans(
+        self, user_id: uuid.UUID, document_id: uuid.UUID, seen: set[uuid.UUID]
+    ) -> int:
+        """Retire this one document's spans that are not in `seen`.
+
+        `retire_missing_spans` is per-user and is right for a pass over the
+        whole corpus directory. It is wrong for re-parsing a single document,
+        where every *other* document's spans are simply not in `seen` and would
+        all be retired. This is what makes deleting a line from a hosted corpus
+        document actually remove it from grounding -- see
+        `jfl_core.corpus_source`.
+        """
+        stmt = update(spans_table).where(
+            spans_table.c.user_id == user_id,
+            spans_table.c.document_id == document_id,
+            spans_table.c.retired_at.is_(None),
+        )
+        if seen:
+            stmt = stmt.where(spans_table.c.id.notin_(seen))
+        result = self._conn.execute(stmt.values(retired_at=func.now()))
+        return result.rowcount
+
     def retire_missing_documents(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
         stmt = update(documents_table).where(
             documents_table.c.user_id == user_id,
             documents_table.c.retired_at.is_(None),
+            # A hosted document has no file, so a pass over `corpus/` never sees
+            # it and its absence from `seen` is not evidence it went away -- the
+            # same rule board checks follow, where an unreachable fetch records
+            # no disappearance. Without this, one `jfl ingest` would retire
+            # every fact a hosted user had confirmed.
+            documents_table.c.storage_kind != "hosted",
         )
         if seen:
             stmt = stmt.where(documents_table.c.id.notin_(seen))
@@ -155,10 +198,17 @@ class PostgresIngestRepository:
         return result.rowcount
 
     def retire_missing_spans(self, user_id: uuid.UUID, seen: set[uuid.UUID]) -> int:
+        hosted = select(documents_table.c.id).where(
+            documents_table.c.user_id == user_id,
+            documents_table.c.storage_kind == "hosted",
+        )
         stmt = update(spans_table).where(
             spans_table.c.user_id == user_id,
             spans_table.c.provenance == "document",
             spans_table.c.retired_at.is_(None),
+            # See `retire_missing_documents`: a filesystem pass is silent about
+            # hosted markdown, and silence is not absence.
+            spans_table.c.document_id.notin_(hosted),
         )
         if seen:
             stmt = stmt.where(spans_table.c.id.notin_(seen))

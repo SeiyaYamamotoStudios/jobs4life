@@ -38,6 +38,10 @@ VALUE_SETS = [
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
     (models.ProfileQuestionKey, tables._PROFILE_QUESTION_KEYS),
+    (models.DocumentStorageKind, tables._DOCUMENT_STORAGE_KINDS),
+    (models.CvExtractionStatus, tables._CV_EXTRACTION_STATUSES),
+    (models.CvExtractionErrorCode, tables._CV_EXTRACTION_ERROR_CODES),
+    (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
 ]
 
 

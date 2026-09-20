@@ -28,6 +28,8 @@ from jfl_worker.handlers.boards import (
     build_check_board,
     build_schedule_board_checks,
 )
+from jfl_worker.handlers.cv_facts import KIND as EXTRACT_CV_FACTS
+from jfl_worker.handlers.cv_facts import build_extract_cv_facts
 from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
 from jfl_worker.handlers.description import build_fetch_job_description
 from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
@@ -43,6 +45,7 @@ from jfl_worker.settings import WorkerSettings
 
 __all__ = [
     "CHECK_BOARD",
+    "EXTRACT_CV_FACTS",
     "EXTRACT_JOB_AD",
     "FETCH_JOB_DESCRIPTION",
     "PURGE_EXPIRED_SESSIONS",
@@ -50,6 +53,7 @@ __all__ = [
     "SCHEDULE_BOARD_CHECKS",
     "SUGGEST_TITLES",
     "build_check_board",
+    "build_extract_cv_facts",
     "build_extract_job_ad",
     "build_fetch_job_description",
     "build_registry",
@@ -106,6 +110,15 @@ def build_registry(
         build_extract_job_ad(master_key=settings.master_key, model=settings.model),
         # True, and this is the line the kill switch acts on. Extraction is one
         # Anthropic call on the user's own key.
+        calls_model=True,
+    )
+    registry.register(
+        EXTRACT_CV_FACTS,
+        build_extract_cv_facts(master_key=settings.master_key, model=settings.model),
+        # True: one Anthropic call per uploaded CV, on the user's own key. The
+        # kill switch holds this one too -- a user uploading thirty-three CVs is
+        # thirty-three calls, which is exactly the shape of spend the switch is
+        # there to stop.
         calls_model=True,
     )
     registry.register(

@@ -21,10 +21,12 @@ from jfl_core.storage.accounts import (
 )
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.profile import PostgresProfileRepository
+from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from sqlalchemy.engine import Connection
@@ -178,6 +180,26 @@ def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSu
 TitleSuggestionRepoDep = Annotated[
     PostgresTitleSuggestionRepository, Depends(title_suggestion_repo)
 ]
+
+
+def sent_document_repo(session: SessionDep, conn: ConnDep) -> PostgresSentDocumentRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    The sent-document store, which nothing grounding may reach -- see
+    `jfl_core.storage.sent_documents`.
+    """
+    return PostgresSentDocumentRepository(conn, session.user.id)
+
+
+SentDocumentRepoDep = Annotated[PostgresSentDocumentRepository, Depends(sent_document_repo)]
+
+
+def candidate_fact_repo(session: SessionDep, conn: ConnDep) -> PostgresCandidateFactRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresCandidateFactRepository(conn, session.user.id)
+
+
+CandidateFactRepoDep = Annotated[PostgresCandidateFactRepository, Depends(candidate_fact_repo)]
 
 
 async def require_csrf(request: Request, session: SessionDep) -> None:

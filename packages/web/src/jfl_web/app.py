@@ -39,6 +39,7 @@ from jfl_web.routes import (
     auth,
     boards,
     changes,
+    corpus,
     jobs,
     pages,
     profile,
@@ -106,6 +107,7 @@ def create_app(
     app.include_router(title_suggestions.router)
     app.include_router(tracking.router)
     app.include_router(profile.router)
+    app.include_router(corpus.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     _install_error_handlers(app)

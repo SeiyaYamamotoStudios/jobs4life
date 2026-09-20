@@ -27,6 +27,7 @@ from jfl_core.ids import content_hash, gap_question_id
 from jfl_core.ingest.gap_answers import gap_answer_span_id
 from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import (
+    DocumentStorageKind,
     Draft,
     GapQuestion,
     Job,
@@ -79,6 +80,7 @@ class _FakeIngestRepository:
 
     def __init__(self) -> None:
         self.documents: dict[uuid.UUID, str] = {}  # id -> content_hash
+        self.text: dict[uuid.UUID, str | None] = {}
         self.spans: dict[uuid.UUID, Span] = {}
 
     def upsert_document(
@@ -88,10 +90,26 @@ class _FakeIngestRepository:
         source_uri: str,
         title: str | None,
         content_hash: str,
+        storage_kind: DocumentStorageKind = "local_file",
+        text: str | None = None,
     ) -> bool:
         created = document_id not in self.documents
         self.documents[document_id] = content_hash
+        self.text[document_id] = text
         return created
+
+    def document_text(self, user_id: uuid.UUID, document_id: uuid.UUID) -> str | None:
+        return self.text.get(document_id)
+
+    def retire_document_spans(
+        self, user_id: uuid.UUID, document_id: uuid.UUID, seen: set[uuid.UUID]
+    ) -> int:
+        retired = [
+            i for i, s in self.spans.items() if s.document_id == document_id and i not in seen
+        ]
+        for i in retired:
+            del self.spans[i]
+        return len(retired)
 
     def upsert_span(self, span: Span) -> bool:
         created = span.id not in self.spans
