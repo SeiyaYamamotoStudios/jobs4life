@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from jfl_core.models import ScoreErrorCode
+from jfl_core.fit import want_it_basis
+from jfl_core.models import ApplicationScore, FitVerdict, ScoreErrorCode
 
 UNMEASURED = (
     "These two scores are unmeasured. There is no golden set for fit, so unlike "
@@ -33,6 +34,66 @@ UNMEASURED = (
 
 COULD_GET_LABEL = "Could I get this"
 WANT_IT_LABEL = "Do I want this"
+
+# What the second number actually answers, said once, under it. It is not a
+# prediction that you would enjoy the job -- see `docs/profile-schema.md`:
+# computed person-job fit predicts satisfaction at rho ~= .28, and people
+# forecast their own job satisfaction badly. What it measures is how much of
+# what you said matters this ad actually evidences.
+WANT_IT_SUBTITLE = (
+    "How much of what you said matters this ad actually evidences -- not a prediction "
+    "that you would enjoy it."
+)
+
+# An empty profile has no number, rather than a 1. Nothing was measured, so
+# nothing is claimed.
+NO_WANT_IT_SCORE = "No number: you have not recorded anything for this ad to be measured against."
+
+# The four words a constraint or objective comes back as, and what each one
+# means to the reader. `silent` is the one worth reading twice: it is not a
+# failure of the ad and not a mark against the job -- it is the question to ask
+# at interview, which is the most useful thing this panel produces.
+VERDICT_WORDING: dict[FitVerdict, str] = {
+    "evidenced": "the ad states it",
+    "partial": "the ad points that way",
+    "silent": "the ad does not say -- ask",
+    "contradicted": "the ad states the opposite",
+}
+
+SILENCE_NOTE = (
+    "Every silence below is a question to ask at interview, not a mark against the "
+    "job. What predicts whether a job works out is expectations that turn out to be "
+    "met, so these are the ones worth asking about before you accept."
+)
+
+STANCE_WORDING: dict[str, str] = {
+    "must": "must have",
+    "nice": "would like",
+    "never": "will not accept",
+}
+
+
+def want_it_summary(score: ApplicationScore) -> str:
+    """One sentence saying what the number was derived from.
+
+    Recomputed from the stored verdicts rather than stored beside the number,
+    so the tally under a score can never disagree with the verdicts listed
+    under it. `jfl_core.fit` owns the arithmetic; this owns the wording.
+    """
+    basis = want_it_basis(score.constraint_verdicts, score.objective_verdicts)
+    if basis.items == 0:
+        return NO_WANT_IT_SCORE
+    bits = [f"{basis.evidenced} of {basis.items} evidenced"]
+    if basis.partial:
+        bits.append(f"{basis.partial} partly")
+    bits.append(f"{basis.silent} not mentioned")
+    if basis.contradicted:
+        bits.append(f"{basis.contradicted} contradicted")
+    sentence = "Across what you said matters: " + ", ".join(bits) + "."
+    if basis.capped:
+        sentence += " A must-have or a never is broken, which holds the number down."
+    return sentence
+
 
 # Shown beside the button, because pressing it spends the user's own money and
 # may spend it twice.

@@ -69,6 +69,7 @@ from jfl_core.storage.postgres import (
     PostgresJobRepository,
     PostgresRunRepository,
 )
+from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_gate.gate import GateError
 from jfl_generate.draft import generate_draft
 from jfl_generate.errors import GenerateError
@@ -235,6 +236,13 @@ def _generate_cv_draft(
     )
     recorder = _RunRecorder(ctx.engine)
 
+    # The confirmed depths, read before the call: the prompt names them as the
+    # ceiling on what the draft may claim (`docs/profile-schema.md`). Read in
+    # its own short transaction rather than inside the one that holds the model
+    # call.
+    with ctx.engine.begin() as conn:
+        capabilities = PostgresProfileRepository(conn, ctx.user_id).current().capabilities
+
     try:
         with ctx.engine.begin() as conn:
             draft = generate_draft(
@@ -244,6 +252,7 @@ def _generate_cv_draft(
                 recorder,
                 job_id,
                 kind,
+                capabilities,
             )
     except (GenerateError, GateError) as exc:
         code, permanent = _classify(str(exc))

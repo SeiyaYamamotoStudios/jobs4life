@@ -20,7 +20,13 @@ from collections.abc import Iterator
 
 import pytest
 from jfl_core.db.tables import application_scores, applications, users
-from jfl_core.models import HardGateBreach, NotStated, ObjectiveVerdict, ScoreLever
+from jfl_core.models import (
+    ConstraintVerdict,
+    HardGateBreach,
+    NotStated,
+    ObjectiveVerdict,
+    ScoreLever,
+)
 from jfl_core.storage.scores import PostgresScoreRepository
 from sqlalchemy import create_engine, insert, select, update
 from sqlalchemy.engine import Connection, Engine
@@ -73,8 +79,26 @@ def _finish(repo: PostgresScoreRepository, score_id: uuid.UUID, **kw: object) ->
         "could_get_assessment": "Three roles evidence the platform work.",
         "want_it_score": 3,
         "want_it_assessment": "The commute breaks what you said you would travel.",
+        "constraint_verdicts": [
+            ConstraintVerdict(
+                kind="workplace",
+                stance="must",
+                label="working arrangement -- one day a week at most",
+                verdict="contradicted",
+                note="On site five days a week.",
+            ),
+            ConstraintVerdict(
+                kind="comp_floor",
+                stance="nice",
+                label="lowest package",
+                verdict="silent",
+                note="The ad does not mention pay.",
+            ),
+        ],
         "objective_verdicts": [
-            ObjectiveVerdict(ordinal=1, objective="Back to hands-on", verdict="Unlikely here.")
+            ObjectiveVerdict(
+                rank=1, objective="Back to hands-on", verdict="partial", note="Unlikely here."
+            )
         ],
         "hard_gate_breaches": [HardGateBreach(gate="location", breach="On site five days a week.")],
         "levers": [
@@ -118,7 +142,12 @@ def test_both_axes_and_everything_around_them_survive_a_round_trip(
     assert stored.want_it_score == 3
     assert stored.could_get_assessment.startswith("Three roles")
     assert stored.want_it_assessment.startswith("The commute")
-    assert [v.ordinal for v in stored.objective_verdicts] == [1]
+    assert [v.rank for v in stored.objective_verdicts] == [1]
+    assert stored.objective_verdicts[0].verdict == "partial"
+    # The four-word vocabulary the second number is derived from, round-tripped
+    # through JSONB: a word that did not survive would silently change a score.
+    assert [v.verdict for v in stored.constraint_verdicts] == ["contradicted", "silent"]
+    assert [v.stance for v in stored.constraint_verdicts] == ["must", "nice"]
     assert stored.hard_gate_breaches[0].gate == "location"
     assert stored.levers[0].fact_text == "Ran a team of 12"
     assert stored.levers[0].would_move_to == 8

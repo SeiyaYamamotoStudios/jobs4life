@@ -28,6 +28,7 @@ from jfl_core.storage.postgres import (
     PostgresJobRepository,
     PostgresRunRepository,
 )
+from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_gate.gate import GateError, check_text
 from jfl_gate.input import read_input
 from jfl_gate.schema import GateOutput, SentenceResult
@@ -416,8 +417,14 @@ def draft(
         grounding_repo = PostgresGroundingRepository(conn)
         run_repo = PostgresRunRepository(conn)
         job_repo = PostgresJobRepository(conn)
+        # The confirmed depths are the ceiling on what the draft may claim --
+        # docs/profile-schema.md. The CLI reads them the same way the worker
+        # does, so a draft written here is held to the same ceiling.
+        capabilities = PostgresProfileRepository(conn, ctx.user_id).current().capabilities
         try:
-            result = generate_draft(ctx, job_repo, grounding_repo, run_repo, job_id, stored_kind)
+            result = generate_draft(
+                ctx, job_repo, grounding_repo, run_repo, job_id, stored_kind, capabilities
+            )
         except (GenerateError, GateError) as e:
             error = str(e)
 

@@ -7,7 +7,7 @@ import uuid
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Provenance = Literal["document", "adjudicated"]
 SpanKind = Literal["bullet", "paragraph", "heading"]
@@ -846,6 +846,122 @@ class ProfileRuledOut(BaseModel):
     reopened_at: dt.datetime | None = None
 
 
+# -- the profile, docs/profile-schema.md (agreed 2026-09-21) -----------------
+#
+# One append-only row per save, four sections in one JSONB document, and **one
+# Pydantic model as the only write path**. The value-list drift guard does not
+# reach inside JSONB (a CHECK cannot see into a document), so these Literals
+# are the whole enforcement -- accepted deliberately, and the price of a shape
+# we expect to change while we learn what belongs in it.
+
+ConstraintStance = Literal["must", "nice", "never"]
+
+ConstraintKind = Literal[
+    "location",
+    "workplace",
+    "level_floor",
+    "comp_floor",
+    "contract",
+    "right_to_work",
+    "notice",
+    "categorical_no",
+]
+
+# Set by two or three behavioural questions rather than a self-rating. Our
+# scale in our words -- never labelled with anyone else's name.
+CapabilityTier = Literal["production_depth", "working", "oversight_only", "absent"]
+
+# A separate axis from depth: what someone is good at and what they want to
+# keep doing are different questions.
+CapabilityInterest = Literal["want_more", "happy_to", "rather_not", "not_stated"]
+
+
+class ProfileConstraint(BaseModel):
+    """One thing this person requires, would like, or will not accept.
+
+    `stance` gives a negative preference equal standing with a positive one,
+    which is the point of having three values rather than a boolean. `value`
+    is question-specific and deliberately untyped: an ordered list of
+    locations, a comp floor carrying guaranteed and headline separately, a
+    free-text categorical no. `note` is the person's own words about it.
+    """
+
+    kind: ConstraintKind
+    stance: ConstraintStance
+    value: dict[str, Any] = Field(default_factory=dict)
+    note: str = ""
+
+
+class ProfileCapability(BaseModel):
+    """One capability, at the depth this person confirmed.
+
+    **A tier with no evidence is a claim, not a fact** -- the same status a CV
+    line has before confirmation. `evidence` holds corpus span ids, and
+    `has_evidence` is what every caller should branch on rather than reading
+    the tier alone.
+    """
+
+    label: str
+    tier: CapabilityTier
+    interest: CapabilityInterest = "not_stated"
+    last_used: int | None = None
+    evidence: list[uuid.UUID] = Field(default_factory=list)
+    source: str = ""
+
+    @property
+    def has_evidence(self) -> bool:
+        return bool(self.evidence)
+
+
+class ProfileDisciplines(BaseModel):
+    """What this person practises, as distinct from what employers called
+    them, plus an explicit "not this" list. `not_this` is stored under the key
+    `not`, which is what the design document names it and what Python cannot.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    practises: list[str] = Field(default_factory=list)
+    not_this: list[str] = Field(default_factory=list, alias="not")
+
+
+class ProfileObjectiveItem(BaseModel):
+    """One ranked objective for this move, with what would show a role
+    delivers it. Up to four, ranked and scored separately, never blended.
+
+    Named `...Item` rather than `ProfileObjective` only because that name is
+    still held by the row model of the eighteen-question profile this one
+    replaces. When that goes, so does the suffix.
+    """
+
+    rank: int
+    text: str = ""
+    evidence_of_delivery: str = ""
+
+
+class Profile(BaseModel):
+    """The current profile: four sections, one read, no model call anywhere in
+    its path. An empty profile is a legitimate state and means "not stated" --
+    never a guess, never a default.
+    """
+
+    constraints: list[ProfileConstraint] = Field(default_factory=list)
+    capabilities: list[ProfileCapability] = Field(default_factory=list)
+    disciplines: ProfileDisciplines = Field(default_factory=ProfileDisciplines)
+    objectives: list[ProfileObjectiveItem] = Field(default_factory=list)
+    self_assessment: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def is_empty(self) -> bool:
+        return not (
+            self.constraints
+            or self.capabilities
+            or self.objectives
+            or self.disciplines.practises
+            or self.disciplines.not_this
+        )
+
+
 # -- CV intake, PLAN.md slice B6 ---------------------------------------------
 #
 # A new user's corpus is too small to score or draft against, so onboarding
@@ -1047,18 +1163,75 @@ ScoreErrorCode = Literal[
 ]
 
 
-class ObjectiveVerdict(BaseModel):
-    """One of the user's objectives (profile questions 10/11), judged on its
-    own. `ordinal` is the objective's slot, `objective` is the user's own words
-    echoed back so the page never has to re-read the profile to label a
-    verdict. Deliberately no number: PLAN.md B3a asks for each objective to be
-    judged separately, and inventing a per-objective scale nobody asked for is
-    the first step towards something that gets averaged.
+# What the ad evidences about one thing the user said matters. The same four
+# words `CoverageStatus` uses, with one deliberate substitution: coverage says
+# `absent` of a corpus, and this says `silent` of an ad. The corpus being
+# absent on something is a gap in a record; an ad being silent is a question to
+# ask at interview, and the word is what makes the screen read that way.
+#
+# The verdict is always about the person's constraint or objective, never about
+# the thing itself -- so for a constraint they hold as `never`, `evidenced`
+# means the ad rules that thing out and `contradicted` means the ad does it.
+FitVerdict = Literal["evidenced", "partial", "silent", "contradicted"]
+
+FIT_VERDICTS: tuple[str, ...] = ("evidenced", "partial", "silent", "contradicted")
+
+
+def _coerce_verdict(value: object) -> object:
+    """Anything that is not one of the four words reads as `silent`.
+
+    These are stored JSONB. A row written before this vocabulary existed
+    carried free text in `verdict`, and a scoring panel that raises a
+    validation error on an old row is a worse failure than one that says the ad
+    was silent. Never applied to fresh model output: the wire schema is an
+    enum, so a stray word there is a parse failure with a `runs` row.
+    """
+    return value if value in FIT_VERDICTS else "silent"
+
+
+class ConstraintVerdict(BaseModel):
+    """What the ad evidences about one of the user's constraints.
+
+    `label` is the constraint in the user's own words, echoed back so the page
+    never has to re-read the profile to label a verdict. `note` is one short
+    sentence naming what in the ad decided it -- or saying plainly that the ad
+    does not mention it, which is the most common and most useful case.
+
+    Deliberately no number. The single "do I want this" figure is derived from
+    a whole set of these (see `jfl_core.fit`); a per-constraint scale nobody
+    asked for is the first step towards something that gets averaged.
     """
 
-    ordinal: int
+    kind: str = ""
+    stance: ConstraintStance = "must"
+    label: str = ""
+    verdict: FitVerdict = "silent"
+    note: str = ""
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _normalise(cls, value: object) -> object:
+        return _coerce_verdict(value)
+
+
+class ObjectiveVerdict(BaseModel):
+    """One of the user's ranked objectives, judged on its own evidence against
+    the ad. `objective` is the user's own words echoed back.
+
+    `rank` replaced `ordinal` when the profile did. An `application_scores` row
+    written before that carries neither, and reads back at rank 0 rather than
+    failing -- extra keys are ignored and this one has a default.
+    """
+
+    rank: int = 0
     objective: str = ""
-    verdict: str = ""
+    verdict: FitVerdict = "silent"
+    note: str = ""
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _normalise(cls, value: object) -> object:
+        return _coerce_verdict(value)
 
 
 class HardGateBreach(BaseModel):
@@ -1066,6 +1239,10 @@ class HardGateBreach(BaseModel):
     silently into a number. `gate` names which one (location, workplace, comp
     floor, contract, right to work, a categorical no); `breach` says what the
     ad does about it.
+
+    Never returned by the model as a list of its own: it is derived from the
+    `ConstraintVerdict`s whose stance is `must` or `never` and whose verdict is
+    `contradicted`, so the page can never show a breach the verdicts do not.
     """
 
     gate: str
@@ -1086,13 +1263,21 @@ class ScoreLever(BaseModel):
     role_label: str = ""
     would_move_to: int | None = None
     note: str = ""
+    # Where the unevidenced claim came from, and -- for a capability -- the
+    # depth the user set on it. Both default, because rows written before
+    # profile capabilities could be levers hold neither.
+    claim_kind: str = "cv_fact"
+    tier: str = ""
 
 
 class NotStated(BaseModel):
-    """A profile question this user has not answered. Reported as "not stated"
-    and never guessed at (PLAN.md B3a). `question_key` is deliberately `str`
-    rather than `ProfileQuestionKey`: this is stored JSONB, and a row written
-    before a key was retired must still parse back.
+    """A part of the profile this user has not filled in. Reported as "not
+    stated" and never guessed at: an empty section narrows what the score can
+    conclude, and never raises or lowers it by assumption.
+
+    `question_key` is deliberately `str` rather than any Literal: this is
+    stored JSONB, and a row written before a key was retired -- every key of
+    the eighteen-question profile, for instance -- must still parse back.
     """
 
     question_key: str
@@ -1116,8 +1301,12 @@ class ApplicationScore(BaseModel):
     error_code: ScoreErrorCode | None = None
     could_get_score: int | None = None
     could_get_assessment: str = ""
+    # None on a finished run too, not only a pending one: with no constraints
+    # and no objectives recorded there is nothing for the ad to be measured
+    # against, and 1/10 would be a claim rather than a silence.
     want_it_score: int | None = None
     want_it_assessment: str = ""
+    constraint_verdicts: list[ConstraintVerdict] = Field(default_factory=list)
     objective_verdicts: list[ObjectiveVerdict] = Field(default_factory=list)
     hard_gate_breaches: list[HardGateBreach] = Field(default_factory=list)
     levers: list[ScoreLever] = Field(default_factory=list)

@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from jfl_core.db.tables import application_scores as table
 from jfl_core.models import (
     ApplicationScore,
+    ConstraintVerdict,
     HardGateBreach,
     NotStated,
     ObjectiveVerdict,
@@ -43,6 +44,7 @@ _COLUMNS = (
     table.c.could_get_assessment,
     table.c.want_it_score,
     table.c.want_it_assessment,
+    table.c.constraint_verdicts,
     table.c.objective_verdicts,
     table.c.hard_gate_breaches,
     table.c.levers,
@@ -65,6 +67,9 @@ def _from_row(row: Any) -> ApplicationScore:
         could_get_assessment=row.could_get_assessment,
         want_it_score=row.want_it_score,
         want_it_assessment=row.want_it_assessment,
+        constraint_verdicts=[
+            ConstraintVerdict.model_validate(item) for item in (row.constraint_verdicts or [])
+        ],
         objective_verdicts=[
             ObjectiveVerdict.model_validate(item) for item in (row.objective_verdicts or [])
         ],
@@ -134,8 +139,9 @@ class PostgresScoreRepository(TenantScopedRepository):
         *,
         could_get_score: int,
         could_get_assessment: str,
-        want_it_score: int,
+        want_it_score: int | None,
         want_it_assessment: str,
+        constraint_verdicts: list[ConstraintVerdict],
         objective_verdicts: list[ObjectiveVerdict],
         hard_gate_breaches: list[HardGateBreach],
         levers: list[ScoreLever],
@@ -147,6 +153,11 @@ class PostgresScoreRepository(TenantScopedRepository):
         """Both axes land in one write, and neither is derivable from the
         other. Keyword-only on purpose: two integers in a row is exactly the
         call where the axes could be swapped silently.
+
+        `want_it_score` may be None on a finished run: with no constraints and
+        no objectives recorded there is nothing for the ad to be measured
+        against, and storing 1 would be a claim where there is only a silence.
+        The verdicts it was derived from land in the same write.
         """
         self._conn.execute(
             update(table)
@@ -158,6 +169,7 @@ class PostgresScoreRepository(TenantScopedRepository):
                 could_get_assessment=could_get_assessment,
                 want_it_score=want_it_score,
                 want_it_assessment=want_it_assessment,
+                constraint_verdicts=[v.model_dump() for v in constraint_verdicts],
                 objective_verdicts=[v.model_dump() for v in objective_verdicts],
                 hard_gate_breaches=[b.model_dump() for b in hard_gate_breaches],
                 levers=[lever.model_dump() for lever in levers],

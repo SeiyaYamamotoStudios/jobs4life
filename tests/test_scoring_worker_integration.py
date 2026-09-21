@@ -28,8 +28,15 @@ from jfl_core.db.tables import applications as applications_table
 from jfl_core.db.tables import runs as runs_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
+from jfl_core.fit import BREACH_CEILING
 from jfl_core.ids import content_hash, job_id, requirement_id
-from jfl_core.models import Job, JobRequirement
+from jfl_core.models import (
+    Job,
+    JobRequirement,
+    Profile,
+    ProfileConstraint,
+    ProfileObjectiveItem,
+)
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository
 from jfl_core.storage.profile import PostgresProfileRepository
@@ -52,14 +59,22 @@ FAKE_KEY = "sk-ant-api03-NEVERLEAKTHISVALUE-0123456789abcdef"
 
 AD = "Engineering Manager at Northwind. You will need five years of Python."
 
+# No `want_it_score`: the model is not asked for one. It gives a verdict per
+# constraint and per objective, and `jfl_core.fit` derives the number from
+# those -- see `docs/profile-schema.md`.
 SCORE_PAYLOAD: dict[str, Any] = {
     "could_get_score": 6,
     "could_get_assessment": "Your record evidences the Python.",
-    "want_it_score": 3,
     "want_it_assessment": "The commute breaks what you said you would travel.",
-    "objective_verdicts": [],
-    "hard_gate_breaches": [
-        {"gate": "location", "breach": "On site five days a week in Manchester."}
+    "constraint_verdicts": [
+        {
+            "index": 1,
+            "verdict": "contradicted",
+            "note": "On site five days a week in Manchester.",
+        }
+    ],
+    "objective_verdicts": [
+        {"rank": 1, "verdict": "silent", "note": "The ad does not say how hands-on it is."}
     ],
     "levers": [],
 }
@@ -230,11 +245,25 @@ def add_application(
 
 
 def add_profile(engine: Engine, user_id: uuid.UUID) -> None:
+    """One constraint and one objective -- enough for the derivation to have
+    something to derive from, and for the unfilled sections to be reported.
+    """
     with engine.begin() as conn:
-        profile = PostgresProfileRepository(conn, user_id)
-        profile.save_answer("location_commute", answer_text="Sheffield, one day a week at most")
-        profile.save_objective(
-            1, objective_text="Back to hands-on platform work", evidence_text="Ships weekly"
+        PostgresProfileRepository(conn, user_id).save_profile(
+            Profile(
+                constraints=[
+                    ProfileConstraint(
+                        kind="workplace", stance="must", note="One day a week at most"
+                    )
+                ],
+                objectives=[
+                    ProfileObjectiveItem(
+                        rank=1,
+                        text="Back to hands-on platform work",
+                        evidence_of_delivery="Ships weekly",
+                    )
+                ],
+            )
         )
 
 
@@ -349,17 +378,25 @@ def test_the_handler_scores_and_marks_the_row_done(
     assert row is not None
     assert row.status == "done"
     assert row.error_code is None
-    # Two numbers, both stored, neither derived from the other.
+    # Two numbers, both stored, neither derived from the other. The second is
+    # derived from the verdicts stored beside it: the only `must` is broken and
+    # the only objective is unanswered, so the ad evidences nothing of what
+    # this person said matters.
     assert row.could_get_score == 6
-    assert row.want_it_score == 3
+    assert row.want_it_score is not None and row.want_it_score <= BREACH_CEILING
+    assert row.want_it_score == 1
     assert row.could_get_assessment == "Your record evidences the Python."
     assert row.want_it_assessment.startswith("The commute")
-    assert row.hard_gate_breaches[0].gate == "location"
+    assert [v.verdict for v in row.constraint_verdicts] == ["contradicted"]
+    assert [v.verdict for v in row.objective_verdicts] == ["silent"]
+    # The breach is derived from the constraint verdict and stated in plain
+    # words, never folded silently into the number.
+    assert row.hard_gate_breaches[0].breach.startswith("On site five days a week")
     assert row.model == "claude-opus-5"
     assert row.cost_usd is not None and row.cost_usd > 0
     assert row.trace_id is not None
-    # PLAN.md B3a: everything the user has not answered is named, not guessed.
-    assert {n.question_key for n in row.not_stated} >= {"comp_floor", "right_to_work"}
+    # Everything the user has not filled in is named, not guessed.
+    assert {n.question_key for n in row.not_stated} >= {"capabilities", "disciplines"}
 
 
 def test_a_runs_row_is_written_for_the_model_call(

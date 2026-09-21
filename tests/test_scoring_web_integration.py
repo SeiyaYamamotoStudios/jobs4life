@@ -26,11 +26,24 @@ from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
-from jfl_core.models import HardGateBreach, NotStated, ObjectiveVerdict, ScoreLever
+from jfl_core.models import (
+    ConstraintVerdict,
+    HardGateBreach,
+    NotStated,
+    ObjectiveVerdict,
+    ScoreLever,
+)
 from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity, OAuthError
-from jfl_web.scores import COULD_GET_LABEL, UNMEASURED, WANT_IT_LABEL
+from jfl_web.scores import (
+    COULD_GET_LABEL,
+    NO_WANT_IT_SCORE,
+    SILENCE_NOTE,
+    UNMEASURED,
+    WANT_IT_LABEL,
+    WANT_IT_SUBTITLE,
+)
 from jfl_web.settings import WebSettings
 from markupsafe import escape
 from sqlalchemy import create_engine, delete, select
@@ -192,9 +205,28 @@ def finish_score(
             "could_get_assessment": "Three roles evidence the platform work.",
             "want_it_score": 3,
             "want_it_assessment": "The commute breaks what you said you would travel.",
+            "constraint_verdicts": [
+                ConstraintVerdict(
+                    kind="workplace",
+                    stance="must",
+                    label="working arrangement -- one day a week at most",
+                    verdict="contradicted",
+                    note="On site five days a week in Manchester.",
+                ),
+                ConstraintVerdict(
+                    kind="comp_floor",
+                    stance="nice",
+                    label="lowest package",
+                    verdict="silent",
+                    note="The ad does not mention pay.",
+                ),
+            ],
             "objective_verdicts": [
                 ObjectiveVerdict(
-                    ordinal=1, objective="Back to hands-on work", verdict="Unlikely here."
+                    rank=1,
+                    objective="Back to hands-on work",
+                    verdict="partial",
+                    note="Unlikely here.",
                 )
             ],
             "hard_gate_breaches": [
@@ -208,7 +240,9 @@ def finish_score(
                     note="Covers the headcount requirement.",
                 )
             ],
-            "not_stated": [NotStated(question_key="comp_floor", wording="Lowest total package?")],
+            "not_stated": [
+                NotStated(question_key="capabilities", wording="What you can do, and at what depth")
+            ],
             "model": "claude-opus-5",
             "cost_usd": decimal.Decimal("0.4231"),
             "trace_id": uuid.uuid4(),
@@ -347,6 +381,34 @@ def test_a_breached_hard_gate_is_shown_in_plain_words(
     assert "On site five days a week in Manchester." in page
 
 
+def test_an_unevidenced_capability_is_offered_as_a_lever_never_as_evidence(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """docs/profile-schema.md: a tier with no evidence is a claim, not a fact.
+    The panel says which it is.
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(
+        engine,
+        user_id,
+        application_id,
+        levers=[
+            ScoreLever(
+                fact_text="Kubernetes",
+                claim_kind="capability",
+                tier="working",
+                would_move_to=8,
+                note="Covers requirement 2.",
+            )
+        ],
+    )
+
+    page = " ".join(client.get(f"/applications/{application_id}").text.split())
+    assert "Kubernetes" in page
+    assert "your profile, claimed at working, no evidence" in page
+
+
 def test_an_unconfirmed_cv_claim_is_offered_as_a_lever(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
@@ -362,7 +424,7 @@ def test_an_unconfirmed_cv_claim_is_offered_as_a_lever(
     assert "Covers the headcount requirement." in page
 
 
-def test_an_unanswered_profile_question_is_shown_as_not_stated(
+def test_an_unfilled_profile_section_is_shown_as_not_stated(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs)
@@ -371,7 +433,63 @@ def test_an_unanswered_profile_question_is_shown_as_not_stated(
 
     page = client.get(f"/applications/{application_id}").text
     assert "Not stated" in page
-    assert "Lowest total package?" in page
+    assert "What you can do, and at what depth" in page
+
+
+def test_every_constraint_is_listed_and_the_silences_read_as_questions(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """The silences are the product: a constraint the ad says nothing about is
+    a question to ask at interview, and the panel has to say so rather than
+    quietly leaving it out.
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    page = " ".join(client.get(f"/applications/{application_id}").text.split())
+    assert "What the ad says about what you asked for" in page
+    assert rendered(SILENCE_NOTE) in page
+    assert "lowest package" in page
+    assert "silent" in page and "the ad does not say -- ask" in page
+    assert "The ad does not mention pay." in page
+
+
+def test_the_number_is_shown_with_what_it_was_derived_from(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """A derived number is only honest if what it was derived from is printed
+    beside it -- otherwise "3/10" reads as a prediction.
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    page = " ".join(client.get(f"/applications/{application_id}").text.split())
+    assert rendered(WANT_IT_SUBTITLE) in page
+    assert "Across what you said matters:" in page
+    assert "1 not mentioned" in page
+    assert "A must-have or a never is broken" in page
+
+
+def test_a_run_over_an_empty_profile_shows_no_second_number_at_all(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """Not a 1. Nothing was measured, so nothing is claimed."""
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(
+        engine,
+        user_id,
+        application_id,
+        want_it_score=None,
+        constraint_verdicts=[],
+        objective_verdicts=[],
+        hard_gate_breaches=[],
+    )
+
+    page = " ".join(client.get(f"/applications/{application_id}").text.split())
+    assert rendered(NO_WANT_IT_SCORE) in page
 
 
 def test_the_fragment_polls_only_while_a_run_is_pending(

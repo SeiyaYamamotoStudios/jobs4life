@@ -43,7 +43,12 @@
 
   {% else %}
   {# Two axes. Kept in two separate blocks with two separate headings so
-     nothing reads as one score with two parts. #}
+     nothing reads as one score with two parts.
+
+     The second number is derived, not the model's: `jfl_core.fit` computes it
+     from the per-constraint and per-objective verdicts listed further down, so
+     it can never say something those verdicts do not. The tally under it is
+     recomputed from the same verdicts for the same reason. #}
   <div class="score-axes">
     <div class="score-axis">
       <h3>{{ could_get_label }}</h3>
@@ -52,13 +57,20 @@
     </div>
     <div class="score-axis">
       <h3>{{ want_it_label }}</h3>
+      {% if score.want_it_score is not none %}
       <p class="score-number"><strong>{{ score.want_it_score }}</strong><span class="score-of">/10</span></p>
+      {% else %}
+      <p class="score-number"><strong>—</strong></p>
+      {% endif %}
+      <p class="note">{{ want_it_subtitle }}</p>
       <p>{{ score.want_it_assessment }}</p>
+      <p class="note">{{ want_it_summary }}</p>
     </div>
   </div>
 
   {# A hard gate the ad breaks is stated in plain words, never folded silently
-     into the number above it. #}
+     into the number above it. Derived from the constraint verdicts, so this
+     can never list a breach the verdicts below do not carry. #}
   {% if score.hard_gate_breaches %}
   <h3>Hard gates this ad breaks</h3>
   <ul class="score-breaches">
@@ -68,29 +80,53 @@
   </ul>
   {% endif %}
 
-  {% if score.objective_verdicts %}
-  <h3>Your objectives, each judged on its own</h3>
-  <ul class="score-objectives">
-    {% for verdict in score.objective_verdicts %}
-    <li>
-      <span class="score-objective-text">{{ verdict.objective }}</span>
-      <p class="note">{{ verdict.verdict }}</p>
+  {# The silences are the product. Every constraint the user recorded is listed,
+     including -- especially -- the ones the ad says nothing about. #}
+  {% if score.constraint_verdicts %}
+  <h3>What the ad says about what you asked for</h3>
+  <p class="note">{{ silence_note }}</p>
+  <ul class="score-constraints">
+    {% for verdict in score.constraint_verdicts %}
+    <li class="score-verdict-{{ verdict.verdict }}">
+      <span class="score-stance">{{ stance_wording.get(verdict.stance, verdict.stance) }}</span>
+      <span class="score-constraint-label">{{ verdict.label }}</span>
+      <span class="score-verdict">{{ verdict.verdict }} — {{ verdict_wording.get(verdict.verdict, "") }}</span>
+      {% if verdict.note %}<p class="note">{{ verdict.note }}</p>{% endif %}
     </li>
     {% endfor %}
   </ul>
   {% endif %}
 
-  {# Levers: unconfirmed CV claims. They are not evidence and did not raise the
-     first number -- this is what confirming one would be worth. #}
+  {% if score.objective_verdicts %}
+  <h3>Your objectives, each judged on its own</h3>
+  <ul class="score-objectives">
+    {% for verdict in score.objective_verdicts %}
+    <li class="score-verdict-{{ verdict.verdict }}">
+      <span class="score-objective-text">{{ verdict.objective }}</span>
+      <span class="score-verdict">{{ verdict.verdict }} — {{ verdict_wording.get(verdict.verdict, "") }}</span>
+      {% if verdict.note %}<p class="note">{{ verdict.note }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {# Levers: claims nothing confirmed stands behind -- an unconfirmed CV fact,
+     or a capability tiered in the profile with no corpus evidence. They are not
+     evidence and did not raise the first number; this is what confirming one
+     would be worth. #}
   {% if score.levers %}
-  <h3>What confirming a CV claim would change</h3>
-  <p class="note">Your CVs claim these and you have not confirmed them, so they
+  <h3>What confirming a claim would change</h3>
+  <p class="note">You claim these and nothing confirmed stands behind them, so they
     are not evidence yet and did not count towards “{{ could_get_label }}”.</p>
   <ul class="score-levers">
     {% for lever in score.levers %}
     <li>
       <span class="score-lever-fact">{{ lever.fact_text }}</span>
-      {% if lever.role_label %}<span class="score-lever-role">{{ lever.role_label }}</span>{% endif %}
+      {% if lever.claim_kind == "capability" %}
+      <span class="score-lever-role">your profile, claimed at {{ lever.tier }}, no evidence</span>
+      {% elif lever.role_label %}
+      <span class="score-lever-role">{{ lever.role_label }}</span>
+      {% endif %}
       <p class="note">
         {% if lever.would_move_to %}Confirm it and “{{ could_get_label }}” moves from
         {{ score.could_get_score }} to {{ lever.would_move_to }}. {% endif %}{{ lever.note }}
@@ -102,9 +138,8 @@
 
   {% if score.not_stated %}
   <h3>Not stated</h3>
-  <p class="note">You have not answered these, so nothing above assumed an
-    answer to them. <a href="/profile">Answer them</a> and the next score can
-    use them.</p>
+  <p class="note">You have not filled these in, so nothing above assumed what they
+    would say. <a href="/profile">Fill them in</a> and the next score can use them.</p>
   <ul class="score-not-stated">
     {% for item in score.not_stated %}
     <li>{{ item.wording }}</li>

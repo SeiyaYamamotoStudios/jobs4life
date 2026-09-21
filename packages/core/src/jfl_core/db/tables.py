@@ -1376,6 +1376,38 @@ _PROFILE_QUESTION_KEYS = (
 # UPDATE, so "what the user said, when" survives a later change. There is
 # deliberately no unique constraint on (user_id, question_key) -- the current
 # value is the latest row, read back with DISTINCT ON in the repository.
+# --------------------------------------------------------------------------
+# The profile -- docs/profile-schema.md, agreed 2026-09-21.
+#
+# One append-only row per save, four sections in one JSONB document, latest row
+# wins. It replaces `profile_answers` / `profile_objectives` /
+# `profile_ruled_out`, which production held zero rows of, so nothing is
+# migrated and those three tables are left standing until the screens that
+# write them are replaced.
+#
+# **No CHECK constraint on what is inside `data`.** A CHECK cannot see into a
+# document, so the value-list drift guard does not reach the stances, tiers and
+# kinds in there; `jfl_core.models.Profile` is the only write path and is the
+# whole enforcement. Weaker than a CHECK, accepted deliberately (owner,
+# 2026-09-21), and the price of a shape we expect to change while we learn what
+# belongs in it.
+# --------------------------------------------------------------------------
+profiles = Table(
+    "profiles",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("schema_version", Integer, nullable=False, server_default=text("1")),
+    Column("data", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # `clock_timestamp()`, for the reason `profile_answers` gives: append-only,
+    # and "the latest row" must stay unambiguous within one transaction.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    Index("ix_profiles_user_id_created_at", "user_id", "created_at"),
+)
+
+
 profile_answers = Table(
     "profile_answers",
     metadata,
@@ -1550,9 +1582,15 @@ application_scores = Table(
     Column("could_get_assessment", Text, nullable=False, server_default=""),
     Column("want_it_score", Integer),
     Column("want_it_assessment", Text, nullable=False, server_default=""),
-    # JSONB lists of the shapes in jfl_core.models: ObjectiveVerdict,
-    # HardGateBreach, ScoreLever, NotStated. Read back whole and rendered;
-    # never queried structurally, same convention as `runs.attributes`.
+    # JSONB lists of the shapes in jfl_core.models: ConstraintVerdict,
+    # ObjectiveVerdict, HardGateBreach, ScoreLever, NotStated. Read back whole
+    # and rendered; never queried structurally, same convention as
+    # `runs.attributes`.
+    #
+    # `hard_gate_breaches` is derived from `constraint_verdicts`, never
+    # returned separately by the model -- so the panel cannot show a breach the
+    # verdicts do not carry.
+    Column("constraint_verdicts", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("objective_verdicts", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("hard_gate_breaches", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("levers", JSONB, nullable=False, server_default=text("'[]'::jsonb")),

@@ -45,7 +45,8 @@ from sqlalchemy import func, insert, select, update
 from jfl_core.db.tables import profile_answers as answers_table
 from jfl_core.db.tables import profile_objectives as objectives_table
 from jfl_core.db.tables import profile_ruled_out as ruled_out_table
-from jfl_core.models import ProfileAnswer, ProfileObjective, ProfileRuledOut
+from jfl_core.db.tables import profiles as profiles_table
+from jfl_core.models import Profile, ProfileAnswer, ProfileObjective, ProfileRuledOut
 from jfl_core.profile_questions import QUESTION_KEYS
 from jfl_core.storage.tenancy import TenantScopedRepository
 
@@ -126,6 +127,45 @@ def _ruled_out_from_row(row: Any) -> ProfileRuledOut:
 
 class PostgresProfileRepository(TenantScopedRepository):
     """One user's profile setup answers, objectives and ruled-out decisions."""
+
+    # -- the profile document, docs/profile-schema.md -------------------------
+    #
+    # PLACEHOLDER. The profile screens and their storage are being written
+    # alongside this change; what is here is the minimum surface scoring and
+    # drafting read (`current`), plus the one write their tests need. Expect
+    # this pair of methods to be replaced wholesale by the version that owns
+    # the screens -- nothing above them should depend on anything beyond
+    # `current() -> Profile`.
+
+    def current(self) -> Profile:
+        """This user's latest saved profile, or an empty one.
+
+        An empty profile is a legitimate state, not a missing row to be
+        defaulted: every section reads "not stated" and nothing downstream
+        guesses at what it would have said.
+        """
+        row = self._conn.execute(
+            select(profiles_table.c.data)
+            .where(profiles_table.c.user_id == self._user_id)
+            .order_by(profiles_table.c.created_at.desc())
+            .limit(1)
+        ).first()
+        if row is None or not row.data:
+            return Profile()
+        return Profile.model_validate(row.data)
+
+    def save_profile(self, profile: Profile) -> None:
+        """Append a new version. Append-only, like every other table here:
+        what the user believed about themselves in March stays readable, and
+        undo is free.
+        """
+        self._conn.execute(
+            insert(profiles_table).values(
+                id=uuid.uuid4(),
+                user_id=self._user_id,
+                data=profile.model_dump(mode="json", by_alias=True),
+            )
+        )
 
     # -- simple keyed answers -------------------------------------------------
 

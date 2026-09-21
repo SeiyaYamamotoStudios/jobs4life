@@ -72,9 +72,15 @@ from jfl_web.jobads import (
 from jfl_web.scores import (
     COST_NOTE,
     COULD_GET_LABEL,
+    NO_WANT_IT_SCORE,
+    SILENCE_NOTE,
+    STANCE_WORDING,
     UNMEASURED,
+    VERDICT_WORDING,
     WANT_IT_LABEL,
+    WANT_IT_SUBTITLE,
     score_failure,
+    want_it_summary,
 )
 from jfl_web.templating import render
 
@@ -530,6 +536,14 @@ def _score_context(score: ApplicationScore | None) -> dict[str, object]:
         "score_cost_note": COST_NOTE,
         "could_get_label": COULD_GET_LABEL,
         "want_it_label": WANT_IT_LABEL,
+        "want_it_subtitle": WANT_IT_SUBTITLE,
+        # Recomputed from the stored verdicts, so the tally under the number
+        # can never disagree with the verdicts listed under it.
+        "want_it_summary": want_it_summary(score) if score is not None else "",
+        "no_want_it_score": NO_WANT_IT_SCORE,
+        "verdict_wording": VERDICT_WORDING,
+        "stance_wording": STANCE_WORDING,
+        "silence_note": SILENCE_NOTE,
     }
 
 

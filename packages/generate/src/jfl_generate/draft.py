@@ -22,13 +22,14 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Literal
 
 import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
-from jfl_core.models import Draft, DraftKind, RunRecord
+from jfl_core.models import Draft, DraftKind, ProfileCapability, RunRecord
 from jfl_core.repositories import GroundingRepository, JobRepository, RunRepository
 from jfl_gate.gate import check_text
 from jfl_gate.pricing import compute_cost_usd
@@ -72,6 +73,7 @@ def generate_draft(
     run_repo: RunRepository,
     job_id: uuid.UUID,
     kind: DraftKind,
+    capabilities: Sequence[ProfileCapability] = (),
 ) -> Draft:
     """Generate a draft for `job_id`, then run the claim gate on it automatically.
     Always writes exactly one `runs` row for the draft call -- on success, on an
@@ -85,6 +87,13 @@ def generate_draft(
     A flagged draft is still returned: the claim gate informs, it never blocks
     (see CLAUDE.md, "How the claim gate behaves"). Nothing here inspects the
     gate's verdicts to decide whether to persist or return the draft.
+
+    `capabilities` are the user's confirmed depths, and the prompt names them
+    as the ceiling on what the draft may claim -- `docs/profile-schema.md`, "How
+    it constrains generation". That is an instruction, not enforcement: nothing
+    here reads the draft back to check it was obeyed, because the claim gate is
+    the backstop and a second, weaker check in front of it would only invite
+    trusting it.
     """
     found = job_repo.get_job(ctx.user_id, job_id)
     if found is None:
@@ -105,7 +114,7 @@ def generate_draft(
     # "Generated documents influence form, never truth").
     spans = grounding_repo.all_spans(ctx.user_id)
     system_blocks = build_draft_system_blocks(spans, kind, cache="corpus")
-    user_message = build_draft_user_message(job, requirements, coverage)
+    user_message = build_draft_user_message(job, requirements, coverage, capabilities)
 
     client = (
         anthropic.Anthropic(api_key=ctx.anthropic_api_key)
