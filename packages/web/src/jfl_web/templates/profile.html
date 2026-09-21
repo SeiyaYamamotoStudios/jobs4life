@@ -220,7 +220,7 @@
               placeholder="engineering management&#10;platform engineering">{{ profile.disciplines.practises | join('\n') }}</textarea>
     <label for="not_this">Not this — one per line</label>
     <textarea id="not_this" name="not_this" rows="3"
-              placeholder="frontend&#10;pre-sales">{{ profile.disciplines.not_ | join('\n') }}</textarea>
+              placeholder="frontend&#10;pre-sales">{{ profile.disciplines.not_practised | join('\n') }}</textarea>
     <p class="note">Up to {{ max_items }} entries each. Stored exactly as you write them.</p>
     <button type="submit">Save what you practise</button>
   </form>

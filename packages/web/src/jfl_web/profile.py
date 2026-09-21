@@ -1,6 +1,6 @@
 """Display and form-parsing for `/profile` -- `docs/profile-schema.md`.
 
-No SQL and no storage here; storage is `jfl_core.storage.profiles`. This module
+No SQL and no storage here; storage is `jfl_core.storage.profile`. This module
 turns submitted form fields into the models that module stores, and holds the
 words the screen puts on the page -- the stance names, the tier questions, the
 interest options -- so that "what the screens offer" is one list rather than
@@ -29,19 +29,19 @@ from dataclasses import dataclass
 from typing import Literal
 
 from jfl_core.profile import (
-    CAPABILITY_INTERESTS,
     CAPABILITY_TIERS,
     CONSTRAINT_KINDS,
-    CONSTRAINT_STANCES,
+    INTERESTS,
     MAX_OBJECTIVES,
+    STANCES,
     Capability,
-    CapabilityInterest,
     CapabilityTier,
     Constraint,
     ConstraintKind,
-    ConstraintStance,
     Disciplines,
+    Interest,
     Objective,
+    Stance,
     comp_value,
     location_value,
     text_value,
@@ -97,7 +97,7 @@ class InvalidYearError(ValueError):
 
 # -- the words on the page ----------------------------------------------------
 
-STANCE_CHOICES: tuple[tuple[ConstraintStance, str], ...] = (
+STANCE_CHOICES: tuple[tuple[Stance, str], ...] = (
     ("must", "Must have"),
     ("nice", "Nice to have"),
     ("never", "Never"),
@@ -238,7 +238,7 @@ TIER_DESCRIPTIONS: dict[CapabilityTier, str] = {
     "absent": "On these answers, neither -- and that is a fine thing to record.",
 }
 
-INTEREST_CHOICES: tuple[tuple[CapabilityInterest, str], ...] = (
+INTEREST_CHOICES: tuple[tuple[Interest, str], ...] = (
     ("want_more", "Want more of it"),
     ("happy_to", "Happy to keep doing it"),
     ("rather_not", "Would rather not"),
@@ -271,23 +271,25 @@ def parse_lines(value: str, limit: int = MAX_ITEMS) -> list[str]:
     return kept
 
 
-def parse_stance(value: str) -> ConstraintStance | None:
+def parse_stance(value: str) -> Stance | None:
     """None where nothing was chosen. Never a default."""
     stripped = value.strip()
     if not stripped:
         return None
-    if stripped not in CONSTRAINT_STANCES:
-        raise InvalidChoiceError(f"{stripped!r} is not must, nice or never.")
-    return stripped
+    for stance in STANCES:
+        if stripped == stance:
+            return stance
+    raise InvalidChoiceError(f"{stripped!r} is not must, nice or never.")
 
 
-def parse_interest(value: str) -> CapabilityInterest | None:
+def parse_interest(value: str) -> Interest | None:
     stripped = value.strip()
     if not stripped:
         return None
-    if stripped not in CAPABILITY_INTERESTS:
-        raise InvalidChoiceError(f"{stripped!r} is not one of the interest options.")
-    return stripped
+    for interest in INTERESTS:
+        if stripped == interest:
+            return interest
+    raise InvalidChoiceError(f"{stripped!r} is not one of the interest options.")
 
 
 def parse_amount(value: str) -> int | None:
@@ -434,7 +436,7 @@ def parse_capability(
 
 
 def parse_disciplines(practises: str, not_this: str) -> Disciplines:
-    return Disciplines(practises=parse_lines(practises), **{"not": parse_lines(not_this)})
+    return Disciplines(practises=parse_lines(practises), not_practised=parse_lines(not_this))
 
 
 def parse_objectives(slots: Sequence[tuple[int, str, str]]) -> list[Objective]:

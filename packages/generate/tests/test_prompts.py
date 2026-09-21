@@ -8,13 +8,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, cast
 
-from jfl_core.models import (
-    Job,
-    JobRequirement,
-    ProfileCapability,
-    RequirementCoverage,
-    Span,
-)
+from jfl_core.models import Job, JobRequirement, RequirementCoverage, Span
+from jfl_core.profile import Capability
 from jfl_generate.prompts import (
     COVERAGE_OUTPUT_SCHEMA,
     DRAFT_OUTPUT_SCHEMA,
@@ -290,8 +285,8 @@ def test_draft_user_message_handles_a_requirement_with_no_coverage_recorded() ->
 # prompt at all.
 
 
-def _capability(label: str, tier: str) -> ProfileCapability:
-    return ProfileCapability.model_validate({"label": label, "tier": tier})
+def _capability(label: str, tier: str) -> Capability:
+    return Capability.model_validate({"label": label, "tier": tier})
 
 
 def test_the_confirmed_tier_reaches_the_draft_prompt_as_a_ceiling() -> None:

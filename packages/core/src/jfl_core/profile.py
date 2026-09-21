@@ -41,11 +41,19 @@ never defaulted and never guessed at.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import uuid
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from jfl_core.models import CandidateFact
 
@@ -57,13 +65,15 @@ SCHEMA_VERSION = 1
 # -- closed sets -------------------------------------------------------------
 #
 # Each `Literal` is what the code may produce; the tuple beside it is what the
-# screens offer, and a test asserts they hold the same values. There is no third
-# copy in a CHECK constraint, because this is JSONB -- see the module docstring.
+# screens offer, and a test asserts they hold the same values. Written out
+# rather than derived with `get_args`, which would make that test assert
+# nothing. There is no third copy in a CHECK constraint, because this is JSONB
+# -- see the module docstring.
 
 # Hired's one good idea: a negative preference gets equal standing with a
 # positive one. "never" is a statement, not the absence of a "must".
 Stance = Literal["must", "nice", "never"]
-STANCES: tuple[str, ...] = ("must", "nice", "never")
+STANCES: tuple[Stance, ...] = ("must", "nice", "never")
 
 ConstraintKind = Literal[
     "location",
@@ -75,7 +85,7 @@ ConstraintKind = Literal[
     "notice",
     "categorical_no",
 ]
-CONSTRAINT_KINDS: tuple[str, ...] = (
+CONSTRAINT_KINDS: tuple[ConstraintKind, ...] = (
     "location",
     "workplace",
     "level_floor",
@@ -90,7 +100,7 @@ CONSTRAINT_KINDS: tuple[str, ...] = (
 # in a self-rating -- the shape SFIA arrived at, never SFIA's text or its name
 # (licensed against commercial use, and IT-only).
 CapabilityTier = Literal["production_depth", "working", "oversight_only", "absent"]
-CAPABILITY_TIERS: tuple[str, ...] = (
+CAPABILITY_TIERS: tuple[CapabilityTier, ...] = (
     "production_depth",
     "working",
     "oversight_only",
@@ -103,12 +113,12 @@ CAPABILITY_TIERS: tuple[str, ...] = (
 # rule that "I do not want to do this again" is a preference worth stating
 # rather than a low score on a positive one.
 Interest = Literal["want_more", "happy_to", "rather_not", "never_again"]
-INTERESTS: tuple[str, ...] = ("want_more", "happy_to", "rather_not", "never_again")
+INTERESTS: tuple[Interest, ...] = ("want_more", "happy_to", "rather_not", "never_again")
 
 # Where a capability row came from. `cv_fact` rows are proposed from confirmed
 # candidate facts and arrive untiered; `user` rows the user added themselves.
 CapabilitySource = Literal["cv_fact", "user"]
-CAPABILITY_SOURCES: tuple[str, ...] = ("cv_fact", "user")
+CAPABILITY_SOURCES: tuple[CapabilitySource, ...] = ("cv_fact", "user")
 
 MAX_OBJECTIVES = 4
 
@@ -125,6 +135,24 @@ class _Section(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+def capability_key(label: str) -> str:
+    """A stable, URL-safe id for a capability row, derived from its label.
+
+    There is no id column to key a row by -- the whole profile is one JSONB
+    document -- and the screens need something to name a row in a form action
+    and an anchor. Insertion order will not do: a row's position changes when
+    an earlier one is removed, and a form posted against a stale page would
+    then tier the wrong capability.
+
+    So the key is content-derived, the same rule span ids follow. Whitespace is
+    collapsed and case folded first, so "FX pricing" and "fx  pricing" are one
+    row and never two; the digest is what makes it safe in a path, which a raw
+    label is not -- "CI/CD" would otherwise split the route.
+    """
+    folded = " ".join(label.split()).casefold()
+    return hashlib.sha256(folded.encode("utf-8")).hexdigest()[:16]
 
 
 class Constraint(_Section):
@@ -145,6 +173,42 @@ class Constraint(_Section):
     stance: Stance
     value: dict[str, Any] = Field(default_factory=dict)
     note: str = ""
+
+
+# The three `value` shapes, built here rather than spelled out wherever a form
+# is parsed. `value` is untyped by design (see `Constraint`), which makes one
+# builder per shape the only place the shape is actually written down -- and a
+# reader of a stored constraint has one module to look in.
+
+
+def location_value(places: Sequence[str]) -> dict[str, Any]:
+    """An **ordered** list, best first -- SEEK's shape. Deliberately not a
+    `relocate` boolean: "London, then Bristol, then remote anywhere" is a
+    ranking, and a boolean cannot hold it.
+    """
+    return {"places": list(places)}
+
+
+def comp_value(guaranteed: int | None, headline: int | None, ccy: str = "GBP") -> dict[str, Any]:
+    """Guaranteed and headline **separately**, because a headline number is not
+    an offer: it is base plus a bonus that may not pay and equity that may not
+    vest. Neither figure is derived from the other, and a figure not given is
+    absent rather than zero.
+    """
+    value: dict[str, Any] = {"ccy": ccy}
+    if guaranteed is not None:
+        value["guaranteed"] = guaranteed
+    if headline is not None:
+        value["headline"] = headline
+    return value
+
+
+def text_value(text: str) -> dict[str, Any]:
+    """The kinds that carry a sentence rather than a structure. Empty text
+    produces no value at all, never `{"text": ""}` -- a blank that reads back
+    as an answer is indistinguishable from one.
+    """
+    return {"text": text} if text else {}
 
 
 class Capability(_Section):
@@ -173,17 +237,42 @@ class Capability(_Section):
             raise ValueError("a capability needs a label")
         return value
 
+    @property
+    def key(self) -> str:
+        """This row's stable id -- see `capability_key`. Not stored: it is a
+        function of the label, so it cannot drift out of line with it.
+        """
+        return capability_key(self.label)
+
+    @property
+    def has_evidence(self) -> bool:
+        """Whether the corpus can back this row. A tier with no evidence is a
+        **claim**, the same status a CV line has before confirmation, and the
+        two are told apart everywhere they are read: scoring treats an
+        unevidenced capability as a lever, never as evidence.
+        """
+        return bool(self.evidence)
+
 
 class Disciplines(_Section):
     """What the user practises, as distinct from what employers called them --
     plus an explicit "not this" list, without which the same job title at two
     employers reads as the same job. `practises` is ranked, best first.
 
-    The JSON key is `not`, which is a Python keyword, hence the alias.
+    The JSON key is `not`, which is a Python keyword, hence the aliases. They
+    are split rather than given as one `alias=`: a bare `alias` renames the
+    constructor argument too, so every caller would have to write
+    `**{"not": [...]}` and a type checker could not see the field at all.
+    `AliasChoices` keeps `not_practised=` working in Python while `"not"` is
+    what is read from and written to `profiles.data`.
     """
 
     practises: list[str] = Field(default_factory=list)
-    not_practised: list[str] = Field(default_factory=list, alias="not")
+    not_practised: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("not", "not_practised"),
+        serialization_alias="not",
+    )
 
 
 class Objective(_Section):
@@ -236,6 +325,23 @@ class Profile(_Section):
         if len(set(ranks)) != len(ranks):
             raise ValueError("two objectives share a rank")
         return self
+
+    def constraint(self, kind: str) -> Constraint | None:
+        """This user's constraint of that kind, or None if they have not stated
+        one. Lists are short (eight kinds at most), so the scan is honest and a
+        lookup dict would only be a second place for the list to be wrong.
+
+        None is a real answer here and the screens render it as "not stated" --
+        never as a blank field that reads like an empty one.
+        """
+        return next((c for c in self.constraints if c.kind == kind), None)
+
+    def objective(self, rank: int) -> Objective | None:
+        """The objective at that rank, or None for an empty slot. Rank is the
+        slot the user typed it into, so clearing rank 1 leaves rank 2 where it
+        was rather than shuffling it up underneath them.
+        """
+        return next((o for o in self.objectives if o.rank == rank), None)
 
     def as_json(self) -> dict[str, Any]:
         """What goes into `profiles.data`: JSON-safe, aliased keys, nothing
@@ -293,16 +399,12 @@ def self_assessment_corpus_lines(profile: Profile) -> dict[str, list[str]]:
     assessment = profile.self_assessment
     lines: dict[str, list[str]] = {}
     for field_name, heading in CORPUS_SECTIONS.items():
-        text_value = str(getattr(assessment, field_name, "") or "").strip()
-        lines[heading] = [text_value] if text_value else []
+        answer = str(getattr(assessment, field_name, "") or "").strip()
+        lines[heading] = [answer] if answer else []
     return lines
 
 
 # -- seeding capabilities from confirmed CV facts ----------------------------
-
-
-def _label_key(label: str) -> str:
-    return " ".join(label.split()).casefold()
 
 
 def propose_capabilities(
@@ -327,7 +429,7 @@ def propose_capabilities(
     Pure: takes facts, returns rows, touches nothing. The repository-shaped
     caller is `jfl_core.storage.profile.propose_capabilities_from_facts`.
     """
-    taken = {_label_key(c.label) for c in existing}
+    taken = {capability_key(c.label) for c in existing}
     order: list[str] = []
     by_role: dict[str, list[CandidateFact]] = {}
     for fact in facts:
@@ -335,7 +437,7 @@ def propose_capabilities(
             continue
         if not fact.role_label.strip():
             continue
-        if _label_key(fact.role_label) in taken:
+        if capability_key(fact.role_label) in taken:
             continue
         if fact.role_key not in by_role:
             by_role[fact.role_key] = []
@@ -377,6 +479,10 @@ __all__ = [
     "ProfileVersion",
     "SelfAssessment",
     "Stance",
+    "capability_key",
+    "comp_value",
+    "location_value",
     "propose_capabilities",
     "self_assessment_corpus_lines",
+    "text_value",
 ]

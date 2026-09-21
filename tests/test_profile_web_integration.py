@@ -39,7 +39,7 @@ from jfl_core.db.tables import users as users_table
 from jfl_core.ids import content_hash
 from jfl_core.models import ProposedFact
 from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
-from jfl_core.storage.profiles import PostgresProfileRepository
+from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity
 from jfl_web.settings import WebSettings
@@ -447,7 +447,7 @@ def test_disciplines_keep_a_not_this_list(
     )
     disciplines = stored(engine, user_id).disciplines  # type: ignore[attr-defined]
     assert disciplines.practises == ["engineering management", "platform engineering"]
-    assert disciplines.not_ == ["frontend"]
+    assert disciplines.not_practised == ["frontend"]
     assert "frontend" in client.get("/profile").text
 
 

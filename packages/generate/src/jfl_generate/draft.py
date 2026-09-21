@@ -29,7 +29,8 @@ from typing import Literal
 import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
-from jfl_core.models import Draft, DraftKind, ProfileCapability, RunRecord
+from jfl_core.models import Draft, DraftKind, RunRecord
+from jfl_core.profile import Capability
 from jfl_core.repositories import GroundingRepository, JobRepository, RunRepository
 from jfl_gate.gate import check_text
 from jfl_gate.pricing import compute_cost_usd
@@ -73,7 +74,7 @@ def generate_draft(
     run_repo: RunRepository,
     job_id: uuid.UUID,
     kind: DraftKind,
-    capabilities: Sequence[ProfileCapability] = (),
+    capabilities: Sequence[Capability] = (),
 ) -> Draft:
     """Generate a draft for `job_id`, then run the claim gate on it automatically.
     Always writes exactly one `runs` row for the draft call -- on success, on an

@@ -56,17 +56,13 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.profile import (
-    Capability,
-    Profile,
-    seed_capabilities_from_facts,
-)
-from jfl_core.profile_questions import CORPUS_SECTIONS
+from jfl_core.profile import Capability, Profile, capability_key, propose_capabilities
+from jfl_core.storage.profile import save_profile
 
 from jfl_web.deps import (
     CandidateFactRepoDep,
     CsrfDep,
-    ProfileStoreDep,
+    ProfileRepoDep,
     SessionDep,
     UserCorpusRepoDep,
 )
@@ -118,16 +114,16 @@ _NO_SUCH_CAPABILITY = "No such capability -- it may belong to another account."
 
 
 def _visible_capabilities(
-    store: ProfileStoreDep, facts: CandidateFactRepoDep
+    store: ProfileRepoDep, facts: CandidateFactRepoDep
 ) -> tuple[Profile, list[Capability], dict[str, str]]:
     """The saved profile, the capability rows the page shows, and the text
     behind each row's evidence.
 
     Rows are everything saved, plus a proposal for every confirmed CV fact not
-    already covered. Seeds are re-derived on every request rather than written
-    into the profile on sight: a row the user has never looked at is not
-    something they have claimed, and writing it in would make the profile say it
-    was.
+    already covered. Proposals are re-derived on every request rather than
+    written into the profile on sight: a row the user has never looked at is
+    not something they have claimed, and writing it in would make the profile
+    say it was.
 
     The evidence map turns span ids into the sentence the user actually
     confirmed, because "evidence: 2 spans" tells nobody whether the evidence
@@ -135,20 +131,25 @@ def _visible_capabilities(
     """
     confirmed = facts.list_facts(state="confirmed")
     profile = store.current()
-    seeded = seed_capabilities_from_facts(confirmed)
+    # The pure grouping rule, over facts this function already has --
+    # `propose_capabilities_from_facts` is the same thing plus the query, and
+    # calling it here would read the facts table twice for one page.
+    proposed = propose_capabilities(confirmed, existing=profile.capabilities)
     evidence = {str(f.span_id): f.corpus_text for f in confirmed if f.span_id is not None}
-    return profile, merge_capabilities(profile.capabilities, seeded), evidence
+    return profile, merge_capabilities(profile.capabilities, proposed), evidence
 
 
 def _context(
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     **extra: Any,
 ) -> dict[str, Any]:
     profile, capabilities, evidence_texts = _visible_capabilities(store, facts)
     saved_keys = {c.key for c in profile.capabilities}
-    version = store.current_version()
+    # `history(limit=1)` rather than a second repository method: the current
+    # version *is* the newest row, and one read of it answers "last saved when".
+    latest = store.history(limit=1)
     ctx: dict[str, Any] = {
         "session": session,
         "user": session.user,
@@ -165,7 +166,7 @@ def _context(
         "tier_descriptions": TIER_DESCRIPTIONS,
         "tiers": CAPABILITY_TIERS,
         "interest_choices": INTEREST_CHOICES,
-        "saved_at": version.created_at if version is not None else None,
+        "saved_at": latest[0].created_at if latest else None,
         "max_note": MAX_NOTE,
         "max_text": MAX_TEXT,
         "max_label": MAX_LABEL,
@@ -180,7 +181,7 @@ def _context(
 def _error(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     message: str,
     status_code: int,
@@ -204,7 +205,7 @@ def _saved(anchor: str) -> RedirectResponse:
 def profile_page(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
 ) -> Response:
     return render(
@@ -218,7 +219,7 @@ def profile_page(
 async def save_constraints(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
 ) -> Response:
@@ -243,7 +244,7 @@ async def save_constraints(
 def add_capability(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
     label: Annotated[str, Form()] = "",
@@ -258,7 +259,7 @@ def add_capability(
     if not name:
         return RedirectResponse("/profile#capabilities", status_code=303)
     profile = store.current()
-    if profile.capability(Capability(label=name).key) is None:
+    if not any(c.key == capability_key(name) for c in profile.capabilities):
         store.save(
             profile.model_copy(
                 update={"capabilities": [*profile.capabilities, Capability(label=name)]}
@@ -272,7 +273,7 @@ def save_capability(
     request: Request,
     key: str,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
     hands_on: Annotated[str, Form()] = "",
@@ -320,7 +321,7 @@ def remove_capability(
     request: Request,
     key: str,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
 ) -> Response:
@@ -339,7 +340,7 @@ def remove_capability(
 def save_disciplines(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
     practises: Annotated[str, Form()] = "",
@@ -358,7 +359,7 @@ def save_disciplines(
 def save_objectives(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
     objective_1: Annotated[str, Form()] = "",
@@ -392,7 +393,7 @@ def save_objectives(
 def save_self_assessment(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     corpus: UserCorpusRepoDep,
     _csrf: CsrfDep,
@@ -417,18 +418,22 @@ def save_self_assessment(
         return _error(request, session, store, facts, str(exc), 400)
 
     profile = store.current()
-    store.save(
+    # `save_profile` rather than `store.save`, because this section has two
+    # halves and no caller may perform one of them: the profile row is where
+    # the screen reads the words back from, and the corpus span is what the
+    # claim gate can cite. It is the one write path, shared with confirming a
+    # CV fact, and no model is anywhere on it.
+    save_profile(
+        store,
+        corpus,
         profile.model_copy(
             update={
                 "self_assessment": profile.self_assessment.model_copy(
                     update={"depth_genuine": depth, "recurring_gaps": gaps}
                 )
             }
-        )
+        ),
     )
-    written = {"depth_genuine": depth, "recurring_gaps": gaps}
-    for question_key, section in CORPUS_SECTIONS.items():
-        corpus.replace_section(section, [written[question_key]])
     return _saved("self-assessment")
 
 
@@ -436,7 +441,7 @@ def save_self_assessment(
 def profile_history(
     request: Request,
     session: SessionDep,
-    store: ProfileStoreDep,
+    store: ProfileRepoDep,
 ) -> Response:
     """Every saved version, newest first. Read-only.
 

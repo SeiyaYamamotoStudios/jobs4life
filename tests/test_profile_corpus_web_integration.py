@@ -13,7 +13,7 @@ at its author as though it were something they had done. Questions 15 and 16 --
 where your depth is genuine, and the gaps that keep coming up -- are **claims
 about the person**, so they are stored verbatim, in the corpus, and are cited.
 
-The section keys are still `jfl_core.profile_questions.CORPUS_SECTIONS`, and
+The section headings are still the retired `profile_questions.CORPUS_SECTIONS`,
 deliberately: the shape of the page changed on 2026-09-21, but the corpus
 section a statement is filed under did not, so a user who answered under the old
 page has their statement superseded rather than duplicated.
@@ -34,7 +34,7 @@ from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.db.tables import users as users_table
-from jfl_core.profile_questions import CORPUS_SECTIONS
+from jfl_core.profile import CORPUS_SECTIONS
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity
 from jfl_web.settings import WebSettings

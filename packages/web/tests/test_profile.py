@@ -18,10 +18,10 @@ import uuid
 
 import pytest
 from jfl_core.profile import (
-    CAPABILITY_INTERESTS,
     CAPABILITY_TIERS,
     CONSTRAINT_KINDS,
-    CONSTRAINT_STANCES,
+    INTERESTS,
+    STANCES,
     Capability,
     CapabilityTier,
     Constraint,
@@ -58,8 +58,8 @@ from jfl_web.profile import (
 
 
 def test_the_screens_offer_exactly_the_stored_values() -> None:
-    assert {value for value, _ in STANCE_CHOICES} == set(CONSTRAINT_STANCES)
-    assert {value for value, _ in INTEREST_CHOICES} == set(CAPABILITY_INTERESTS)
+    assert {value for value, _ in STANCE_CHOICES} == set(STANCES)
+    assert {value for value, _ in INTEREST_CHOICES} == set(INTERESTS)
     assert {field.kind for field in CONSTRAINT_FIELDS} == set(CONSTRAINT_KINDS)
     assert set(TIER_NAMES) == set(CAPABILITY_TIERS)
 
@@ -250,7 +250,7 @@ def test_text_over_the_limit_is_refused_rather_than_truncated() -> None:
 def test_disciplines_keep_both_lists_and_their_order() -> None:
     disciplines = parse_disciplines("engineering management\nplatform", "frontend")
     assert disciplines.practises == ["engineering management", "platform"]
-    assert disciplines.not_ == ["frontend"]
+    assert disciplines.not_practised == ["frontend"]
 
 
 def test_disciplines_serialise_with_the_documented_key() -> None:

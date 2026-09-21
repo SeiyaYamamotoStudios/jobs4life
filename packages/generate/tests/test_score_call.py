@@ -23,13 +23,10 @@ from jfl_core.models import (
     Job,
     JobRequirement,
     ObjectiveVerdict,
-    Profile,
-    ProfileCapability,
-    ProfileConstraint,
-    ProfileObjectiveItem,
     RequirementCoverage,
     RunRecord,
 )
+from jfl_core.profile import Capability, Constraint, Objective, Profile
 from jfl_gate.pricing import MODEL
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import ProposedFactView, ScoreInputs
@@ -132,16 +129,12 @@ PAYLOAD: dict[str, Any] = {
 }
 
 
-def _constraint(kind: str, stance: str, **kw: Any) -> ProfileConstraint:
-    return ProfileConstraint.model_validate({"kind": kind, "stance": stance, **kw})
+def _constraint(kind: str, stance: str, **kw: Any) -> Constraint:
+    return Constraint.model_validate({"kind": kind, "stance": stance, **kw})
 
 
-def _capability(
-    label: str, tier: str, evidence: list[uuid.UUID] | None = None
-) -> ProfileCapability:
-    return ProfileCapability.model_validate(
-        {"label": label, "tier": tier, "evidence": evidence or []}
-    )
+def _capability(label: str, tier: str, evidence: list[uuid.UUID] | None = None) -> Capability:
+    return Capability.model_validate({"label": label, "tier": tier, "evidence": evidence or []})
 
 
 def _response(
@@ -318,8 +311,8 @@ class TestTheCall:
 # --- mapping one response onto two stored scores -----------------------------
 
 
-def _objective(rank: int, what: str) -> ProfileObjectiveItem:
-    return ProfileObjectiveItem(rank=rank, text=what)
+def _objective(rank: int, what: str) -> Objective:
+    return Objective(rank=rank, text=what)
 
 
 def _output(**kw: Any) -> ScoreOutput:

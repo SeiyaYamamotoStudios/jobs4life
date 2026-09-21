@@ -1380,15 +1380,6 @@ profiles = Table(
 )
 
 # --------------------------------------------------------------------------
-# The profile as redesigned on 2026-09-21 -- `docs/profile-schema.md`. One row
-# per save, the current profile being the latest; the three tables above are
-# what it replaces.
-#
-# `data` is JSONB and `jfl_core.profile.Profile` is its only write path. That is
-# a deliberate, documented weakening: a CHECK constraint cannot reach inside
-# JSONB, so the value-list drift guard that protects every other closed set in
-# this schema does not apply here. See the design doc's "What this costs us".
-# --------------------------------------------------------------------------
 # CV onboarding (PLAN.md B6, redesigned 2026-09-18): candidate facts a model
 # proposed from an uploaded CV, each awaiting the user's confirmation.
 #
@@ -1483,9 +1474,17 @@ application_scores = Table(
     Column("could_get_assessment", Text, nullable=False, server_default=""),
     Column("want_it_score", Integer),
     Column("want_it_assessment", Text, nullable=False, server_default=""),
-    # JSONB lists of the shapes in jfl_core.models: ObjectiveVerdict,
-    # HardGateBreach, ScoreLever, NotStated. Read back whole and rendered;
-    # never queried structurally, same convention as `runs.attributes`.
+    # JSONB lists of the shapes in jfl_core.models: ConstraintVerdict,
+    # ObjectiveVerdict, HardGateBreach, ScoreLever, NotStated. Read back whole
+    # and rendered; never queried structurally, same convention as
+    # `runs.attributes`.
+    #
+    # The two verdict lists are what `want_it_score` was derived from rather
+    # than decoration: the model is never asked for that number, it gives a
+    # four-word verdict per item and `jfl_core.fit` does the arithmetic. A row
+    # from before the derivation reads `'[]'`, which says "this run predates
+    # it" and not "nothing matched".
+    Column("constraint_verdicts", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("objective_verdicts", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("hard_gate_breaches", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("levers", JSONB, nullable=False, server_default=text("'[]'::jsonb")),

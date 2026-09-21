@@ -47,8 +47,12 @@ from jfl_core.profile import (
     Profile,
     SelfAssessment,
     Stance,
+    capability_key,
+    comp_value,
+    location_value,
     propose_capabilities,
     self_assessment_corpus_lines,
+    text_value,
 )
 from pydantic import ValidationError
 
@@ -209,6 +213,88 @@ class TestValidation:
         assert Capability(label="Kubernetes").tier is None
 
 
+# -- the row key, and what counts as evidence ----------------------------------
+
+
+class TestCapabilityKey:
+    """The screens name a capability row in a form action and an anchor, and
+    there is no id column to name it by -- the whole profile is one document.
+    """
+
+    def test_spelling_folds_but_meaning_does_not(self) -> None:
+        assert capability_key("FX pricing") == capability_key("fx  pricing")
+        assert capability_key("FX pricing") != capability_key("FX pricing platforms")
+
+    def test_a_row_carries_the_key_its_label_implies(self) -> None:
+        assert Capability(label="FX pricing").key == capability_key("FX pricing")
+
+    def test_a_key_is_safe_in_a_url_path(self) -> None:
+        """A raw label would not be: "CI/CD" splits the route and tiers
+        nothing, which is a 404 on a form the page itself rendered.
+        """
+        assert capability_key("CI/CD pipelines").isalnum()
+
+
+class TestCapabilityEvidence:
+    def test_a_tier_with_no_span_behind_it_is_a_claim(self) -> None:
+        """The same status a CV line has before confirmation. Scoring reads
+        this to decide whether a row is evidence or only a lever.
+        """
+        assert not Capability(label="Kubernetes", tier="working").has_evidence
+
+    def test_a_row_carrying_a_span_is_evidenced(self) -> None:
+        assert Capability(label="Kubernetes", evidence=[uuid.uuid4()]).has_evidence
+
+
+# -- the constraint value shapes -----------------------------------------------
+
+
+class TestConstraintValues:
+    def test_locations_are_an_ordered_list_not_a_relocate_boolean(self) -> None:
+        assert location_value(["London", "Bristol"]) == {"places": ["London", "Bristol"]}
+
+    def test_comp_keeps_guaranteed_and_headline_apart(self) -> None:
+        """A headline number is not an offer, and neither figure is derived
+        from the other -- so a floor stated without a headline is a complete
+        answer rather than half of one.
+        """
+        assert comp_value(120000, 145000) == {
+            "ccy": "GBP",
+            "guaranteed": 120000,
+            "headline": 145000,
+        }
+        assert comp_value(120000, None) == {"ccy": "GBP", "guaranteed": 120000}
+
+    def test_empty_text_is_no_value_at_all(self) -> None:
+        """Not `{"text": ""}`, which reads back indistinguishably from an
+        answer the user actually gave.
+        """
+        assert text_value("") == {}
+        assert text_value("Permanent only") == {"text": "Permanent only"}
+
+
+# -- looking one section up ----------------------------------------------------
+
+
+class TestLookups:
+    def test_a_kind_nobody_stated_reads_as_none(self) -> None:
+        """None is a real answer the screens render as "not stated", never a
+        blank field that reads like an empty one.
+        """
+        profile = Profile(constraints=[Constraint(kind="notice", stance="must")])
+        assert profile.constraint("notice") is not None
+        assert profile.constraint("comp_floor") is None
+
+    def test_an_objective_is_found_by_the_slot_it_was_typed_into(self) -> None:
+        """Rank is the slot, so an empty rank 1 does not shuffle rank 2 up
+        underneath the user.
+        """
+        profile = Profile(objectives=[Objective(rank=2, text="Bigger scope")])
+        assert profile.objective(1) is None
+        assert profile.objective(2) is not None
+        assert profile.objective(2).text == "Bigger scope"  # type: ignore[union-attr]
+
+
 # -- the round trip ------------------------------------------------------------
 
 
@@ -218,13 +304,13 @@ def _full_profile() -> Profile:
             Constraint(
                 kind="comp_floor",
                 stance="must",
-                value={"guaranteed": 120000, "headline": 145000, "ccy": "GBP"},
+                value=comp_value(120000, 145000),
                 note="base + pension, ignoring equity",
             ),
             Constraint(
                 kind="location",
                 stance="nice",
-                value={"locations": ["Sheffield", "Leeds", "Manchester"]},
+                value=location_value(["Sheffield", "Leeds", "Manchester"]),
             ),
             Constraint(kind="categorical_no", stance="never", note="No agency work"),
         ],

@@ -20,33 +20,33 @@
     </p>
     <ul class="profile-version-summary">
       <li>
-        {{ version.profile.constraints | length }} constraint{{ '' if version.profile.constraints | length == 1 else 's' }}
+        {{ version.data.constraints | length }} constraint{{ '' if version.data.constraints | length == 1 else 's' }}
       </li>
       <li>
-        {% set tiered = version.profile.capabilities | selectattr('tier') | list %}
-        {{ version.profile.capabilities | length }} capabilit{{ 'y' if version.profile.capabilities | length == 1 else 'ies' }},
+        {% set tiered = version.data.capabilities | selectattr('tier') | list %}
+        {{ version.data.capabilities | length }} capabilit{{ 'y' if version.data.capabilities | length == 1 else 'ies' }},
         {{ tiered | length }} with a depth stated
       </li>
       <li>
-        {{ version.profile.disciplines.practises | length }} practised,
-        {{ version.profile.disciplines.not_ | length }} ruled out
+        {{ version.data.disciplines.practises | length }} practised,
+        {{ version.data.disciplines.not_practised | length }} ruled out
       </li>
       <li>
-        {{ version.profile.objectives | length }} objective{{ '' if version.profile.objectives | length == 1 else 's' }}
+        {{ version.data.objectives | length }} objective{{ '' if version.data.objectives | length == 1 else 's' }}
       </li>
       <li>
-        {% if version.profile.self_assessment.depth_genuine or version.profile.self_assessment.recurring_gaps %}
+        {% if version.data.self_assessment.depth_genuine or version.data.self_assessment.recurring_gaps %}
         self-assessment stated
         {% else %}
         self-assessment not stated
         {% endif %}
       </li>
     </ul>
-    {% if version.profile.capabilities %}
+    {% if version.data.capabilities %}
     <details>
       <summary>What the capabilities said</summary>
       <ul class="fact-list">
-        {% for capability in version.profile.capabilities %}
+        {% for capability in version.data.capabilities %}
         <li>
           {{ capability.label }} —
           {% if capability.tier %}{{ tier_names[capability.tier] }}{% else %}not stated{% endif %}

@@ -14,16 +14,13 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from jfl_core.models import (
-    FIT_VERDICTS,
-    Job,
-    JobRequirement,
+from jfl_core.models import FIT_VERDICTS, Job, JobRequirement, RequirementCoverage
+from jfl_core.profile import (
+    Capability,
+    Constraint,
+    Disciplines,
+    Objective,
     Profile,
-    ProfileCapability,
-    ProfileConstraint,
-    ProfileDisciplines,
-    ProfileObjectiveItem,
-    RequirementCoverage,
 )
 from jfl_generate.prompts import (
     NOT_STATED,
@@ -79,20 +76,16 @@ def _coverage(requirement: JobRequirement, status: str, note: str) -> Requiremen
     )
 
 
-def _constraint(kind: str, stance: str, **kw: object) -> ProfileConstraint:
-    return ProfileConstraint.model_validate({"kind": kind, "stance": stance, **kw})
+def _constraint(kind: str, stance: str, **kw: object) -> Constraint:
+    return Constraint.model_validate({"kind": kind, "stance": stance, **kw})
 
 
-def _capability(
-    label: str, tier: str, evidence: list[uuid.UUID] | None = None
-) -> ProfileCapability:
-    return ProfileCapability.model_validate(
-        {"label": label, "tier": tier, "evidence": evidence or []}
-    )
+def _capability(label: str, tier: str, evidence: list[uuid.UUID] | None = None) -> Capability:
+    return Capability.model_validate({"label": label, "tier": tier, "evidence": evidence or []})
 
 
-def _objective(rank: int, text: str, evidence: str = "") -> ProfileObjectiveItem:
-    return ProfileObjectiveItem(rank=rank, text=text, evidence_of_delivery=evidence)
+def _objective(rank: int, text: str, evidence: str = "") -> Objective:
+    return Objective(rank=rank, text=text, evidence_of_delivery=evidence)
 
 
 def _inputs(**kw: object) -> ScoreInputs:
@@ -298,7 +291,7 @@ class TestCapabilities:
         assert "Frontend" in absent_block
 
     def test_the_not_this_disciplines_are_shown_beside_absent_capabilities(self) -> None:
-        profile = Profile(disciplines=ProfileDisciplines.model_validate({"not": ["frontend"]}))
+        profile = Profile(disciplines=Disciplines.model_validate({"not": ["frontend"]}))
         message = build_score_user_message(_inputs(profile=profile))
         assert "- frontend" in message
 
@@ -350,7 +343,7 @@ class TestNotStated:
         assert "constraints" not in {s.question_key for s in not_stated_sections(profile)}
 
     def test_only_a_not_this_list_still_counts_as_a_filled_discipline(self) -> None:
-        profile = Profile(disciplines=ProfileDisciplines.model_validate({"not": ["frontend"]}))
+        profile = Profile(disciplines=Disciplines.model_validate({"not": ["frontend"]}))
         assert "disciplines" not in {s.question_key for s in not_stated_sections(profile)}
 
 

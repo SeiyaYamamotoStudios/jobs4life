@@ -22,12 +22,10 @@ from jfl_core.models import (
     Job,
     JobRequirement,
     NotStated,
-    Profile,
-    ProfileCapability,
-    ProfileConstraint,
     RequirementCoverage,
     Span,
 )
+from jfl_core.profile import Capability, Constraint, Profile
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -532,13 +530,17 @@ _DRAFT_CEILING_RULE = (
 )
 
 
-def _draft_capability_ceiling(capabilities: Sequence[ProfileCapability]) -> list[str]:
+def _draft_capability_ceiling(capabilities: Sequence[Capability]) -> list[str]:
+    """A capability the user never tiered is left out entirely, not listed as
+    "not stated": the rule below says an unlisted capability has no confirmed
+    depth, which is exactly what an untiered row is. Listing it with a blank
+    depth would invite the model to pick one.
+    """
     lines = [f"## {_DRAFT_CEILING_HEADING}"]
-    listed = [c for c in capabilities if c.tier != "absent"]
+    listed = [c for c in capabilities if c.tier is not None and c.tier != "absent"]
     if listed:
         for capability in listed:
-            tier = TIER_WORDING.get(capability.tier, capability.tier)
-            lines.append(f"- {capability.label}: {tier}")
+            lines.append(f"- {capability.label}: {tier_wording(capability.tier)}")
     else:
         lines.append("(none confirmed)")
     for capability in capabilities:
@@ -555,7 +557,7 @@ def build_draft_user_message(
     job: Job,
     requirements: Sequence[JobRequirement],
     coverage: Sequence[RequirementCoverage],
-    capabilities: Sequence[ProfileCapability] = (),
+    capabilities: Sequence[Capability] = (),
 ) -> str:
     """The volatile half of the request -- goes in `messages`, never in `system`, so
     a byte change here never invalidates the cached corpus prefix. Requirements are
@@ -811,13 +813,23 @@ class ScoreInputs:
 
 
 # How each tier reads on the page and in the prompt. Our scale in our words --
-# see `jfl_core.models.CapabilityTier`.
+# see `jfl_core.profile.CapabilityTier`.
 TIER_WORDING: Mapping[str, str] = {
     "production_depth": "production depth",
     "working": "working",
     "oversight_only": "oversight only",
     "absent": "absent",
 }
+
+# `tier` is None until the user answers the behavioural questions, and that is
+# a real state rather than a missing one -- a row proposed from a CV arrives
+# untiered and must never be described as having a depth nobody chose.
+NO_TIER = "not stated"
+
+
+def tier_wording(tier: str | None) -> str:
+    return NO_TIER if tier is None else TIER_WORDING.get(tier, tier)
+
 
 _KIND_WORDING: Mapping[str, str] = {
     "location": "location",
@@ -841,7 +853,7 @@ _SECTION_WORDING: Mapping[str, str] = {
 }
 
 
-def constraint_label(constraint: ProfileConstraint) -> str:
+def constraint_label(constraint: Constraint) -> str:
     """One constraint in the user's own words, as both the prompt and the
     stored verdict label it. The value is rendered as the JSON the user's own
     form wrote -- a comp floor carries guaranteed and headline separately, and
@@ -883,7 +895,7 @@ def claimed_items(inputs: ScoreInputs) -> list[ClaimedItem]:
         ClaimedItem(
             text=capability.label,
             claim_kind="capability",
-            tier=TIER_WORDING.get(capability.tier, capability.tier),
+            tier=tier_wording(capability.tier),
         )
         for capability in inputs.profile.capabilities
         if capability.tier != "absent" and not capability.has_evidence
@@ -900,7 +912,7 @@ def not_stated_sections(profile: Profile) -> list[NotStated]:
     filled = {
         "constraints": bool(profile.constraints),
         "capabilities": bool(profile.capabilities),
-        "disciplines": bool(profile.disciplines.practises or profile.disciplines.not_this),
+        "disciplines": bool(profile.disciplines.practises or profile.disciplines.not_practised),
         "objectives": bool(profile.objectives),
     }
     return [
@@ -910,9 +922,8 @@ def not_stated_sections(profile: Profile) -> list[NotStated]:
     ]
 
 
-def _capability_line(capability: ProfileCapability) -> str:
-    tier = TIER_WORDING.get(capability.tier, capability.tier)
-    bits = [f"[{tier}]", capability.label]
+def _capability_line(capability: Capability) -> str:
+    bits = [f"[{tier_wording(capability.tier)}]", capability.label]
     if capability.last_used is not None:
         bits.append(f"(last used {capability.last_used})")
     return " ".join(bits)
@@ -964,7 +975,7 @@ def build_score_user_message(inputs: ScoreInputs) -> str:
 
     lines.append("## What this person says they do NOT have")
     absent = [c.label for c in profile.capabilities if c.tier == "absent"]
-    absent += list(profile.disciplines.not_this)
+    absent += list(profile.disciplines.not_practised)
     if absent:
         for label in absent:
             lines.append(f"- {label}")

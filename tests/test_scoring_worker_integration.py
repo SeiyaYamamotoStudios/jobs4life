@@ -30,13 +30,8 @@ from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.fit import BREACH_CEILING
 from jfl_core.ids import content_hash, job_id, requirement_id
-from jfl_core.models import (
-    Job,
-    JobRequirement,
-    Profile,
-    ProfileConstraint,
-    ProfileObjectiveItem,
-)
+from jfl_core.models import Job, JobRequirement
+from jfl_core.profile import Constraint, Objective, Profile
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository
 from jfl_core.storage.profile import PostgresProfileRepository
@@ -249,15 +244,13 @@ def add_profile(engine: Engine, user_id: uuid.UUID) -> None:
     something to derive from, and for the unfilled sections to be reported.
     """
     with engine.begin() as conn:
-        PostgresProfileRepository(conn, user_id).save_profile(
+        PostgresProfileRepository(conn, user_id).save(
             Profile(
                 constraints=[
-                    ProfileConstraint(
-                        kind="workplace", stance="must", note="One day a week at most"
-                    )
+                    Constraint(kind="workplace", stance="must", note="One day a week at most")
                 ],
                 objectives=[
-                    ProfileObjectiveItem(
+                    Objective(
                         rank=1,
                         text="Back to hands-on platform work",
                         evidence_of_delivery="Ships weekly",

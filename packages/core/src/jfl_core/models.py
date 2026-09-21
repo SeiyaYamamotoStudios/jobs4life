@@ -7,7 +7,7 @@ import uuid
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Provenance = Literal["document", "adjudicated"]
 SpanKind = Literal["bullet", "paragraph", "heading"]
@@ -975,18 +975,80 @@ ScoreErrorCode = Literal[
 ]
 
 
-class ObjectiveVerdict(BaseModel):
-    """One of the user's objectives (profile questions 10/11), judged on its
-    own. `ordinal` is the objective's slot, `objective` is the user's own words
-    echoed back so the page never has to re-read the profile to label a
-    verdict. Deliberately no number: PLAN.md B3a asks for each objective to be
-    judged separately, and inventing a per-objective scale nobody asked for is
-    the first step towards something that gets averaged.
+# What the **ad** evidences about one thing the user said matters. Not a rating
+# of the job and not a prediction that they would enjoy it: `docs/profile-schema.md`
+# is explicit that computed person-job fit predicts satisfaction at rho ~= .28,
+# so the model is asked what the ad says, and `jfl_core.fit` derives the number
+# from these four words. `silent` is the one that earns the feature: it is the
+# question to ask at interview, and it is deliberately distinguishable from
+# `contradicted` -- the claim gate's corpus-silence lesson, applied to job ads.
+FitVerdict = Literal["evidenced", "partial", "silent", "contradicted"]
+FIT_VERDICTS: tuple[str, ...] = ("evidenced", "partial", "silent", "contradicted")
+
+
+class ConstraintVerdict(BaseModel):
+    """What the ad evidences about one constraint the user recorded.
+
+    `kind` and `stance` are copied from the stored constraint and typed `str`
+    rather than against `jfl_core.profile`'s Literals: this is JSONB read back
+    out of `application_scores`, and a run recorded under a vocabulary that has
+    since changed must still parse rather than fail the whole page. The write
+    path is validated where it belongs, on the profile.
+
+    `label` is the constraint in the user's own words, stored beside the
+    verdict so the panel never has to re-read the profile -- and so a verdict
+    stays readable after the constraint it judged has been edited away.
     """
 
-    ordinal: int
+    kind: str
+    stance: str
+    label: str = ""
+    verdict: FitVerdict
+    note: str = ""
+
+
+class ObjectiveVerdict(BaseModel):
+    """One of the user's objectives, judged on its own against the ad.
+
+    `rank` is the objective's own rank, which is how `jfl_core.fit` weights it;
+    `objective` is the user's own words echoed back so the page never has to
+    re-read the profile to label a verdict. Deliberately no number: objectives
+    are ranked and scored separately and never blended, and inventing a
+    per-objective scale is the first step towards something that gets averaged.
+    """
+
+    rank: int
     objective: str = ""
-    verdict: str = ""
+    verdict: FitVerdict
+    note: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_a_row_from_before_this_vocabulary(cls, data: Any) -> Any:
+        """Rows stored before the four-word verdict still parse.
+
+        `application_scores.objective_verdicts` is JSONB written by an earlier
+        shape: the slot was `ordinal` and `verdict` held a free sentence. A
+        score panel that raises on one of those is a worse failure than one
+        that reports the ad as silent about that objective -- which is also the
+        truthful reading, since nothing in an old row states what the ad
+        evidenced in these terms. The sentence is not thrown away: it moves to
+        `note`, where the page still shows it.
+
+        Only reading is lenient. The write path is the Literal, so nothing new
+        can be stored outside the four words.
+        """
+        if not isinstance(data, dict):
+            return data
+        row = dict(data)
+        if "rank" not in row and "ordinal" in row:
+            row["rank"] = row.pop("ordinal")
+        verdict = row.get("verdict")
+        if isinstance(verdict, str) and verdict not in FIT_VERDICTS:
+            row["verdict"] = "silent"
+            if not row.get("note"):
+                row["note"] = verdict
+        return row
 
 
 class HardGateBreach(BaseModel):
@@ -1001,19 +1063,30 @@ class HardGateBreach(BaseModel):
 
 
 class ScoreLever(BaseModel):
-    """An **unconfirmed** CV-derived fact that would move "could I get this".
+    """Something **claimed and not evidenced** that would move "could I get this".
 
-    The facts themselves are never evidence -- only confirmed corpus facts are
-    (CLAUDE.md, 2026-09-18) -- so a lever is the honest way to say "your CVs
-    claim X; confirm it and this moves from 5 to 7" without quietly crediting
-    the claim. `fact_text` and `role_label` are copied verbatim from the stored
-    candidate fact, never from the model's paraphrase of it.
+    Two things have that status and they are treated identically: an
+    unconfirmed fact from the user's own CV, and a capability they tiered on
+    the profile without a corpus span behind it. Neither is evidence -- only
+    confirmed corpus facts are (CLAUDE.md, 2026-09-18) -- so a lever is the
+    honest way to say "you claim X; confirm it and this moves from 5 to 7"
+    without quietly crediting the claim.
+
+    `claim_kind` says which of the two this is (`cv_fact` or `capability`) and
+    `tier` carries the depth a capability was claimed at, so the panel can say
+    "claimed at working level, no evidence" rather than presenting a profile
+    row as though a CV had said it. `fact_text` and `role_label` are copied
+    verbatim from the stored claim, never from the model's paraphrase of it.
     """
 
     fact_text: str
     role_label: str = ""
     would_move_to: int | None = None
     note: str = ""
+    # Free `str` for the same reason `NotStated.question_key` is: this is
+    # stored JSONB, and a row written before a name changed must still read.
+    claim_kind: str = "cv_fact"
+    tier: str = ""
 
 
 class NotStated(BaseModel):
@@ -1047,6 +1120,10 @@ class ApplicationScore(BaseModel):
     could_get_assessment: str = ""
     want_it_score: int | None = None
     want_it_assessment: str = ""
+    # What `want_it_score` was derived from. Stored so the panel can show the
+    # verdicts under the number and recompute the tally from them, which is
+    # what stops the number saying something the list below it does not.
+    constraint_verdicts: list[ConstraintVerdict] = Field(default_factory=list)
     objective_verdicts: list[ObjectiveVerdict] = Field(default_factory=list)
     hard_gate_breaches: list[HardGateBreach] = Field(default_factory=list)
     levers: list[ScoreLever] = Field(default_factory=list)

@@ -55,6 +55,7 @@ from jfl_core.context import RequestContext
 from jfl_core.fit import want_it_basis
 from jfl_core.models import (
     ConstraintVerdict,
+    FitVerdict,
     HardGateBreach,
     NotStated,
     ObjectiveVerdict,
@@ -318,7 +319,7 @@ def _constraint_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Const
     the panel says when nothing decided it either way.
     """
     constraints = list(inputs.profile.constraints)
-    notes: dict[int, tuple[str, str]] = {}
+    notes: dict[int, tuple[FitVerdict, str]] = {}
     for item in parsed.constraint_verdicts:
         if 1 <= item.index <= len(constraints) and item.index not in notes:
             notes[item.index] = (item.verdict, item.note.strip())
@@ -330,7 +331,7 @@ def _constraint_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Const
                 kind=constraint.kind,
                 stance=constraint.stance,
                 label=constraint_label(constraint),
-                verdict=verdict,  # type: ignore[arg-type]
+                verdict=verdict,
                 note=note,
             )
         )
@@ -345,7 +346,7 @@ def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Object
     own text comes from the stored profile, not from the response.
     """
     objectives = sorted(inputs.profile.objectives, key=lambda o: o.rank)
-    notes: dict[int, tuple[str, str]] = {}
+    notes: dict[int, tuple[FitVerdict, str]] = {}
     ranks = {o.rank for o in objectives}
     for item in parsed.objective_verdicts:
         if item.rank in ranks and item.rank not in notes:
@@ -357,7 +358,7 @@ def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Object
             ObjectiveVerdict(
                 rank=objective.rank,
                 objective=objective.text.strip(),
-                verdict=verdict,  # type: ignore[arg-type]
+                verdict=verdict,
                 note=note,
             )
         )
