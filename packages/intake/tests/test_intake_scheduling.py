@@ -10,8 +10,10 @@ import pytest
 from jfl_core.models import Task, WatchedBoard
 from jfl_intake.scheduling import (
     CHECK_BOARD_KIND,
+    ENQUEUE_SPACING,
     MIN_GAP,
     daily_slot,
+    enqueue_all_board_checks,
     enqueue_board_check,
     next_check_at,
 )
@@ -131,3 +133,56 @@ def test_repositories_bound_to_different_users_are_refused() -> None:
         enqueue_board_check(
             FakeBoards(uuid.uuid4(), {board}, set()), FakeTasks(uuid.uuid4()), board
         )
+
+
+# --------------------------------------------------------------------------
+# enqueue_all_board_checks -- "check all boards now"
+# --------------------------------------------------------------------------
+
+
+def test_check_all_queues_one_per_board() -> None:
+    user = uuid.uuid4()
+    board_ids = [uuid.uuid4() for _ in range(3)]
+    tasks = FakeTasks(user)
+    queued, skipped = enqueue_all_board_checks(
+        FakeBoards(user, set(board_ids), set()), tasks, board_ids, now=NOW
+    )
+    assert (queued, skipped) == (3, 0)
+    assert [e["payload"] for e in tasks.enqueued] == [{"board_id": str(b)} for b in board_ids]
+
+
+def test_check_all_skips_boards_with_a_check_already_queued() -> None:
+    user = uuid.uuid4()
+    board_ids = [uuid.uuid4() for _ in range(3)]
+    already_queued = {board_ids[1]}
+    tasks = FakeTasks(user)
+    queued, skipped = enqueue_all_board_checks(
+        FakeBoards(user, set(board_ids), already_queued), tasks, board_ids, now=NOW
+    )
+    assert (queued, skipped) == (2, 1)
+    queued_ids = {e["payload"]["board_id"] for e in tasks.enqueued}
+    assert queued_ids == {str(board_ids[0]), str(board_ids[2])}
+
+
+def test_check_all_staggers_only_the_boards_actually_queued() -> None:
+    """A skipped board costs no slot: three boards where the middle one is
+    already queued still land `ENQUEUE_SPACING` apart, not with a gap left
+    for the one that was skipped.
+    """
+    user = uuid.uuid4()
+    board_ids = [uuid.uuid4() for _ in range(3)]
+    already_queued = {board_ids[1]}
+    tasks = FakeTasks(user)
+    enqueue_all_board_checks(
+        FakeBoards(user, set(board_ids), already_queued), tasks, board_ids, now=NOW
+    )
+    scheduled = [e["scheduled_at"] for e in tasks.enqueued]
+    assert scheduled == [NOW, NOW + ENQUEUE_SPACING]
+
+
+def test_check_all_with_no_boards_queues_nothing() -> None:
+    user = uuid.uuid4()
+    tasks = FakeTasks(user)
+    queued, skipped = enqueue_all_board_checks(FakeBoards(user, set(), set()), tasks, [], now=NOW)
+    assert (queued, skipped) == (0, 0)
+    assert tasks.enqueued == []

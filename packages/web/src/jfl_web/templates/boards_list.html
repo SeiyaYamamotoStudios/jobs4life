@@ -39,9 +39,23 @@
 <p class="note" role="status">A check is already queued for that board.</p>
 {% elif checked_status == "removed" %}
 <p class="ok" role="status">Stopped watching. Its history goes with it.</p>
+{% elif checked_status == "check_all" %}
+  {% if check_all_queued == 0 and check_all_skipped == 0 %}
+  <p class="note" role="status">No boards to check.</p>
+  {% elif check_all_queued == 0 %}
+  <p class="note" role="status">Already checking every board -- nothing new queued.</p>
+  {% else %}
+  <p class="ok" role="status">
+    Queued {{ check_all_queued }} check{% if check_all_queued != 1 %}s{% endif %}{% if check_all_skipped %}; {{ check_all_skipped }} already checking, skipped{% endif %}.
+  </p>
+  {% endif %}
 {% endif %}
 
 {% if boards %}
+<form method="post" action="/boards/check-all" class="check-all-row">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <button type="submit">Check all boards now</button>
+</form>
 <div class="table-wrap">
   <table class="boards">
     <thead>

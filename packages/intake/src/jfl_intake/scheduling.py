@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from jfl_core.models import Task, WatchedBoard
@@ -124,3 +125,39 @@ def enqueue_board_check(
     return tasks.enqueue(
         kind=CHECK_BOARD_KIND, payload={"board_id": str(board_id)}, scheduled_at=scheduled_at
     )
+
+
+def enqueue_all_board_checks(
+    boards: BoardCheckSource,
+    tasks: TaskSink,
+    board_ids: Sequence[uuid.UUID],
+    *,
+    now: dt.datetime,
+    spacing: dt.timedelta = ENQUEUE_SPACING,
+) -> tuple[int, int]:
+    """The web layer's "check all boards" button: `enqueue_board_check` for
+    every id in `board_ids`, one call each, no second check mechanism.
+
+    Staggered exactly the way a restart's backlog already is -- see the
+    module docstring's "No backlog of duplicates" and `_schedule_board_checks`
+    in the worker, which this mirrors. A single worker process runs one task
+    at a time, so staggering buys nothing in wall-clock throughput; what it
+    buys is fairness, because the claim order is `scheduled_at asc`: without
+    it, N boards all due "now" would sort ahead of anything else queued in
+    the meantime, and a person with fifty boards would make their own job-ad
+    extraction -- or another user's unrelated work -- wait behind the whole
+    batch. `spacing` counts only checks this call actually queues, so a board
+    skipped as already-queued costs no slot: ten boards where three are
+    already checking still land thirty seconds apart, not forty-five.
+
+    Returns `(queued, skipped)`.
+    """
+    queued = 0
+    skipped = 0
+    for board_id in board_ids:
+        task = enqueue_board_check(boards, tasks, board_id, scheduled_at=now + spacing * queued)
+        if task is None:
+            skipped += 1
+        else:
+            queued += 1
+    return queued, skipped

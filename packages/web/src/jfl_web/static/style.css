@@ -690,3 +690,7 @@ ul.cv-roles li .note { display: block; }
 .status-badge.verdict-not-checked { color: var(--muted); border-color: var(--rule); }
 
 .draft-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
+
+/* -- check all boards -- */
+.status-badge.status-checking { color: var(--accent); border-color: var(--accent); }
+.check-all-row { margin: 0.75rem 0 0.5rem; }

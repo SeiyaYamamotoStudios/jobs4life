@@ -1,6 +1,6 @@
 {# One row of the boards table. Included from boards_list.html.
    Needs in context: session, row (board, platform_label, last_check,
-   open_job_count, held, match_count). #}
+   open_job_count, held, checking, match_count). #}
 <tr id="board-{{ row.board.id }}">
   <td class="col-board">
     <a href="/boards/{{ row.board.id }}">{{ row.board.label or row.board.board_url }}</a>
@@ -10,13 +10,16 @@
     {% if row.held %}
     <span class="status-badge status-held">held</span>
     <div class="note">Open job count dropped sharply — held rather than applied.</div>
-    {% elif row.last_check %}
+    {% elif not row.last_check %}
+    <span class="note">first check pending</span>
+    {% elif row.checking %}
+    <span class="status-badge status-checking">checking</span>
+    <div class="note">Last check: {{ row.last_check.status }}</div>
+    {% else %}
     <span class="status-badge status-{{ row.last_check.status }}">{{ row.last_check.status }}</span>
       {% if row.last_check.status != "complete" and row.last_check.error_code %}
       <div class="note">{{ row.last_check.error_code | board_error_message }}</div>
       {% endif %}
-    {% else %}
-    <span class="note">first check pending</span>
     {% endif %}
   </td>
   <td class="col-updated">

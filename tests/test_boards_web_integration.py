@@ -15,6 +15,7 @@ tried to reach the internet -- it never gets the chance to.
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import re
 import uuid
@@ -26,6 +27,7 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
+from jfl_core.db.tables import board_checks as checks_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.db.tables import watched_boards as watched_boards_table
@@ -357,6 +359,191 @@ def test_check_now_requires_a_csrf_token(
     response = client.post(f"/boards/{board_id}/check", data={"csrf_token": "wrong"})
     assert response.status_code == 403
     assert len(_check_tasks(engine, board_id)) == 1
+
+
+# --------------------------------------------------------------------------
+# Check all boards now
+# --------------------------------------------------------------------------
+
+
+def _board_id_by_url(engine: Engine, url: str) -> str:
+    """Look the board's id up directly, rather than through
+    `_board_id_from_list` -- that helper returns whichever detail link comes
+    first on the page, which is fine with one board in play but wrong as soon
+    as several are, as this file's "check all" tests have several.
+    """
+    with engine.begin() as conn:
+        row = conn.execute(
+            select(watched_boards_table.c.id).where(watched_boards_table.c.board_url == url)
+        ).one()
+    return str(row.id)
+
+
+def _settle(engine: Engine, board_id: str) -> None:
+    """Move every pending/running check task for one board to `succeeded`, the
+    way the worker would once it finished -- so the next enqueue attempt is
+    not skipped as already-queued.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            tasks_table.update()
+            .where(
+                tasks_table.c.kind == CHECK_BOARD_KIND,
+                tasks_table.c.payload["board_id"].astext == board_id,
+            )
+            .values(status="succeeded")
+        )
+
+
+def test_check_all_queues_one_per_board_and_skips_ones_already_queued(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    url_a = f"https://boards.greenhouse.io/acme-{uuid.uuid4().hex[:8]}"
+    url_b = f"https://jobs.lever.co/acme-{uuid.uuid4().hex[:8]}"
+    url_c = f"https://jobs.ashbyhq.com/acme-{uuid.uuid4().hex[:8]}"
+    _add_board(client, url=url_a)
+    _add_board(client, url=url_b)
+    _add_board(client, url=url_c)
+    board_a = _board_id_by_url(engine, url_a)
+    board_b = _board_id_by_url(engine, url_b)
+    board_c = _board_id_by_url(engine, url_c)
+
+    # Each add already queued its baseline check. Settle two of them and
+    # leave the third's baseline still pending, so "check all" must queue two
+    # fresh checks and skip the one still mid-flight.
+    _settle(engine, board_a)
+    _settle(engine, board_b)
+    assert len(_check_tasks(engine, board_c)) == 1  # still pending from add_board
+
+    response = client.post(
+        "/boards/check-all", data={"csrf_token": _csrf(client)}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/boards?status=check_all&queued=2&skipped=1"
+
+    assert len(_check_tasks(engine, board_a)) == 2
+    assert len(_check_tasks(engine, board_b)) == 2
+    assert len(_check_tasks(engine, board_c)) == 1  # not double-queued
+
+    page = client.get(response.headers["location"]).text
+    assert "Queued 2 checks" in page
+    assert "1 already checking, skipped" in page
+
+
+def test_a_recheck_shows_the_checking_badge_next_to_the_last_result(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """A board's *first* check queued is reported as "first check pending" --
+    covered above. This is the other case the brief asks for: a board that
+    already has a completed check, re-checked through "check all" (or, as
+    here, the equivalent single "check now" -- both go through the same
+    `enqueue_board_check`), shows a "checking" badge next to its last result
+    rather than silently dropping that result or claiming it is still the
+    same, stale status.
+    """
+    sign_in(client, google, subs)
+    url = f"https://boards.greenhouse.io/acme-{uuid.uuid4().hex[:8]}"
+    _add_board(client, url=url)
+    board_id = _board_id_by_url(engine, url)
+    _settle(engine, board_id)  # the baseline task is done...
+
+    # ...but nothing here runs the worker, so simulate what a completed
+    # baseline check leaves behind: one `board_checks` row, and the board
+    # pointed at it. Real work (`apply_check_plan`) is out of scope for a web
+    # test; only the rows this screen reads need to exist.
+    with engine.begin() as conn:
+        user_id = conn.execute(
+            select(watched_boards_table.c.user_id).where(watched_boards_table.c.id == board_id)
+        ).scalar_one()
+        check_id = uuid.uuid4()
+        now = dt.datetime.now(dt.UTC)
+        conn.execute(
+            checks_table.insert().values(
+                id=check_id,
+                user_id=user_id,
+                board_id=board_id,
+                started_at=now,
+                finished_at=now,
+                status="complete",
+                jobs_seen=0,
+                expected_total=0,
+                is_baseline=True,
+            )
+        )
+        conn.execute(
+            watched_boards_table.update()
+            .where(watched_boards_table.c.id == board_id)
+            .values(last_check_id=check_id, baseline_check_id=check_id)
+        )
+
+    response = client.post(
+        f"/boards/{board_id}/check",
+        data={"csrf_token": _csrf(client), "next": "list"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    page = client.get("/boards").text
+    assert 'status-checking">checking' in page
+    assert "Last check: complete" in page
+
+
+def test_check_all_requires_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    url = f"https://ats.rippling.com/acme-{uuid.uuid4().hex[:8]}"
+    _add_board(client, url=url)
+    board_id = _board_id_from_list(client, url)
+    _settle(engine, board_id)
+
+    response = client.post("/boards/check-all", data={"csrf_token": "wrong"})
+    assert response.status_code == 403
+    assert len(_check_tasks(engine, board_id)) == 1
+
+
+def test_check_all_with_no_boards_queues_nothing(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    # No boards watched, so the button itself is not on the page.
+    assert "Check all boards now" not in client.get("/boards").text
+
+    response = client.post(
+        "/boards/check-all", data={"csrf_token": _csrf(client)}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/boards?status=check_all&queued=0&skipped=0"
+    assert "No boards to check" in client.get(response.headers["location"]).text
+
+
+def test_check_all_touches_only_this_users_boards(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    alice_url = f"https://jobs.ashbyhq.com/alice-{uuid.uuid4().hex[:8]}"
+    _add_board(client, url=alice_url)
+    alice_board_id = _board_id_from_list(client, alice_url)
+    _settle(engine, alice_board_id)
+    before = _check_tasks(engine, alice_board_id)
+
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs)
+    bob_url = f"https://jobs.smartrecruiters.com/Bob{uuid.uuid4().hex[:8]}"
+    _add_board(client, url=bob_url)
+    bob_board_id = _board_id_from_list(client, bob_url)
+    _settle(engine, bob_board_id)
+
+    response = client.post(
+        "/boards/check-all", data={"csrf_token": _csrf(client)}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/boards?status=check_all&queued=1&skipped=0"
+
+    # Bob's press queued exactly his own board -- Alice's is untouched.
+    assert _check_tasks(engine, alice_board_id) == before
+    assert len(_check_tasks(engine, bob_board_id)) == 2
 
 
 # --------------------------------------------------------------------------

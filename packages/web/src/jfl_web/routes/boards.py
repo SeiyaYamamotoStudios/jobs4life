@@ -21,9 +21,19 @@ Screens:
 
   GET  /boards               -- the list, and the add-a-board form above it
   POST /boards                -- detect the platform, add it, queue its baseline
+  POST /boards/check-all      -- "Check all boards now"
   GET  /boards/{id}           -- one board: open jobs, recent checks
   POST /boards/{id}/check     -- "check now"
   POST /boards/{id}/remove    -- stop watching (with a confirm step in the form)
+
+`check_all` is not a new check mechanism: it calls the same
+`enqueue_board_check` "check now" does, once per watched board, through
+`jfl_intake.scheduling.enqueue_all_board_checks` -- so a board already
+mid-check is skipped by the exact rule that already governs one board, and
+the staggering a worker restart's backlog already gets is what spreads the
+enqueue across `scheduled_at` rather than firing every board "now". See that
+function's docstring for why staggering matters even though the worker runs
+one task at a time.
 
 No model call anywhere in this file, and no HTTP request to a board's own site
 either -- `detect_board` is pattern matching against the pasted URL, nothing
@@ -34,6 +44,7 @@ than something this file has to be careful about.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Annotated
 
@@ -42,7 +53,7 @@ from fastapi.responses import RedirectResponse, Response
 from jfl_core.models import BoardCheck, WatchedBoard
 from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_intake.detect import BoardRef, BoardUrlError, detect_board
-from jfl_intake.scheduling import enqueue_board_check
+from jfl_intake.scheduling import CHECK_BOARD_KIND, enqueue_all_board_checks, enqueue_board_check
 
 from jfl_web.boards import default_label, platform_label
 from jfl_web.deps import (
@@ -100,6 +111,12 @@ def _board_view(
 
     `match_count` is "N of M match" under the saved job filter -- the same
     computation /jobs uses, so the two pages can never disagree.
+
+    `checking` is whether a check of this board is pending or running right
+    now -- from "check now", the daily schedule, or "check all boards". No
+    spinner that lies: this is the same read `enqueue_board_check` itself
+    uses to decide whether to skip, so it can never claim a board is checking
+    when nothing is actually queued.
     """
     checks = boards.list_checks(board.id, limit=1)
     open_job_count = (
@@ -111,6 +128,7 @@ def _board_view(
         "last_check": checks[0] if checks else None,
         "open_job_count": open_job_count,
         "held": board.held_check_id is not None,
+        "checking": boards.check_task_queued(board.id, kind=CHECK_BOARD_KIND),
         "match_count": match_count,
     }
 
@@ -134,6 +152,21 @@ def _list_context(
     }
 
 
+def _count_param(request: Request, name: str) -> int:
+    """A bounded, digit-only count off the query string -- never free text.
+
+    `str.isdigit()` admits only the characters `0`-`9` (no sign, no
+    whitespace, no HTML), so there is nothing here for the query string to
+    inject; anything else, including absence, reads as zero. The cap matches
+    nothing about board counts specifically -- it exists only so a
+    hand-edited URL cannot make the template render an ungainly number.
+    """
+    raw = request.query_params.get(name)
+    if raw is None or not raw.isdigit():
+        return 0
+    return min(int(raw), 100_000)
+
+
 @router.get("/boards")
 def list_boards(
     request: Request, session: SessionDep, boards: BoardRepoDep, filters: JobFilterRepoDep
@@ -147,6 +180,8 @@ def list_boards(
             boards,
             filters,
             checked_status=request.query_params.get("status"),
+            check_all_queued=_count_param(request, "queued"),
+            check_all_skipped=_count_param(request, "skipped"),
         ),
     )
 
@@ -193,6 +228,31 @@ def add_board(
     # queued, which cannot be true for a board that did not exist a moment ago.
     enqueue_board_check(boards, tasks, board.id)
     return RedirectResponse("/boards?status=added", status_code=303)
+
+
+@router.post("/boards/check-all")
+def check_all(
+    request: Request,
+    session: SessionDep,
+    boards: BoardRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Queue a check of every watched board at once. See the module
+    docstring: this enqueues through `enqueue_all_board_checks`, which is
+    `enqueue_board_check` in a loop, so a board with a check already pending
+    or running is skipped exactly as it would be from its own "check now".
+
+    An empty board list queues nothing and reports that honestly rather than
+    pretending a check was requested.
+    """
+    board_ids = [board.id for board in boards.list_boards()]
+    queued, skipped = enqueue_all_board_checks(
+        boards, tasks, board_ids, now=dt.datetime.now(dt.UTC)
+    )
+    return RedirectResponse(
+        f"/boards?status=check_all&queued={queued}&skipped={skipped}", status_code=303
+    )
 
 
 @router.get("/boards/{board_id}")
