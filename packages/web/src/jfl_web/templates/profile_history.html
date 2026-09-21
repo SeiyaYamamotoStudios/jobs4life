@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Profile history — jobs4life{% endblock %}
+{% block content %}
+<h1>What you have said before</h1>
+<p class="lede">
+  Every save is kept, newest first. Nothing here is editable and nothing was
+  overwritten — the profile is append-only, so what you believed about yourself
+  in March is still readable.
+</p>
+
+{% if not versions %}
+<p class="note">Nothing saved yet. <a href="/profile">Start with whichever section is easiest.</a></p>
+{% else %}
+<ol class="profile-history">
+  {% for version in versions %}
+  <li class="profile-version">
+    <p class="profile-version-when">
+      <strong>{{ version.created_at | humanize_dt }}</strong>
+      {% if loop.first %}<span class="status-badge">Current</span>{% endif %}
+    </p>
+    <ul class="profile-version-summary">
+      <li>
+        {{ version.profile.constraints | length }} constraint{{ '' if version.profile.constraints | length == 1 else 's' }}
+      </li>
+      <li>
+        {% set tiered = version.profile.capabilities | selectattr('tier') | list %}
+        {{ version.profile.capabilities | length }} capabilit{{ 'y' if version.profile.capabilities | length == 1 else 'ies' }},
+        {{ tiered | length }} with a depth stated
+      </li>
+      <li>
+        {{ version.profile.disciplines.practises | length }} practised,
+        {{ version.profile.disciplines.not_ | length }} ruled out
+      </li>
+      <li>
+        {{ version.profile.objectives | length }} objective{{ '' if version.profile.objectives | length == 1 else 's' }}
+      </li>
+      <li>
+        {% if version.profile.self_assessment.depth_genuine or version.profile.self_assessment.recurring_gaps %}
+        self-assessment stated
+        {% else %}
+        self-assessment not stated
+        {% endif %}
+      </li>
+    </ul>
+    {% if version.profile.capabilities %}
+    <details>
+      <summary>What the capabilities said</summary>
+      <ul class="fact-list">
+        {% for capability in version.profile.capabilities %}
+        <li>
+          {{ capability.label }} —
+          {% if capability.tier %}{{ tier_names[capability.tier] }}{% else %}not stated{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+<p class="note"><a href="/profile">Back to your profile</a></p>
+{% endblock %}

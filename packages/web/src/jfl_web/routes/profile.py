@@ -1,160 +1,177 @@
-"""Profile setup -- PLAN.md slice B3a: a set of questions, every one optional.
+"""The profile: five sections, one append-only row -- `docs/profile-schema.md`.
 
-Scoring needs to know what the user wants and what they will not accept, and
-conversations cannot remember it across sessions. Every answer is the user's
-own words, stored verbatim, and every question can be left blank -- a skipped
-question is simply absent, never defaulted or guessed at.
+Replaces B3a's eighteen free-text questions, which production held zero rows of.
+The shape is the design doc's: constraints, capabilities, disciplines,
+objectives, and the self-assessment that is not a preference at all.
 
-Scope: questions 1-17 (`jfl_core.profile_questions`). 18 is the CV upload and
-lives on the corpus screens, not here.
+Four rules run through every route here, and they are the same rule seen from
+four sides.
 
-**Two of these answers are not preferences.** Questions 15 and 16 -- where your
-depth is genuine and where it is exposure only, and the gaps that keep coming
-up -- are claims about the person, so saving them also records the user's words
-in the corpus, verbatim, through `jfl_core.storage.user_corpus` and so through
-`jfl_core.corpus_source`: literally the same write path a confirmed CV fact
-takes, deliberately not a second one. Everything else on this
-page is a preference and must never reach the corpus; the page says which is
-which in plain words, because a tool that quietly turned an answer about what
-you want into evidence about what you have done would be doing the exact thing
-this project exists to oppose.
+**Nothing is guessed.** A section left blank stays blank; a field skipped reads
+"not stated". A constraint with a value but no must/nice/never stance is
+*refused*, not filed under a default -- "I said London" does not say whether
+London is a must, and that difference is the only reason to record it.
 
-Re-answering 15 or 16 *replaces* its corpus text rather than adding to it, and
-clearing the box clears the corpus text -- a statement the user has withdrawn
-must stop grounding claims. See `replace_section`.
+**Depth is answered, not rated.** A capability's tier comes from two or three
+behavioural questions -- did you do it yourself, did you run it in production,
+did you review others doing it -- and the page shows which answer produced which
+tier. A self-rating would measure confidence, and confidence is not what a CV
+claim gets measured against. `interest` is asked separately, because what
+someone is good at and what they want to keep doing are different questions and
+averaging them answers neither.
 
-**Q2 reuses the saved job filter instead of duplicating it.** "Which working
-arrangements will you consider?" is exactly what `/jobs`'s workplace preset
-(`job_filters.workplace_mode`) already answers in a structured, machine-usable
-form; a second tickbox set here would be a second place for that choice to go
-stale against the first. So this page shows the saved preset read-only, with a
-link to change it on `/jobs`, and Q2's own field is free text only -- for
-nuance the preset cannot express ("hybrid is fine at one day a fortnight, not
-one day a week"). Every other structured value (levels, comp floor, contract
-types, disciplines) has no existing home elsewhere, so those live here.
+**Evidence comes from the corpus, never from the browser.** Capability rows are
+pre-proposed from *confirmed* CV facts and carry those facts' span ids. A save
+re-derives them server-side; no span id is ever read out of a form. A capability
+with no evidence is shown as "claimed, not yet evidenced", which is what it is.
 
-**Per-section save.** Six POST routes, one per group of the page -- hard
-gates, discipline, objectives, trajectory, the place, tells -- plus two for
-ruled-out decisions (add, reopen). Saving one section never touches another's
-answers, and saving an all-blank section is a valid, no-op-if-unchanged save.
+**One section of this page is not a preference.** The self-assessment -- where
+your depth is genuine, and the gaps that keep coming up -- is a claim about the
+person, so saving it also writes the user's words to the corpus, verbatim,
+through the one existing write path (`jfl_core.storage.user_corpus`, and so
+`jfl_core.corpus_source`). Deliberately not a second path: two mechanisms for
+one kind of fact is how one sentence ends up with two span ids the claim gate
+reads as two pieces of evidence. The page says so in plain words, because a tool
+that quietly turned "I want more scope" into evidence about what you have done
+would be doing the exact thing this project exists to oppose.
+
+No model call anywhere in this module.
 
 Screens:
 
-  GET  /profile                      -- the whole page, grouped by section
-  POST /profile/hard-gates           -- questions 1, 3-8 (2 is read-only here)
-  POST /profile/discipline           -- question 9
-  POST /profile/objectives           -- questions 10/11, up to four slots
-  POST /profile/trajectory           -- question 12
-  POST /profile/place                -- question 13
-  POST /profile/tells                -- question 14
-  POST /profile/depth-and-gaps       -- questions 15/16, ALSO to the corpus
-  POST /profile/ruled-out            -- question 17: add an entry
-  POST /profile/ruled-out/{id}/reopen -- question 17: mark one reopened
+  GET  /profile                            -- the whole page, five sections
+  POST /profile/constraints                -- section 1, all eight kinds at once
+  POST /profile/capabilities               -- section 2, add a row by name
+  POST /profile/capabilities/{key}         -- section 2, tier one row
+  POST /profile/capabilities/{key}/remove  -- section 2, drop a row
+  POST /profile/disciplines                -- section 3
+  POST /profile/objectives                 -- section 4, four ranked slots
+  POST /profile/self-assessment            -- section 5, ALSO to the corpus
+  GET  /profile/history                    -- every saved version, newest first
 """
 
 from __future__ import annotations
 
-import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.profile_questions import (
-    CONTRACT_TYPE_CHOICES,
-    CORPUS_QUESTION_KEYS,
-    CORPUS_SECTIONS,
-    DEFAULT_COMP_CURRENCY,
-    DEFAULT_DISCIPLINE_CHOICES,
-    DEFERRED_QUESTIONS,
-    LEVEL_CHOICES,
-    MAX_OBJECTIVES,
-    OBJECTIVE_QUESTIONS,
-    QUESTIONS_BY_KEY,
-    RULED_OUT_QUESTION,
+from jfl_core.profile import (
+    Capability,
+    Profile,
+    seed_capabilities_from_facts,
 )
+from jfl_core.profile_questions import CORPUS_SECTIONS
 
 from jfl_web.deps import (
+    CandidateFactRepoDep,
     CsrfDep,
-    JobFilterRepoDep,
-    ProfileRepoDep,
+    ProfileStoreDep,
     SessionDep,
     UserCorpusRepoDep,
 )
-from jfl_web.jobfilter import WORKPLACE_MODE_NAMES, WORKPLACE_NAMES
 from jfl_web.profile import (
-    MAX_ANSWER_TEXT,
-    MAX_RULED_OUT_TEXT,
+    CAPABILITY_TIERS,
+    COMP_COPY,
+    CONSTRAINT_FIELDS,
+    INTEREST_CHOICES,
+    MAX_ITEMS,
+    MAX_LABEL,
+    MAX_NOTE,
+    MAX_OBJECTIVE_TEXT,
+    MAX_SELF_ASSESSMENT,
+    MAX_TEXT,
+    STANCE_CHOICES,
+    TIER_DESCRIPTIONS,
+    TIER_NAMES,
+    TIER_QUESTIONS,
     FormTooLongError,
-    InvalidCompFloorError,
+    InvalidAmountError,
+    InvalidChoiceError,
+    InvalidYearError,
+    MissingStanceError,
+    TooManyItemsError,
+    answers_for_tier,
     checked_text,
-    custom_disciplines,
-    parse_comp_floor,
-    parse_contract_types,
+    merge_capabilities,
+    parse_capability,
+    parse_constraints,
     parse_disciplines,
-    parse_levels,
-    selected_values,
+    parse_objectives,
 )
 from jfl_web.templating import render
 
 router = APIRouter()
 
-_RULED_OUT_NOT_FOUND = "No ruled-out entry found -- it may belong to another account."
+# Every way a submitted form can be wrong. All of them are the user's words not
+# fitting, or a form we did not render -- never a failure worth a 500.
+_FORM_ERRORS = (
+    FormTooLongError,
+    InvalidAmountError,
+    InvalidChoiceError,
+    InvalidYearError,
+    MissingStanceError,
+    TooManyItemsError,
+)
+
+_NO_SUCH_CAPABILITY = "No such capability -- it may belong to another account."
 
 
-def _objective_slots(profile: ProfileRepoDep) -> list[dict[str, Any]]:
-    """`MAX_OBJECTIVES` slots, in ordinal order, blank where the user has not
-    filled one in -- so the form always offers exactly four boxes regardless
-    of how many are in use.
+def _visible_capabilities(
+    store: ProfileStoreDep, facts: CandidateFactRepoDep
+) -> tuple[Profile, list[Capability], dict[str, str]]:
+    """The saved profile, the capability rows the page shows, and the text
+    behind each row's evidence.
+
+    Rows are everything saved, plus a proposal for every confirmed CV fact not
+    already covered. Seeds are re-derived on every request rather than written
+    into the profile on sight: a row the user has never looked at is not
+    something they have claimed, and writing it in would make the profile say it
+    was.
+
+    The evidence map turns span ids into the sentence the user actually
+    confirmed, because "evidence: 2 spans" tells nobody whether the evidence
+    supports the tier they are about to claim.
     """
-    by_ordinal = {o.ordinal: o for o in profile.list_objectives()}
-    return [
-        {
-            "ordinal": n,
-            "objective_text": (by_ordinal[n].objective_text if n in by_ordinal else ""),
-            "evidence_text": (by_ordinal[n].evidence_text if n in by_ordinal else ""),
-            # `list_objectives` already excludes a slot whose latest version
-            # is blank, so a slot present here always has a real save --
-            # `created_at` is that version's timestamp, kept as `updated_at`
-            # in the template's terms ("Saved <when>").
-            "updated_at": (by_ordinal[n].created_at if n in by_ordinal else None),
-        }
-        for n in range(1, MAX_OBJECTIVES + 1)
-    ]
+    confirmed = facts.list_facts(state="confirmed")
+    profile = store.current()
+    seeded = seed_capabilities_from_facts(confirmed)
+    evidence = {str(f.span_id): f.corpus_text for f in confirmed if f.span_id is not None}
+    return profile, merge_capabilities(profile.capabilities, seeded), evidence
 
 
 def _context(
-    request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     **extra: Any,
 ) -> dict[str, Any]:
-    answers = profile.get_current_answers()
-    disciplines_answer = answers.get("disciplines")
+    profile, capabilities, evidence_texts = _visible_capabilities(store, facts)
+    saved_keys = {c.key for c in profile.capabilities}
+    version = store.current_version()
     ctx: dict[str, Any] = {
         "session": session,
         "user": session.user,
-        "questions": QUESTIONS_BY_KEY,
-        "answers": answers,
-        "custom_disciplines": custom_disciplines(
-            disciplines_answer.structured if disciplines_answer else None
-        ),
-        "objectives": _objective_slots(profile),
-        "objective_questions": OBJECTIVE_QUESTIONS,
-        "ruled_out": profile.list_ruled_out(),
-        "ruled_out_question": RULED_OUT_QUESTION,
-        "saved_filter": filters.get_filter(),
-        "workplace_mode_names": WORKPLACE_MODE_NAMES,
-        "workplace_names": WORKPLACE_NAMES,
-        "level_choices": LEVEL_CHOICES,
-        "contract_type_choices": CONTRACT_TYPE_CHOICES,
-        "discipline_choices": DEFAULT_DISCIPLINE_CHOICES,
-        "default_currency": DEFAULT_COMP_CURRENCY,
-        "deferred_questions": DEFERRED_QUESTIONS,
-        "corpus_question_keys": CORPUS_QUESTION_KEYS,
-        "selected_values": selected_values,
-        "max_answer_text": MAX_ANSWER_TEXT,
-        "max_ruled_out_text": MAX_RULED_OUT_TEXT,
+        "profile": profile,
+        "capabilities": capabilities,
+        "saved_capability_keys": saved_keys,
+        "evidence_texts": evidence_texts,
+        "answers_for_tier": answers_for_tier,
+        "constraint_fields": CONSTRAINT_FIELDS,
+        "stance_choices": STANCE_CHOICES,
+        "comp_copy": COMP_COPY,
+        "tier_questions": TIER_QUESTIONS,
+        "tier_names": TIER_NAMES,
+        "tier_descriptions": TIER_DESCRIPTIONS,
+        "tiers": CAPABILITY_TIERS,
+        "interest_choices": INTEREST_CHOICES,
+        "saved_at": version.created_at if version is not None else None,
+        "max_note": MAX_NOTE,
+        "max_text": MAX_TEXT,
+        "max_label": MAX_LABEL,
+        "max_items": MAX_ITEMS,
+        "max_objective_text": MAX_OBJECTIVE_TEXT,
+        "max_self_assessment": MAX_SELF_ASSESSMENT,
     }
     ctx.update(extra)
     return ctx
@@ -163,111 +180,186 @@ def _context(
 def _error(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     message: str,
     status_code: int,
 ) -> Response:
     return render(
         request,
         "profile.html",
-        _context(request, session, profile, filters, error=message),
+        _context(session, store, facts, error=message),
         status_code=status_code,
     )
+
+
+def _saved(anchor: str) -> RedirectResponse:
+    """POST/redirect/GET, and the flag is a bare `saved=1` -- never the message
+    itself, which would be text from a query string rendered into a page.
+    """
+    return RedirectResponse(f"/profile?saved=1#{anchor}", status_code=303)
 
 
 @router.get("/profile")
 def profile_page(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
 ) -> Response:
     return render(
         request,
         "profile.html",
-        _context(request, session, profile, filters, saved="saved" in request.query_params),
+        _context(session, store, facts, saved="saved" in request.query_params),
     )
 
 
-@router.post("/profile/hard-gates")
-def save_hard_gates(
+@router.post("/profile/constraints")
+async def save_constraints(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
-    location_commute: Annotated[str, Form()] = "",
-    workplace_arrangements: Annotated[str, Form()] = "",
-    levels: Annotated[str, Form()] = "",
-    level: Annotated[list[str] | None, Form()] = None,
-    comp_floor: Annotated[str, Form()] = "",
-    comp_amount: Annotated[str, Form()] = "",
-    comp_currency: Annotated[str, Form()] = "",
-    contract_types: Annotated[str, Form()] = "",
-    contract_type: Annotated[list[str] | None, Form()] = None,
-    notice_period: Annotated[str, Form()] = "",
-    right_to_work: Annotated[str, Form()] = "",
-    categorical_no: Annotated[str, Form()] = "",
 ) -> Response:
+    """All eight constraint kinds in one save.
+
+    The raw form is read rather than declared field by field: eight kinds with a
+    stance, a note and a value apiece is twenty-odd parameters, and the shapes
+    differ per kind. `require_csrf` has already parsed and cached it.
+    """
+    form = await request.form()
+    submitted = {key: value for key, value in form.items() if isinstance(value, str)}
     try:
-        comp_structured = parse_comp_floor(comp_amount, comp_currency)
-        answers = {
-            "location_commute": (checked_text(location_commute), None),
-            "workplace_arrangements": (checked_text(workplace_arrangements), None),
-            "levels": (checked_text(levels), parse_levels(level or [])),
-            "comp_floor": (checked_text(comp_floor), comp_structured),
-            "contract_types": (
-                checked_text(contract_types),
-                parse_contract_types(contract_type or []),
-            ),
-            "notice_period": (checked_text(notice_period), None),
-            "right_to_work": (checked_text(right_to_work), None),
-            "categorical_no": (checked_text(categorical_no), None),
-        }
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-    except InvalidCompFloorError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-
-    profile.save_answers(answers)
-    return RedirectResponse("/profile?saved=1#hard-gates", status_code=303)
+        constraints = parse_constraints(submitted)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    profile = store.current()
+    store.save(profile.model_copy(update={"constraints": constraints}))
+    return _saved("constraints")
 
 
-@router.post("/profile/discipline")
-def save_discipline(
+@router.post("/profile/capabilities")
+def add_capability(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
-    disciplines: Annotated[str, Form()] = "",
-    discipline: Annotated[list[str] | None, Form()] = None,
-    discipline_custom: Annotated[str, Form()] = "",
+    label: Annotated[str, Form()] = "",
 ) -> Response:
+    """Add a capability the CVs did not propose. It arrives untiered and with no
+    evidence, which is exactly what it is: a claim, not a fact.
+    """
     try:
-        text_value = checked_text(disciplines)
-        custom_value = checked_text(discipline_custom, limit=200)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-
-    profile.save_answers(
-        {
-            "disciplines": (
-                text_value,
-                parse_disciplines(discipline or [], custom_value),
+        name = checked_text(label, MAX_LABEL)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    if not name:
+        return RedirectResponse("/profile#capabilities", status_code=303)
+    profile = store.current()
+    if profile.capability(Capability(label=name).key) is None:
+        store.save(
+            profile.model_copy(
+                update={"capabilities": [*profile.capabilities, Capability(label=name)]}
             )
-        }
-    )
-    return RedirectResponse("/profile?saved=1#discipline", status_code=303)
+        )
+    return _saved("capabilities")
+
+
+@router.post("/profile/capabilities/{key}")
+def save_capability(
+    request: Request,
+    key: str,
+    session: SessionDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
+    _csrf: CsrfDep,
+    hands_on: Annotated[str, Form()] = "",
+    production: Annotated[str, Form()] = "",
+    oversight: Annotated[str, Form()] = "",
+    interest: Annotated[str, Form()] = "",
+    last_used: Annotated[str, Form()] = "",
+) -> Response:
+    """Tier one row, from its behavioural answers.
+
+    The row is looked up among the *visible* capabilities -- saved ones and
+    seeds alike -- so tiering a CV-proposed row is the same click as tiering a
+    saved one, and the seed's evidence comes from the corpus rather than from
+    the form.
+    """
+    profile, visible, _evidence = _visible_capabilities(store, facts)
+    existing = next((c for c in visible if c.key == key), None)
+    if existing is None:
+        return _error(request, session, store, facts, _NO_SUCH_CAPABILITY, 404)
+    try:
+        updated = parse_capability(
+            existing,
+            hands_on=hands_on,
+            production=production,
+            oversight=oversight,
+            interest=interest,
+            last_used=last_used,
+        )
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    # In place where the row was already saved, appended where it was a seed --
+    # a row must not jump down the page because it was tiered.
+    saved = list(profile.capabilities)
+    position = next((i for i, c in enumerate(saved) if c.key == key), None)
+    if position is None:
+        saved.append(updated)
+    else:
+        saved[position] = updated
+    store.save(profile.model_copy(update={"capabilities": saved}))
+    return _saved("capabilities")
+
+
+@router.post("/profile/capabilities/{key}/remove")
+def remove_capability(
+    request: Request,
+    key: str,
+    session: SessionDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Drop a row from the profile. Nothing is really lost: the table is
+    append-only, so the version that held it is still readable, and a row seeded
+    from a confirmed fact simply comes back as a proposal.
+    """
+    profile = store.current()
+    remaining = [c for c in profile.capabilities if c.key != key]
+    if len(remaining) != len(profile.capabilities):
+        store.save(profile.model_copy(update={"capabilities": remaining}))
+    return _saved("capabilities")
+
+
+@router.post("/profile/disciplines")
+def save_disciplines(
+    request: Request,
+    session: SessionDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
+    _csrf: CsrfDep,
+    practises: Annotated[str, Form()] = "",
+    not_this: Annotated[str, Form()] = "",
+) -> Response:
+    try:
+        disciplines = parse_disciplines(practises, not_this)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    profile = store.current()
+    store.save(profile.model_copy(update={"disciplines": disciplines}))
+    return _saved("disciplines")
 
 
 @router.post("/profile/objectives")
 def save_objectives(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     _csrf: CsrfDep,
     objective_1: Annotated[str, Form()] = "",
     evidence_1: Annotated[str, Form()] = "",
@@ -278,9 +370,8 @@ def save_objectives(
     objective_4: Annotated[str, Form()] = "",
     evidence_4: Annotated[str, Form()] = "",
 ) -> Response:
-    """Four fixed slots (`MAX_OBJECTIVES`), not a dynamic list -- PLAN.md caps
-    objectives at four, so four named pairs are simpler than binding a
-    numbered field set.
+    """Four fixed ranked slots. Rank is the slot, so clearing the first does not
+    shuffle the others up underneath the user.
     """
     slots = [
         (1, objective_1, evidence_1),
@@ -289,132 +380,77 @@ def save_objectives(
         (4, objective_4, evidence_4),
     ]
     try:
-        checked_slots = [
-            (n, checked_text(obj_text), checked_text(ev_text)) for n, obj_text, ev_text in slots
-        ]
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-
-    for n, objective_text, evidence_text in checked_slots:
-        profile.save_objective(n, objective_text=objective_text, evidence_text=evidence_text)
-    return RedirectResponse("/profile?saved=1#objectives", status_code=303)
+        objectives = parse_objectives(slots)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    profile = store.current()
+    store.save(profile.model_copy(update={"objectives": objectives}))
+    return _saved("objectives")
 
 
-@router.post("/profile/trajectory")
-def save_trajectory(
+@router.post("/profile/self-assessment")
+def save_self_assessment(
     request: Request,
     session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
-    _csrf: CsrfDep,
-    trajectory: Annotated[str, Form()] = "",
-) -> Response:
-    try:
-        text_value = checked_text(trajectory)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-    profile.save_answers({"trajectory": (text_value, None)})
-    return RedirectResponse("/profile?saved=1#trajectory", status_code=303)
-
-
-@router.post("/profile/place")
-def save_place(
-    request: Request,
-    session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
-    _csrf: CsrfDep,
-    employer_deal_breakers: Annotated[str, Form()] = "",
-) -> Response:
-    try:
-        text_value = checked_text(employer_deal_breakers)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-    profile.save_answers({"employer_deal_breakers": (text_value, None)})
-    return RedirectResponse("/profile?saved=1#place", status_code=303)
-
-
-@router.post("/profile/tells")
-def save_tells(
-    request: Request,
-    session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
-    _csrf: CsrfDep,
-    warning_signs: Annotated[str, Form()] = "",
-) -> Response:
-    try:
-        text_value = checked_text(warning_signs)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-    profile.save_answers({"warning_signs": (text_value, None)})
-    return RedirectResponse("/profile?saved=1#tells", status_code=303)
-
-
-@router.post("/profile/ruled-out")
-def add_ruled_out(
-    request: Request,
-    session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
-    _csrf: CsrfDep,
-    decision_text: Annotated[str, Form()] = "",
-) -> Response:
-    text_value = decision_text.strip()
-    if not text_value:
-        return RedirectResponse("/profile#ruled-out", status_code=303)
-    try:
-        checked = checked_text(text_value, limit=MAX_RULED_OUT_TEXT)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
-    profile.add_ruled_out(checked)
-    return RedirectResponse("/profile?saved=1#ruled-out", status_code=303)
-
-
-@router.post("/profile/ruled-out/{ruled_out_id}/reopen")
-def reopen_ruled_out(
-    request: Request,
-    ruled_out_id: uuid.UUID,
-    session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
-    _csrf: CsrfDep,
-) -> Response:
-    if profile.mark_reopened(ruled_out_id) is None:
-        return _error(request, session, profile, filters, _RULED_OUT_NOT_FOUND, 404)
-    return RedirectResponse("/profile?saved=1#ruled-out", status_code=303)
-
-
-@router.post("/profile/depth-and-gaps")
-def save_depth_and_gaps(
-    request: Request,
-    session: SessionDep,
-    profile: ProfileRepoDep,
-    filters: JobFilterRepoDep,
+    store: ProfileStoreDep,
+    facts: CandidateFactRepoDep,
     corpus: UserCorpusRepoDep,
     _csrf: CsrfDep,
     depth_genuine: Annotated[str, Form()] = "",
     recurring_gaps: Annotated[str, Form()] = "",
 ) -> Response:
-    """Questions 15 and 16 -- the only answers on this page that also become
-    corpus text.
+    """The one section of this page that also becomes corpus text.
 
-    Two writes, one transaction (`db_conn` owns the boundary): the versioned
-    answer, so what the user said and when stays readable, and the corpus
-    statement, so scoring and drafting can actually use it. `replace_section`
+    Two writes, one transaction (`db_conn` owns the boundary): the profile
+    version, so what the user said and when stays readable, and the corpus
+    statement, so scoring and drafting can actually cite it. `replace_section`
     rather than an append, so re-answering supersedes the earlier statement
-    instead of leaving both live, and an emptied box clears the section.
+    instead of leaving both live, and an emptied box clears the section -- a
+    statement the user has withdrawn must stop grounding claims.
 
-    No model call anywhere in this path; the text is stored exactly as typed.
+    Stored exactly as typed. No model is on this path.
     """
     try:
-        depth_value = checked_text(depth_genuine)
-        gaps_value = checked_text(recurring_gaps)
-    except FormTooLongError as exc:
-        return _error(request, session, profile, filters, str(exc), 400)
+        depth = checked_text(depth_genuine, MAX_SELF_ASSESSMENT)
+        gaps = checked_text(recurring_gaps, MAX_SELF_ASSESSMENT)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
 
-    answers = {"depth_genuine": depth_value, "recurring_gaps": gaps_value}
-    profile.save_answers({key: (value, None) for key, value in answers.items()})
-    for key in CORPUS_QUESTION_KEYS:
-        corpus.replace_section(CORPUS_SECTIONS[key], [answers[key]])
-    return RedirectResponse("/profile?saved=1#depth-and-gaps", status_code=303)
+    profile = store.current()
+    store.save(
+        profile.model_copy(
+            update={
+                "self_assessment": profile.self_assessment.model_copy(
+                    update={"depth_genuine": depth, "recurring_gaps": gaps}
+                )
+            }
+        )
+    )
+    written = {"depth_genuine": depth, "recurring_gaps": gaps}
+    for question_key, section in CORPUS_SECTIONS.items():
+        corpus.replace_section(section, [written[question_key]])
+    return _saved("self-assessment")
+
+
+@router.get("/profile/history")
+def profile_history(
+    request: Request,
+    session: SessionDep,
+    store: ProfileStoreDep,
+) -> Response:
+    """Every saved version, newest first. Read-only.
+
+    The table is append-only, so this costs nothing to offer and answers "what
+    did I believe about myself in March" -- which is worth having in a tool whose
+    subject is how a claim drifts from what was true.
+    """
+    return render(
+        request,
+        "profile_history.html",
+        {
+            "session": session,
+            "user": session.user,
+            "versions": store.history(),
+            "tier_names": TIER_NAMES,
+        },
+    )

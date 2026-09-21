@@ -1456,6 +1456,34 @@ profile_ruled_out = Table(
 )
 
 # --------------------------------------------------------------------------
+# The profile as redesigned on 2026-09-21 -- `docs/profile-schema.md`. One row
+# per save, the current profile being the latest; the three tables above are
+# what it replaces.
+#
+# `data` is JSONB and `jfl_core.profile.Profile` is its only write path. That is
+# a deliberate, documented weakening: a CHECK constraint cannot reach inside
+# JSONB, so the value-list drift guard that protects every other closed set in
+# this schema does not apply here. See the design doc's "What this costs us".
+# --------------------------------------------------------------------------
+profiles = Table(
+    "profiles",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    # Bumped when `Profile`'s shape changes incompatibly, so an old row can be
+    # read as what it was rather than mis-read as what the code now expects.
+    Column("schema_version", Integer, nullable=False, server_default=text("1")),
+    Column("data", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # `clock_timestamp()`, not `now()` -- same reasoning as
+    # `profile_answers.created_at`: two saves in one transaction (one section
+    # after another) must not tie, because the latest row *is* the profile.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    Index("ix_profiles_user_id_created_at", "user_id", "created_at"),
+)
+
+# --------------------------------------------------------------------------
 # CV onboarding (PLAN.md B6, redesigned 2026-09-18): candidate facts a model
 # proposed from an uploaded CV, each awaiting the user's confirmation.
 #

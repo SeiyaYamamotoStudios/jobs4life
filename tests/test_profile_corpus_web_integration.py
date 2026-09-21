@@ -1,4 +1,4 @@
-"""Profile questions 15 and 16 reach the corpus. Nothing else on /profile does.
+"""The profile's self-assessment reaches the corpus. Nothing else on it does.
 
 Marked `integration`; needs `docker compose up -d` and `alembic upgrade head`.
 Same stub Google provider and sign-in helper as `test_profile_web_integration.py`.
@@ -9,9 +9,14 @@ The distinction this file defends is the reason the two questions are on that
 page at all. Everything else there is a **preference**: what the user wants, what
 they will not accept. Those must never become evidence -- a tool that quietly
 turned "I want more scope" into a corpus fact would be citing an aspiration back
-at its author as though it were something they had done. 15 and 16 are
-**claims about the person**, so they are stored verbatim, in the corpus, and are
-cited.
+at its author as though it were something they had done. Questions 15 and 16 --
+where your depth is genuine, and the gaps that keep coming up -- are **claims
+about the person**, so they are stored verbatim, in the corpus, and are cited.
+
+The section keys are still `jfl_core.profile_questions.CORPUS_SECTIONS`, and
+deliberately: the shape of the page changed on 2026-09-21, but the corpus
+section a statement is filed under did not, so a user who answered under the old
+page has their statement superseded rather than duplicated.
 """
 
 from __future__ import annotations
@@ -150,20 +155,20 @@ DEPTH = "Deep in JVM platform work. Kubernetes is exposure only -- I have never 
 GAPS = "Terraform keeps coming up and I have only read it."
 
 
-# -- 15 and 16 do reach the corpus -------------------------------------------
+# -- the self-assessment does reach the corpus --------------------------------
 
 
-def test_depth_and_gaps_are_recorded_in_the_corpus_verbatim(
+def test_the_self_assessment_is_recorded_in_the_corpus_verbatim(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs, engine)
-    response = post(client, "/profile/depth-and-gaps", depth_genuine=DEPTH, recurring_gaps=GAPS)
+    response = post(client, "/profile/self-assessment", depth_genuine=DEPTH, recurring_gaps=GAPS)
     assert response.status_code == 303
 
     assert sorted(live_spans(engine, user_id)) == sorted(
         [(CORPUS_SECTIONS["depth_genuine"], DEPTH), (CORPUS_SECTIONS["recurring_gaps"], GAPS)]
     )
-    # And they are still profile answers, rendered back on the page.
+    # And it is still on the profile, rendered back on the page.
     assert DEPTH in client.get("/profile").text
 
 
@@ -171,12 +176,14 @@ def test_the_page_says_which_answers_become_corpus(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     """A user cannot consent to something the page does not tell them. The
-    corpus-bound section has to be marked as such in plain words.
+    corpus-bound section has to be marked as such in plain words, and the rest
+    of the page has to say that it is not.
     """
     sign_in(client, google, subs, engine)
     page = client.get("/profile").text
-    assert 'id="depth-and-gaps"' in page
+    assert 'id="self-assessment"' in page
     assert "corpus" in page.lower()
+    assert "not preferences" in page
 
 
 def test_re_answering_supersedes_the_earlier_statement(
@@ -186,8 +193,8 @@ def test_re_answering_supersedes_the_earlier_statement(
     retired, not deleted, so anything already citing it still resolves.
     """
     user_id = sign_in(client, google, subs, engine)
-    post(client, "/profile/depth-and-gaps", depth_genuine=DEPTH)
-    post(client, "/profile/depth-and-gaps", depth_genuine="Actually my depth is in data.")
+    post(client, "/profile/self-assessment", depth_genuine=DEPTH)
+    post(client, "/profile/self-assessment", depth_genuine="Actually my depth is in data.")
 
     live = live_spans(engine, user_id)
     assert live == [(CORPUS_SECTIONS["depth_genuine"], "Actually my depth is in data.")]
@@ -205,18 +212,18 @@ def test_clearing_the_answer_clears_the_corpus_text(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs, engine)
-    post(client, "/profile/depth-and-gaps", depth_genuine=DEPTH, recurring_gaps=GAPS)
-    post(client, "/profile/depth-and-gaps", depth_genuine="", recurring_gaps=GAPS)
+    post(client, "/profile/self-assessment", depth_genuine=DEPTH, recurring_gaps=GAPS)
+    post(client, "/profile/self-assessment", depth_genuine="", recurring_gaps=GAPS)
 
     assert live_spans(engine, user_id) == [(CORPUS_SECTIONS["recurring_gaps"], GAPS)]
 
 
-def test_saving_depth_and_gaps_requires_csrf(
+def test_saving_the_self_assessment_requires_csrf(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs, engine)
     response = client.post(
-        "/profile/depth-and-gaps", data={"csrf_token": "wrong", "depth_genuine": DEPTH}
+        "/profile/self-assessment", data={"csrf_token": "wrong", "depth_genuine": DEPTH}
     )
     assert response.status_code == 403
     assert live_spans(engine, user_id) == []
@@ -225,7 +232,7 @@ def test_saving_depth_and_gaps_requires_csrf(
 # -- everything else on the page does not -------------------------------------
 
 
-def test_no_other_profile_answer_reaches_the_corpus(
+def test_no_constraint_or_preference_reaches_the_corpus(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     """Every other section of /profile, saved with real text, leaves the corpus
@@ -236,29 +243,34 @@ def test_no_other_profile_answer_reaches_the_corpus(
 
     post(
         client,
-        "/profile/hard-gates",
-        location_commute="London, one office day a month",
-        levels="EM or a small step up",
-        comp_floor="Base plus bonus",
-        notice_period="One month",
-        right_to_work="British citizen",
-        categorical_no="No on-call rota of one",
+        "/profile/constraints",
+        **{
+            "stance-location": "must",
+            "places-location": "London",
+            "note-location": "One office day a month at most",
+            "stance-comp_floor": "must",
+            "comp-guaranteed": "120000",
+            "stance-categorical_no": "never",
+            "text-categorical_no": "No on-call rota of one",
+        },
     )
-    post(client, "/profile/discipline", disciplines="Platform, not frontend")
+    post(client, "/profile/capabilities", label="Running a platform group")
+    post(
+        client,
+        "/profile/disciplines",
+        practises="platform engineering",
+        not_this="frontend",
+    )
     post(
         client,
         "/profile/objectives",
         objective_1="More scope",
         evidence_1="An org of 40+",
     )
-    post(client, "/profile/trajectory", trajectory="Director inside two years")
-    post(client, "/profile/place", employer_deal_breakers="No PE-owned employers")
-    post(client, "/profile/tells", warning_signs="'Wear many hats'")
-    post(client, "/profile/ruled-out", decision_text="Not considering Acme again")
 
     assert live_spans(engine, user_id) == []
 
     # ...and the page really did save them, so this is not passing by accident.
     page = client.get("/profile").text
-    assert "Director inside two years" in page
-    assert "No PE-owned employers" in page
+    assert "One office day a month at most" in page
+    assert "Running a platform group" in page
