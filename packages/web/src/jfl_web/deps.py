@@ -32,6 +32,9 @@ from jfl_core.storage.postgres import (
     PostgresRunRepository,
 )
 from jfl_core.storage.profile import PostgresProfileRepository
+from jfl_core.storage.profiles import (
+    PostgresProfileRepository as PostgresProfileStore,  # the 2026-09-21 shape
+)
 from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
@@ -198,6 +201,19 @@ def profile_repo(session: SessionDep, conn: ConnDep) -> PostgresProfileRepositor
 
 
 ProfileRepoDep = Annotated[PostgresProfileRepository, Depends(profile_repo)]
+
+
+def profile_store(session: SessionDep, conn: ConnDep) -> PostgresProfileStore:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    The profile as redesigned on 2026-09-21 -- one append-only row per save
+    (`docs/profile-schema.md`). It sits beside `profile_repo` above, which still
+    serves the scoring path's read of the older B3a tables; nothing writes both.
+    """
+    return PostgresProfileStore(conn, session.user.id)
+
+
+ProfileStoreDep = Annotated[PostgresProfileStore, Depends(profile_store)]
 
 
 def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSuggestionRepository:

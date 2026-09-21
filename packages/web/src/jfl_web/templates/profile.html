@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Profile — jobs4life{% endblock %}
+{% block content %}
+<h1>Profile</h1>
+<p class="lede">
+  What you will and will not take, what you can actually do, and what a move is
+  for. Every field is optional — anything you skip stays <em>not stated</em>,
+  never guessed at. Nothing on this page calls a model.
+</p>
+<p class="note">
+  Four of the five sections are <strong>preferences</strong>: they decide whether
+  a role suits you and are never treated as evidence about your career. The
+  fifth, <a href="#self-assessment">how you would put your own depth</a>, is a
+  claim about you — so it is recorded in your corpus, in your words, and can be
+  cited. That section says so again where you type it.
+</p>
+
+{% if saved %}<p class="ok" role="status">Saved.</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<p class="note profile-versions">
+  {% if saved_at %}Last saved {{ saved_at | humanize_dt }}.{% else %}Nothing saved yet.{% endif %}
+  Every save is kept — <a href="/profile/history">see what you have said before</a>.
+</p>
+
+{# -- 1. constraints ------------------------------------------------------ #}
+<section id="constraints">
+  <h2>What you will and will not take</h2>
+  <p class="note">
+    Each one is a <strong>must</strong>, a <strong>nice to have</strong> or a
+    <strong>never</strong>. A "never" carries the same weight as a "must" here:
+    ruling something out is as much a decision as asking for it. Leave a stance
+    unchosen and that constraint is simply not recorded — but anything you type
+    needs a stance, because a place or a figure on its own does not say whether
+    it is a line or a preference.
+  </p>
+  <form method="post" action="/profile/constraints">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    {% for field in constraint_fields %}
+    {% set current = profile.constraint(field.kind) %}
+    <fieldset class="constraint" id="constraint-{{ field.kind }}">
+      <legend>{{ field.title }}</legend>
+      <p class="note">{{ field.prompt }}</p>
+
+      <label for="stance-{{ field.kind }}">Stance</label>
+      <select id="stance-{{ field.kind }}" name="stance-{{ field.kind }}">
+        <option value="" {% if not current %}selected{% endif %}>Not stated</option>
+        {% for value, name in stance_choices %}
+        <option value="{{ value }}" {% if current and current.stance == value %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+
+      {% if field.value_kind == "places" %}
+      <label for="places-{{ field.kind }}">Where, best first — one per line</label>
+      <p class="note">
+        The order is the ranking: first line is first choice. Up to {{ max_items }}.
+      </p>
+      <textarea id="places-{{ field.kind }}" name="places-{{ field.kind }}" rows="3"
+                placeholder="{{ field.placeholder }}">{{ (current.value.get('places', []) if current else []) | join('\n') }}</textarea>
+
+      {% elif field.value_kind == "comp" %}
+      <p class="note">{{ comp_copy }}</p>
+      <div class="filter-fields">
+        <div>
+          <label for="comp-guaranteed">Guaranteed</label>
+          <input type="text" id="comp-guaranteed" name="comp-guaranteed" inputmode="numeric"
+                 placeholder="120000"
+                 value="{{ current.value.get('guaranteed', '') if current else '' }}">
+          <p class="note">Base and anything contractually owed.</p>
+        </div>
+        <div>
+          <label for="comp-headline">Headline</label>
+          <input type="text" id="comp-headline" name="comp-headline" inputmode="numeric"
+                 placeholder="145000"
+                 value="{{ current.value.get('headline', '') if current else '' }}">
+          <p class="note">The number an advert would print, bonus and equity included.</p>
+        </div>
+        <div>
+          <label for="comp-ccy">Currency</label>
+          <input type="text" id="comp-ccy" name="comp-ccy" maxlength="8"
+                 value="{{ current.value.get('ccy', 'GBP') if current else 'GBP' }}">
+        </div>
+      </div>
+
+      {% else %}
+      <label for="text-{{ field.kind }}">In your words</label>
+      <textarea id="text-{{ field.kind }}" name="text-{{ field.kind }}" rows="2"
+                maxlength="{{ max_text }}"
+                placeholder="{{ field.placeholder }}">{{ current.value.get('text', '') if current else '' }}</textarea>
+      {% endif %}
+
+      <label for="note-{{ field.kind }}">Anything else about this one</label>
+      <textarea id="note-{{ field.kind }}" name="note-{{ field.kind }}" rows="2"
+                maxlength="{{ max_note }}">{{ current.note if current else '' }}</textarea>
+      <p class="note">Stored exactly as you write it.</p>
+    </fieldset>
+    {% endfor %}
+    <button type="submit">Save what you will and will not take</button>
+  </form>
+</section>
+
+{# -- 2. capabilities ----------------------------------------------------- #}
+<section id="capabilities">
+  <h2>What you can actually do</h2>
+  <p class="note">
+    Rows come from the CV facts you have already confirmed. Each one asks two or
+    three questions about what you <em>did</em>, not how good you feel you are —
+    a self-rating measures confidence, and confidence is not what a claim gets
+    measured against. How much you want to keep doing it is asked separately,
+    because depth and appetite are different questions and averaging them
+    answers neither.
+  </p>
+
+  {% if not capabilities %}
+  <p class="note">
+    Nothing here yet. Rows appear as you confirm facts on
+    <a href="/corpus/facts">your CV facts</a>, or you can name one yourself below.
+  </p>
+  {% endif %}
+
+  {% for capability in capabilities %}
+  <div class="capability" id="capability-{{ capability.key }}">
+    <div class="capability-head">
+      <h3>{{ capability.label }}</h3>
+      <span class="capability-tier">
+        {% if capability.tier %}{{ tier_names[capability.tier] }}{% else %}Not stated{% endif %}
+      </span>
+    </div>
+    <p class="note">
+      {% if capability.tier %}{{ tier_descriptions[capability.tier] }}{% else %}
+      Answer the questions below and the depth follows from them.{% endif %}
+      {% if capability.key not in saved_capability_keys %}
+      Proposed from a fact you confirmed — nothing is recorded for it until you save it.
+      {% endif %}
+    </p>
+
+    {% if capability.evidence %}
+    <details class="capability-evidence">
+      <summary>Evidence — {{ capability.evidence | length }} confirmed fact{{ '' if capability.evidence | length == 1 else 's' }}</summary>
+      <ul class="fact-list">
+        {% for span_id in capability.evidence %}
+        <li><q>{{ evidence_texts.get(span_id | string, 'A fact you confirmed earlier.') }}</q></li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% else %}
+    <p class="note capability-unevidenced">Claimed, not yet evidenced.</p>
+    {% endif %}
+
+    <form method="post" action="/profile/capabilities/{{ capability.key }}">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      {% set answers = answers_for_tier(capability.tier) %}
+      {% for question in tier_questions %}
+      <fieldset class="capability-question">
+        <legend>{{ question.wording }}</legend>
+        <label class="inline">
+          <input type="radio" name="{{ question.key }}" value="yes"
+                 {% if answers[question.key] is sameas true %}checked{% endif %}> Yes
+        </label>
+        <label class="inline">
+          <input type="radio" name="{{ question.key }}" value="no"
+                 {% if answers[question.key] is sameas false %}checked{% endif %}> No
+        </label>
+        <p class="note">Counts {{ question.decides_when }}.</p>
+      </fieldset>
+      {% endfor %}
+
+      <label for="interest-{{ capability.key }}">Do you want to keep doing this?</label>
+      <select id="interest-{{ capability.key }}" name="interest">
+        <option value="" {% if not capability.interest %}selected{% endif %}>Not stated</option>
+        {% for value, name in interest_choices %}
+        <option value="{{ value }}" {% if capability.interest == value %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="last-used-{{ capability.key }}">Last used (year, optional)</label>
+      <input type="text" id="last-used-{{ capability.key }}" name="last_used" inputmode="numeric"
+             maxlength="4" value="{{ capability.last_used or '' }}">
+
+      <button type="submit">Save this one</button>
+    </form>
+    {% if capability.key in saved_capability_keys %}
+    <form method="post" action="/profile/capabilities/{{ capability.key }}/remove"
+          class="capability-remove">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="link">Take this row off the profile</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <details class="add-capability">
+    <summary>Add something your CVs do not mention</summary>
+    <p class="note">
+      It arrives with no evidence behind it, and says so, until a confirmed fact
+      backs it up.
+    </p>
+    <form method="post" action="/profile/capabilities">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <label for="capability-label">What is it?</label>
+      <input type="text" id="capability-label" name="label" maxlength="{{ max_label }}"
+             placeholder="Incident command">
+      <button type="submit">Add it</button>
+    </form>
+  </details>
+</section>
+
+{# -- 3. disciplines ------------------------------------------------------ #}
+<section id="disciplines">
+  <h2>What you practise</h2>
+  <p class="note">
+    What you actually do, as distinct from what employers called you. Ranked:
+    the first line is what you practise most. The "not this" list matters as
+    much — without it the same job title at two employers reads as the same job.
+  </p>
+  <form method="post" action="/profile/disciplines">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="practises">You practise — best first, one per line</label>
+    <textarea id="practises" name="practises" rows="4"
+              placeholder="engineering management&#10;platform engineering">{{ profile.disciplines.practises | join('\n') }}</textarea>
+    <label for="not_this">Not this — one per line</label>
+    <textarea id="not_this" name="not_this" rows="3"
+              placeholder="frontend&#10;pre-sales">{{ profile.disciplines.not_ | join('\n') }}</textarea>
+    <p class="note">Up to {{ max_items }} entries each. Stored exactly as you write them.</p>
+    <button type="submit">Save what you practise</button>
+  </form>
+</section>
+
+{# -- 4. objectives ------------------------------------------------------- #}
+<section id="objectives">
+  <h2>What this move is for</h2>
+  <p class="note">
+    Up to four, <strong>ranked and never weighted</strong>. Rank 1 is not "worth
+    40%" — the objectives are reported separately against a job and never blended
+    into one number, because blending hides the trade-off that is the whole
+    reason to look. Each one asks what would actually show a role delivers it.
+  </p>
+  <form method="post" action="/profile/objectives">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    {% for rank in range(1, 5) %}
+    {% set objective = profile.objective(rank) %}
+    <fieldset class="objective">
+      <legend>{{ rank }}</legend>
+      <label for="objective_{{ rank }}">What the move is for</label>
+      <textarea id="objective_{{ rank }}" name="objective_{{ rank }}" rows="2"
+                maxlength="{{ max_objective_text }}">{{ objective.text if objective else '' }}</textarea>
+      <label for="evidence_{{ rank }}">What would show a role delivers this</label>
+      <textarea id="evidence_{{ rank }}" name="evidence_{{ rank }}" rows="2"
+                maxlength="{{ max_objective_text }}">{{ objective.evidence_of_delivery if objective else '' }}</textarea>
+    </fieldset>
+    {% endfor %}
+    <p class="note">Clearing a slot leaves the others where they are.</p>
+    <button type="submit">Save what this move is for</button>
+  </form>
+</section>
+
+{# -- 5. self-assessment: the one section that reaches the corpus --------- #}
+<section id="self-assessment">
+  <h2>How you would put your own depth</h2>
+  <p class="note">
+    <strong>These two are not preferences, and they do not stay on this page.</strong>
+    Everything above records what you want; these record what is true about you,
+    so they are written into your corpus in your own words and can be cited as
+    evidence — the same path a CV fact takes once you confirm it. Rewriting them
+    replaces what was there; emptying a box removes it, and it stops grounding
+    anything.
+  </p>
+  <form method="post" action="/profile/self-assessment">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="depth_genuine">Where is your depth genuine, and where is it exposure only?</label>
+    <textarea id="depth_genuine" name="depth_genuine" rows="4"
+              maxlength="{{ max_self_assessment }}">{{ profile.self_assessment.depth_genuine }}</textarea>
+    <label for="recurring_gaps">Which gaps keep coming up?</label>
+    <textarea id="recurring_gaps" name="recurring_gaps" rows="4"
+              maxlength="{{ max_self_assessment }}">{{ profile.self_assessment.recurring_gaps }}</textarea>
+    <p class="note">No model reads or rewrites this. It is stored exactly as typed.</p>
+    <button type="submit">Save and record in my corpus</button>
+  </form>
+</section>
+{% endblock %}

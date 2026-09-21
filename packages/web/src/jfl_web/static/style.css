@@ -694,3 +694,78 @@ ul.cv-roles li .note { display: block; }
 /* -- check all boards -- */
 .status-badge.status-checking { color: var(--accent); border-color: var(--accent); }
 .check-all-row { margin: 0.75rem 0 0.5rem; }
+
+/* -- profile -- */
+/* Five long forms on one page, so the work is separating them: each section is
+   a panel, each row inside it is ruled off, and the only colour used is the one
+   that says whether a capability is evidenced. */
+.profile-versions { margin-top: -0.25rem; }
+
+#constraints fieldset.constraint,
+#objectives fieldset.objective {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1.25rem;
+  margin: 0 0 0.9rem;
+}
+#constraints fieldset.constraint legend,
+#objectives fieldset.objective legend { font-size: 0.95rem; }
+#constraints textarea,
+#objectives textarea,
+#disciplines textarea { width: 100%; }
+#constraints select { margin-bottom: 0.75rem; }
+#constraints .note,
+#objectives .note { margin: 0.2rem 0 0.75rem; }
+
+.capability {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin: 0 0 0.9rem;
+}
+.capability-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.capability-head h3 { margin: 0; font-size: 1rem; }
+/* Depth is the row's headline, so it reads as a label rather than as prose --
+   but never as a colour: a tier is not a score and "absent" is not a failure. */
+.capability-tier {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.capability-evidence summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+/* The one place this page uses warning colour: a claim with nothing behind it
+   yet. Not an error -- most rows start here -- but it must not read as evidence. */
+.capability-unevidenced { color: var(--warn); }
+.capability fieldset.capability-question { margin: 0 0 0.6rem; }
+.capability fieldset.capability-question legend { font-weight: 600; font-size: 0.92rem; }
+.capability fieldset.capability-question .note { margin: 0.2rem 0 0; }
+/* Yes and No sit side by side: the base rule makes an inline label inside a
+   fieldset a full-width flex row, which turns two words into two lines. */
+.capability-question label.inline { display: inline-flex; }
+.capability-remove { margin-top: 0.4rem; }
+.capability select { margin-bottom: 0.75rem; }
+.add-capability summary { cursor: pointer; color: var(--accent); }
+.add-capability form { margin-top: 0.5rem; }
+
+.profile-history { list-style: none; margin: 1.25rem 0; padding: 0; }
+.profile-version {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1.25rem;
+  margin: 0 0 0.75rem;
+}
+.profile-version-when { margin: 0 0 0.4rem; }
+.profile-version-summary { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.9rem; }
+.profile-version details summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
