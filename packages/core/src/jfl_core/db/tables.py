@@ -669,7 +669,7 @@ application_events = Table(
 # `application_questions` is the question itself, written once. Every attempt
 # to answer it -- typed by the user and checked, or generated and gated -- is a
 # fresh row in `application_question_answers`, never an UPDATE to a previous
-# one: the same append-only rule `profile_answers` follows, and for the same
+# one: the same append-only rule `profiles` follows, and for the same
 # reason -- a tool whose whole claim is measuring distance from what someone
 # actually said must never let that record be silently edited out from under
 # them. `kind` says which path produced the row; `answer_text` is the user's
@@ -753,9 +753,9 @@ application_question_answers = Table(
     Column("model", Text),
     Column("trace_id", UUID(as_uuid=True)),
     # `clock_timestamp()`, not `now()` -- same reasoning as
-    # `profile_answers.created_at`: two versions of one question's answer
-    # written in the same transaction must still order correctly, since "the
-    # latest row" is what "the current answer" means.
+    # `profiles.created_at`: two versions written in the same transaction must
+    # still order correctly, since "the latest row" is what "the current
+    # answer" means.
     _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
     _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
     CheckConstraint(
@@ -1344,115 +1344,39 @@ title_suggestions = Table(
 )
 
 # --------------------------------------------------------------------------
-# Profile setup (PLAN.md slice B3a). Every value here is the user's own words
-# about what they want and will not accept -- verbatim, never grounding, and
-# never logged (comp and deal-breakers are sensitive). See
-# jfl_core.profile_questions for the question definitions and
-# jfl_core.storage.profile for how these three tables are read and written.
+# The profile (docs/profile-schema.md, 2026-09-21). One denormalised row per
+# save, append-only, latest wins -- replacing `profile_answers`,
+# `profile_objectives` and `profile_ruled_out`, which held the eighteen
+# free-text questions of PLAN.md B3a and zero rows in production.
+#
+# `data` is JSONB and therefore carries no CHECK constraint: every closed set
+# in it is guaranteed by `jfl_core.profile.Profile`, the only write path, and
+# by the test that pairs its Literals with what the screens offer. That is
+# weaker than a CHECK and was accepted deliberately (owner, 2026-09-21) as the
+# price of a shape we expect to change. Nothing here is logged -- comp floors
+# and deal-breakers are sensitive.
 # --------------------------------------------------------------------------
 
-# Mirrors jfl_core.profile_questions.QUESTION_KEYS and
-# models.ProfileQuestionKey. See test_value_lists_agree.py.
-_PROFILE_QUESTION_KEYS = (
-    "location_commute",
-    "workplace_arrangements",
-    "levels",
-    "comp_floor",
-    "contract_types",
-    "notice_period",
-    "right_to_work",
-    "categorical_no",
-    "disciplines",
-    "trajectory",
-    "employer_deal_breakers",
-    "warning_signs",
-    # Questions 15/16: answers that also become corpus spans. See
-    # jfl_core.profile_questions.CORPUS_QUESTION_KEYS.
-    "depth_genuine",
-    "recurring_gaps",
-)
-
-# Append-only: a new answer to the same question_key is a new row, never an
-# UPDATE, so "what the user said, when" survives a later change. There is
-# deliberately no unique constraint on (user_id, question_key) -- the current
-# value is the latest row, read back with DISTINCT ON in the repository.
-profile_answers = Table(
-    "profile_answers",
+profiles = Table(
+    "profiles",
     metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column(
         "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     ),
-    Column("question_key", Text, nullable=False),
-    Column("answer_text", Text, nullable=False, server_default=""),
-    # Question-specific shape; see jfl_core.models.ProfileAnswer. NULL for the
-    # eight questions that take free text only.
-    Column("structured", JSONB),
-    # `clock_timestamp()`, not `now()`: this is an append-only history table,
-    # and `now()` is transaction-start time -- two answers to the *same*
-    # question saved in one transaction would share one timestamp, making
-    # "the latest row" ambiguous exactly where it matters most. Every other
-    # timestamp in this schema uses `now()` because nothing else here orders
-    # same-transaction rows against each other for correctness.
+    # What shape `data` was written in. Written on every row so a later reader
+    # can tell rather than guess; no CHECK, because the set grows by one every
+    # time the model changes and a constraint would have to be migrated in
+    # lockstep with a value that is already only meaningful to Python.
+    Column("schema_version", Integer, nullable=False),
+    Column("data", JSONB, nullable=False),
+    # `clock_timestamp()`, not `now()`, for the reason the retired
+    # `profile_answers.created_at` gave and this table inherits: the current
+    # profile is *the latest row*, and `now()` is transaction-start time, so
+    # two saves in one transaction would tie and make "latest" ambiguous
+    # exactly where it decides what the user sees.
     _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
-    CheckConstraint(
-        "question_key in ('" + "','".join(_PROFILE_QUESTION_KEYS) + "')",
-        name="question_key",
-    ),
-    Index(
-        "ix_profile_answers_user_id_question_key_created_at",
-        "user_id",
-        "question_key",
-        "created_at",
-    ),
-)
-
-# Up to four objectives (questions 10/11). Append-only, same shape and
-# reasoning as `profile_answers`: a save to ordinal N is a new row, never an
-# UPDATE, so what the user once said an objective was is never lost -- see
-# jfl_core.models.ProfileObjective. There is deliberately no unique constraint
-# on (user_id, ordinal); the current version of a slot is its latest row,
-# read back with DISTINCT ON in the repository, exactly as for answers.
-profile_objectives = Table(
-    "profile_objectives",
-    metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    Column(
-        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    ),
-    Column("ordinal", Integer, nullable=False),
-    Column("objective_text", Text, nullable=False, server_default=""),
-    Column("evidence_text", Text, nullable=False, server_default=""),
-    # `clock_timestamp()`, not `now()` -- same reasoning as
-    # `profile_answers.created_at`: two saves to the same ordinal in one
-    # transaction must not tie.
-    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
-    CheckConstraint("ordinal between 1 and 4", name="ordinal_range"),
-    Index(
-        "ix_profile_objectives_user_id_ordinal_created_at",
-        "user_id",
-        "ordinal",
-        "created_at",
-    ),
-)
-
-# Question 17: dated and kept forever, never deleted. Reopening sets
-# `reopened_at` rather than removing the row, so a decision that gets
-# revisited is still on the record -- see jfl_core.models.ProfileRuledOut.
-profile_ruled_out = Table(
-    "profile_ruled_out",
-    metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    Column(
-        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    ),
-    Column("decision_text", Text, nullable=False),
-    # `clock_timestamp()`, same reasoning as `profile_answers.created_at`:
-    # entries added in the same transaction must still sort in the order they
-    # were added.
-    _ts("recorded_at", nullable=False, server_default=text("clock_timestamp()")),
-    _ts("reopened_at"),
-    Index("ix_profile_ruled_out_user_id_recorded_at", "user_id", "recorded_at"),
+    Index("ix_profiles_user_id_created_at", "user_id", text("created_at DESC")),
 )
 
 # --------------------------------------------------------------------------
@@ -1563,7 +1487,7 @@ application_scores = Table(
     Column("cost_usd", Numeric(12, 6)),
     # Ties this row to its `runs` rows -- cost attribution, not a foreign key.
     Column("trace_id", UUID(as_uuid=True)),
-    # `clock_timestamp()`, not `now()`, for the reason `profile_answers` gives:
+    # `clock_timestamp()`, not `now()`, for the reason `profiles` gives:
     # this is an append-only history table, `now()` is transaction-start time,
     # and two runs written in one transaction would share a timestamp, making
     # "the latest run" ambiguous exactly where the page reads it.

@@ -195,10 +195,11 @@ def _score_application(
             if job_id is None
             else PostgresJobRepository(conn).latest_coverage(ctx.user_id, job_id)
         )
-        profile = PostgresProfileRepository(conn, ctx.user_id)
-        answers = profile.get_current_answers()
-        objectives = profile.list_objectives()
-        ruled_out = profile.list_ruled_out()
+        # One read for the whole profile -- constraints, capabilities,
+        # disciplines, objectives and the self-assessment
+        # (docs/profile-schema.md). Empty for a user who has filled nothing in,
+        # never None, so there is no "has a profile?" branch here.
+        profile = PostgresProfileRepository(conn, ctx.user_id).current()
         # Unconfirmed, and therefore never evidence -- see the module docstring
         # and `jfl_core.storage.candidate_facts`.
         proposed = PostgresCandidateFactRepository(conn, ctx.user_id).list_facts(state="proposed")
@@ -244,9 +245,7 @@ def _score_application(
                 job=job,
                 requirements=requirements,
                 coverage=coverage,
-                answers=answers,
-                objectives=objectives,
-                ruled_out=ruled_out,
+                profile=profile,
                 proposed_facts=[
                     ProposedFactView(
                         fact_text=fact.fact_text,

@@ -54,7 +54,7 @@ from jfl_generate.prompts import (
     ScoreInputs,
     build_score_system_blocks,
     build_score_user_message,
-    unanswered_questions,
+    unfilled_sections,
 )
 from jfl_generate.schema import ScoreOutput
 
@@ -278,8 +278,8 @@ def build_result(parsed: ScoreOutput, inputs: ScoreInputs) -> ScoreResult:
         ],
         levers=_levers(parsed, inputs),
         not_stated=[
-            NotStated(question_key=q.key, wording=q.wording)
-            for q in unanswered_questions(inputs.answers)
+            NotStated(question_key=name, wording=wording)
+            for name, wording in unfilled_sections(inputs.profile)
         ],
     )
 
@@ -289,10 +289,11 @@ def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Object
 
     A verdict for an ordinal the user has no objective in is dropped rather
     than shown: the page would otherwise attribute an objective to them that
-    they never wrote. The objective's own text comes from the stored slot, not
-    from the response.
+    they never wrote. The objective's own text comes from the stored profile,
+    not from the response. `ordinal` here is the objective's `rank`, which is
+    what the stored result has always keyed verdicts by.
     """
-    by_ordinal = {o.ordinal: o for o in inputs.objectives}
+    by_ordinal = {o.rank: o for o in inputs.profile.objectives}
     seen: set[int] = set()
     verdicts: list[ObjectiveVerdict] = []
     for item in parsed.objective_verdicts:
@@ -303,7 +304,7 @@ def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[Object
         verdicts.append(
             ObjectiveVerdict(
                 ordinal=item.ordinal,
-                objective=objective.objective_text.strip(),
+                objective=objective.text.strip(),
                 verdict=item.verdict.strip(),
             )
         )

@@ -148,7 +148,7 @@ def test_create_answer_for_an_unknown_question_writes_nothing(
 def test_pressing_check_twice_creates_two_versions_never_overwriting_the_first(
     repo: PostgresApplicationQuestionRepository, alice_application: uuid.UUID
 ) -> None:
-    """The same rule `profile_answers` follows, for the same reason: a tool
+    """The same rule the profile follows, for the same reason: a tool
     whose whole claim is measuring distance from what someone actually said
     must never let that record be edited out from under them.
     """

@@ -91,7 +91,7 @@ _HEADER = f"# {TITLE}\n"
 
 # Where a statement with no section of its own goes. A fact confirmed against a
 # role is filed under the role's own label instead, and a profile answer under
-# its question's section (`jfl_core.profile_questions.CORPUS_SECTIONS`), so
+# its question's section (`jfl_core.profile.CORPUS_SECTIONS`), so
 # `section_path` carries the employer and title into the gate's view of the
 # corpus -- "Led a team of six" is a very different claim under one role than
 # under another, and the breadcrumb is what the gate sees.

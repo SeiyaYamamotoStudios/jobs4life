@@ -6,7 +6,7 @@ side by side, the page advises, it never prescribes) and NEXT.md's task 4.
 Two tables, one repository. `application_questions` holds the question text,
 written once. `application_question_answers` holds every *attempt* to answer
 it -- append-only, never an UPDATE to a previous row, the same rule
-`jfl_core.storage.profile` follows for `profile_answers` and for the same
+`jfl_core.storage.profile` follows for `profiles` and for the same
 reason: a tool whose whole claim is measuring distance from what someone
 actually said must never let that record be edited out from under them.
 Pressing "check my answer" or "draft one for me" a second time creates a new

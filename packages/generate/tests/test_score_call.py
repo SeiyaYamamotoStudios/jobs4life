@@ -20,11 +20,10 @@ from jfl_core.context import RequestContext
 from jfl_core.models import (
     Job,
     JobRequirement,
-    ProfileAnswer,
-    ProfileObjective,
     RequirementCoverage,
     RunRecord,
 )
+from jfl_core.profile import Objective, Profile
 from jfl_gate.pricing import MODEL
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import ProposedFactView, ScoreInputs
@@ -111,7 +110,6 @@ def _inputs(**kw: object) -> ScoreInputs:
                 evidence_note="Documented.",
             )
         ],
-        "answers": {},
         "now": NOW,
     }
     defaults.update(kw)
@@ -293,14 +291,8 @@ class TestTheCall:
 # --- mapping one response onto two stored scores -----------------------------
 
 
-def _objective(ordinal: int, what: str) -> ProfileObjective:
-    return ProfileObjective(
-        id=uuid.uuid4(),
-        ordinal=ordinal,
-        objective_text=what,
-        evidence_text="",
-        created_at=NOW,
-    )
+def _objective(rank: int, what: str) -> Objective:
+    return Objective(rank=rank, text=what)
 
 
 def _output(**kw: Any) -> ScoreOutput:
@@ -330,7 +322,7 @@ class TestBuildResult:
                 {"ordinal": 1, "verdict": "An EM role, so probably not."},
             ]
         )
-        result = build_result(output, _inputs(objectives=objectives))
+        result = build_result(output, _inputs(profile=Profile(objectives=objectives)))
         assert [(v.ordinal, v.objective) for v in result.objective_verdicts] == [
             (1, "Back to hands-on work"),
             (2, "Stop commuting"),
@@ -339,7 +331,9 @@ class TestBuildResult:
 
     def test_a_verdict_for_an_objective_the_user_never_wrote_is_dropped(self) -> None:
         output = _output(objective_verdicts=[{"ordinal": 4, "verdict": "Invented."}])
-        result = build_result(output, _inputs(objectives=[_objective(1, "Back to hands-on")]))
+        result = build_result(
+            output, _inputs(profile=Profile(objectives=[_objective(1, "Back to hands-on")]))
+        )
         assert result.objective_verdicts == []
 
     def test_a_lever_carries_the_stored_fact_verbatim(self) -> None:
@@ -374,16 +368,13 @@ class TestBuildResult:
         assert result.levers[0].would_move_to is None
         assert result.levers[0].note == "Covers it."
 
-    def test_unanswered_profile_questions_come_back_as_not_stated(self) -> None:
-        answers = {
-            "levels": ProfileAnswer(
-                id=uuid.uuid4(), question_key="levels", answer_text="EM", created_at=NOW
-            )
-        }
-        result = build_result(_output(), _inputs(answers=answers))
+    def test_unfilled_profile_sections_come_back_as_not_stated(self) -> None:
+        profile = Profile(objectives=[_objective(1, "Back to hands-on work")])
+        result = build_result(_output(), _inputs(profile=profile))
         keys = {n.question_key for n in result.not_stated}
-        assert "levels" not in keys
-        assert "comp_floor" in keys
+        assert "objectives" not in keys
+        assert "constraints" in keys
+        assert "capabilities" in keys
         assert all(n.wording for n in result.not_stated)
 
     def test_the_result_carries_no_combined_number(self) -> None:

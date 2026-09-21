@@ -10,8 +10,8 @@ duplicated.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
@@ -20,18 +20,10 @@ from jfl_core.models import (
     DraftKind,
     Job,
     JobRequirement,
-    ProfileAnswer,
-    ProfileObjective,
-    ProfileRuledOut,
     RequirementCoverage,
     Span,
 )
-from jfl_core.profile_questions import (
-    OBJECTIVE_QUESTIONS,
-    QUESTIONS,
-    RULED_OUT_QUESTION,
-    ProfileQuestion,
-)
+from jfl_core.profile import Profile
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -647,24 +639,24 @@ than desirable ones. Do not credit anything coverage does not evidence, and do n
 the unconfirmed CV claims listed in that message: those are handled by `levers` below.
 
 **want_it_score (1-10)** -- how well this job matches what this person has said they \
-want. Judge it against their profile answers, in this order: hard gates, discipline, each \
-objective separately, trajectory, signals about the employer, tells. Where an answer is \
-given as "{not_stated}", say so in your assessment and do NOT guess what they would have \
-said. An unanswered question narrows what you can conclude; it never raises or lowers the \
-score by assumption.
+want. Judge it against their profile, in this order: their constraints, their \
+disciplines, then each objective separately. Where anything is given as "{not_stated}", \
+say so in your assessment and do NOT guess what they would have said. An unfilled section \
+narrows what you can conclude; it never raises or lowers the score by assumption.
 
 **could_get_assessment** and **want_it_assessment** are one paragraph each, in plain \
 words, explaining that number: what drove it, and what is unknown. Write about the record \
 and the job, not about the person's worth.
 
-**hard_gate_breaches** -- one entry for every hard gate this ad breaks: location or \
-commute, working arrangement, the lowest package they would accept, contract type, notice \
-or start date, right to work or clearance, or anything they said they categorically will \
-not do. `gate` names which one; `breach` states in plain words what the ad does about it \
-("the ad is on-site in Manchester five days a week; they will travel to an office at most \
-one day a week"). State every breach even though the number already reflects it -- a gate \
-the ad breaks must never be folded silently into a score. Never invent one from a question \
-answered "{not_stated}", and return an empty list if the ad breaks none.
+**hard_gate_breaches** -- one entry for every constraint marked **must** or **never** \
+that this ad breaks: location, working arrangement, level, the lowest package they would \
+accept, contract type, notice or start date, right to work or clearance, or anything they \
+said they categorically will not do. A constraint marked **nice** is not a gate and never \
+belongs here. `gate` names which one; `breach` states in plain words what the ad does \
+about it ("the ad is on-site in Manchester five days a week; they will travel to an office \
+at most one day a week"). State every breach even though the number already reflects it -- \
+a gate the ad breaks must never be folded silently into a score. Never invent one from a \
+constraint given as "{not_stated}", and return an empty list if the ad breaks none.
 
 **objective_verdicts** -- one short verdict per objective listed, keyed by its `ordinal`, \
 each judged on its own evidence. Never merge two objectives into one verdict. Give a \
@@ -723,45 +715,90 @@ class ProposedFactView:
 class ScoreInputs:
     """Everything one scoring call is told, assembled by the caller.
 
-    `answers` is `PostgresProfileRepository.get_current_answers()` -- a key
-    absent from it means the question was never answered, which is rendered
-    "not stated" and never guessed at (PLAN.md B3a). `objectives` are the
-    in-use slots, each carried separately. `proposed_facts` are the
-    **unconfirmed** CV claims: they are not evidence and appear in the prompt
-    only so the model can name which of them would move the first number.
+    `profile` is `PostgresProfileRepository.current()` -- the whole thing in
+    one read (`docs/profile-schema.md`). An empty section means the user has
+    not filled it in, which is rendered "not stated" and never guessed at.
+    `proposed_facts` are the **unconfirmed** CV claims: they are not evidence
+    and appear in the prompt only so the model can name which of them would
+    move the first number.
     """
 
     job: Job
     requirements: Sequence[JobRequirement]
     coverage: Sequence[RequirementCoverage]
-    answers: Mapping[str, ProfileAnswer]
-    objectives: Sequence[ProfileObjective] = ()
-    ruled_out: Sequence[ProfileRuledOut] = ()
+    profile: Profile = field(default_factory=Profile)
     proposed_facts: Sequence[ProposedFactView] = ()
     now: datetime | None = None
 
 
-def unanswered_questions(answers: Mapping[str, ProfileAnswer]) -> list[ProfileQuestion]:
-    """The profile questions this user has not answered, in assessment order.
+# The profile sections a score can be argued from, with the wording shown back
+# to the user where one is empty. Keyed by the section name, which is what
+# `jfl_core.models.NotStated.question_key` carries (free `str` on purpose -- a
+# stored row written under an older name must still parse back).
+_PROFILE_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("constraints", "What you must have, would like, and will never take"),
+    ("capabilities", "What you can do, how deep it goes, and what you want more of"),
+    ("disciplines", "What you practise, and what you do not"),
+    ("objectives", "What this move is for, and what would show a role delivers it"),
+    (
+        "self_assessment",
+        "Where your depth is genuine, and the gaps that keep coming up",
+    ),
+)
 
-    An answer whose text is blank and whose structured value is empty counts as
-    unanswered: the storage layer keeps such a row to record that a previous
-    answer was cleared, and a cleared answer is not an answer.
+
+def unfilled_sections(profile: Profile) -> list[tuple[str, str]]:
+    """The profile sections this user has not filled in, as (name, wording).
+
+    An empty section is reported as "not stated" and never guessed at. The
+    result is what the score row's `not_stated` list is built from, which is
+    what makes an unfilled section visible on the page as a limit on the number
+    rather than as a silent absence.
     """
-    unanswered: list[ProfileQuestion] = []
-    for question in QUESTIONS:
-        answer = answers.get(question.key)
-        if answer is None or (not answer.answer_text.strip() and not answer.structured):
-            unanswered.append(question)
-    return unanswered
+    filled = {
+        "constraints": bool(profile.constraints),
+        "capabilities": bool(profile.capabilities),
+        "disciplines": bool(profile.disciplines.practises or profile.disciplines.not_practised),
+        "objectives": bool(profile.objectives),
+        "self_assessment": bool(
+            profile.self_assessment.depth_genuine.strip()
+            or profile.self_assessment.recurring_gaps.strip()
+        ),
+    }
+    return [(name, wording) for name, wording in _PROFILE_SECTIONS if not filled[name]]
 
 
-def _answer_line(question: ProfileQuestion, answer: ProfileAnswer | None) -> list[str]:
-    if answer is None or (not answer.answer_text.strip() and not answer.structured):
-        return [f"- {question.wording}", f"  {NOT_STATED}"]
-    lines = [f"- {question.wording}", f"  {answer.answer_text.strip() or NOT_STATED}"]
-    if answer.structured:
-        lines.append(f"  (structured: {json.dumps(answer.structured, sort_keys=True)})")
+def _constraint_lines(profile: Profile) -> list[str]:
+    if not profile.constraints:
+        return [NOT_STATED]
+    lines: list[str] = []
+    for constraint in profile.constraints:
+        lines.append(f"- [{constraint.stance}] {constraint.kind}")
+        if constraint.note.strip():
+            lines.append(f"  {constraint.note.strip()}")
+        if constraint.value:
+            lines.append(f"  (value: {json.dumps(constraint.value, sort_keys=True)})")
+    return lines
+
+
+def _capability_lines(profile: Profile) -> list[str]:
+    """Tier and interest are separate axes and are printed separately: what
+    someone is good at and what they want to keep doing are different
+    questions, and merging them is how a score credits depth nobody wants to
+    use again. An untiered row says so -- it is a claim the user has not yet
+    graded, never an assumed depth.
+    """
+    if not profile.capabilities:
+        return [NOT_STATED]
+    lines: list[str] = []
+    for capability in profile.capabilities:
+        parts = [f"depth: {capability.tier or NOT_STATED}"]
+        parts.append(f"interest: {capability.interest or NOT_STATED}")
+        if capability.last_used is not None:
+            parts.append(f"last used: {capability.last_used}")
+        if not capability.evidence:
+            parts.append("no corpus evidence recorded -- a claim, not a fact")
+        lines.append(f"- {capability.label} ({'; '.join(parts)})")
     return lines
 
 
@@ -799,34 +836,47 @@ def build_score_user_message(inputs: ScoreInputs) -> str:
         lines.append("(none extracted)")
     lines.append("")
 
-    lines.append("## What this person has said they want, in their own words")
-    for question in QUESTIONS:
-        lines.extend(_answer_line(question, inputs.answers.get(question.key)))
+    profile = inputs.profile
+
+    lines.append("## What this person must have, would like, and will never take")
+    lines.append(
+        "Each is marked must, nice or never. A `never` is a statement in its own "
+        "right, not the absence of a `must`."
+    )
+    lines.extend(_constraint_lines(profile))
+    lines.append("")
+
+    lines.append("## What they can do, and how deep it goes")
+    lines.extend(_capability_lines(profile))
+    lines.append("")
+
+    lines.append("## What they practise, and what they do not")
+    lines.append(f"- practises: {', '.join(profile.disciplines.practises) or NOT_STATED}")
+    lines.append(f"- not: {', '.join(profile.disciplines.not_practised) or NOT_STATED}")
     lines.append("")
 
     lines.append("## Objectives for this move, each to be judged on its own")
-    if inputs.objectives:
-        for objective in inputs.objectives:
-            lines.append(f"- ordinal {objective.ordinal}")
+    if profile.objectives:
+        for objective in sorted(profile.objectives, key=lambda o: o.rank):
+            lines.append(f"- ordinal {objective.rank}")
+            lines.append(f"  What is this move for? {objective.text.strip() or NOT_STATED}")
             lines.append(
-                f"  {OBJECTIVE_QUESTIONS.wording_what} "
-                f"{objective.objective_text.strip() or NOT_STATED}"
-            )
-            lines.append(
-                f"  {OBJECTIVE_QUESTIONS.wording_evidence} "
-                f"{objective.evidence_text.strip() or NOT_STATED}"
+                "  What would show a role delivers it? "
+                f"{objective.evidence_of_delivery.strip() or NOT_STATED}"
             )
     else:
         lines.append(NOT_STATED)
     lines.append("")
 
-    lines.append(f"## {RULED_OUT_QUESTION.wording}")
-    live_ruled_out = [r for r in inputs.ruled_out if r.reopened_at is None]
-    if live_ruled_out:
-        for entry in live_ruled_out:
-            lines.append(f"- {entry.decision_text} (recorded {entry.recorded_at.date()})")
-    else:
-        lines.append(NOT_STATED)
+    lines.append("## What they say about their own depth and gaps, in their own words")
+    lines.append(
+        "- Where is your depth genuine, and where is it exposure only?\n"
+        f"  {profile.self_assessment.depth_genuine.strip() or NOT_STATED}"
+    )
+    lines.append(
+        "- Gaps that keep coming up in roles you want\n"
+        f"  {profile.self_assessment.recurring_gaps.strip() or NOT_STATED}"
+    )
     lines.append("")
 
     lines.append("## Unconfirmed claims from this person's own CVs -- NOT evidence")

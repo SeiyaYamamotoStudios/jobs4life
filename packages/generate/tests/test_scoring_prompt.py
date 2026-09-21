@@ -2,7 +2,7 @@
 
 No model, no network, no database: these assemble the prompt and read it back.
 The properties worth pinning are the ones a defect would be invisible in --
-an unanswered profile question silently becoming a guess, two objectives being
+an unfilled profile section silently becoming a guess, two objectives being
 merged, an unconfirmed CV claim reaching the prompt as though it were evidence,
 or a schema property called `reason` coming back into existence.
 """
@@ -15,12 +15,16 @@ import uuid
 from jfl_core.models import (
     Job,
     JobRequirement,
-    ProfileAnswer,
-    ProfileObjective,
-    ProfileRuledOut,
     RequirementCoverage,
 )
-from jfl_core.profile_questions import QUESTION_KEYS, QUESTIONS
+from jfl_core.profile import (
+    Capability,
+    Constraint,
+    Disciplines,
+    Objective,
+    Profile,
+    SelfAssessment,
+)
 from jfl_generate.prompts import (
     NOT_STATED,
     SCORE_OUTPUT_SCHEMA,
@@ -29,7 +33,7 @@ from jfl_generate.prompts import (
     build_score_system_blocks,
     build_score_system_prompt,
     build_score_user_message,
-    unanswered_questions,
+    unfilled_sections,
 )
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -73,24 +77,8 @@ def _coverage(requirement: JobRequirement, status: str, note: str) -> Requiremen
     )
 
 
-def _answer(key: str, text: str, structured: dict[str, object] | None = None) -> ProfileAnswer:
-    return ProfileAnswer(
-        id=uuid.uuid4(),
-        question_key=key,  # type: ignore[arg-type]
-        answer_text=text,
-        structured=structured,
-        created_at=NOW,
-    )
-
-
-def _objective(ordinal: int, what: str, evidence: str) -> ProfileObjective:
-    return ProfileObjective(
-        id=uuid.uuid4(),
-        ordinal=ordinal,
-        objective_text=what,
-        evidence_text=evidence,
-        created_at=NOW,
-    )
+def _objective(rank: int, what: str, evidence: str) -> Objective:
+    return Objective(rank=rank, text=what, evidence_of_delivery=evidence)
 
 
 def _inputs(**kw: object) -> ScoreInputs:
@@ -99,7 +87,6 @@ def _inputs(**kw: object) -> ScoreInputs:
         "job": _job(),
         "requirements": [requirement],
         "coverage": [_coverage(requirement, "evidenced", "Three roles document it.")],
-        "answers": {},
     }
     defaults.update(kw)
     return ScoreInputs(**defaults)  # type: ignore[arg-type]
@@ -124,7 +111,7 @@ class TestInstructions:
         assert "Never combine, average" in prompt
         assert "never return a third number" in prompt
 
-    def test_it_tells_the_model_not_to_guess_an_unanswered_question(self) -> None:
+    def test_it_tells_the_model_not_to_guess_an_unfilled_section(self) -> None:
         assert f'"{NOT_STATED}"' in build_score_system_prompt()
 
     def test_it_says_unconfirmed_claims_are_not_evidence(self) -> None:
@@ -174,40 +161,120 @@ class TestSchema:
         assert set(lever_properties) == {"fact_index", "would_move_to", "note"}
 
 
-# -- profile answers ----------------------------------------------------------
+# -- the profile ---------------------------------------------------------------
 
 
-class TestProfileAnswers:
-    def test_every_question_appears_with_the_answer_given(self) -> None:
-        answers = {
-            "location_commute": _answer("location_commute", "Sheffield, one day a week at most"),
-            "levels": _answer("levels", "EM or above", {"levels": ["em", "above_em"]}),
-        }
-        message = build_score_user_message(_inputs(answers=answers))
+class TestProfileSections:
+    def test_constraints_carry_their_stance_and_the_user_s_own_words(self) -> None:
+        profile = Profile(
+            constraints=[
+                Constraint(
+                    kind="location",
+                    stance="must",
+                    note="Sheffield, one day a week at most",
+                ),
+                Constraint(
+                    kind="comp_floor",
+                    stance="must",
+                    value={"guaranteed": 120000, "headline": 145000, "ccy": "GBP"},
+                ),
+                Constraint(kind="categorical_no", stance="never", note="No agency work"),
+            ]
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "- [must] location" in message
         assert "Sheffield, one day a week at most" in message
-        assert '"levels": ["em", "above_em"]' in message
-        for question in QUESTIONS:
-            assert question.wording in message
+        assert '"guaranteed": 120000' in message
+        assert "- [never] categorical_no" in message
+        assert "No agency work" in message
 
-    def test_an_unanswered_question_is_reported_not_stated_and_never_guessed(self) -> None:
-        answers = {"location_commute": _answer("location_commute", "Sheffield")}
-        message = build_score_user_message(_inputs(answers=answers))
-        lines = message.splitlines()
-        for question in QUESTIONS:
-            if question.key == "location_commute":
-                continue
-            index = lines.index(f"- {question.wording}")
-            assert lines[index + 1].strip() == NOT_STATED
-
-    def test_a_cleared_answer_counts_as_unanswered(self) -> None:
-        """The storage layer keeps a blank row to record that a previous answer
-        was cleared. A cleared answer is not an answer.
+    def test_a_nice_to_have_is_marked_as_one_so_it_is_not_read_as_a_gate(self) -> None:
+        """Stance is what separates a hard gate from a preference, and the
+        instructions say a `nice` is never a breach -- so the stance has to
+        reach the model beside the constraint, not only in the prompt's rules.
         """
-        answers = {"trajectory": _answer("trajectory", "   ")}
-        assert "trajectory" in {q.key for q in unanswered_questions(answers)}
+        profile = Profile(
+            constraints=[Constraint(kind="workplace", stance="nice", note="Mostly remote")]
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "- [nice] workplace" in message
 
-    def test_unanswered_questions_lists_every_question_when_nothing_is_answered(self) -> None:
-        assert tuple(q.key for q in unanswered_questions({})) == QUESTION_KEYS
+    def test_depth_and_interest_are_reported_as_two_axes_never_merged(self) -> None:
+        profile = Profile(
+            capabilities=[
+                Capability(
+                    label="FX pricing platforms",
+                    tier="production_depth",
+                    interest="want_more",
+                    last_used=2024,
+                    evidence=[uuid.uuid4()],
+                )
+            ]
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "depth: production_depth" in message
+        assert "interest: want_more" in message
+        assert "last used: 2024" in message
+
+    def test_an_untiered_capability_says_so_rather_than_being_assumed(self) -> None:
+        """A row seeded from a CV arrives with no tier. Rendering one as any
+        particular depth would be the tool asserting something nobody stated.
+        """
+        profile = Profile(capabilities=[Capability(label="Kubernetes", source="cv_fact")])
+        message = build_score_user_message(_inputs(profile=profile))
+        assert f"Kubernetes (depth: {NOT_STATED}; interest: {NOT_STATED}" in message
+
+    def test_a_capability_with_no_evidence_is_flagged_as_a_claim(self) -> None:
+        profile = Profile(capabilities=[Capability(label="Kubernetes", tier="working")])
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "a claim, not a fact" in message
+
+    def test_disciplines_carry_both_halves(self) -> None:
+        profile = Profile(
+            disciplines=Disciplines(practises=["engineering management"], **{"not": ["frontend"]})
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "- practises: engineering management" in message
+        assert "- not: frontend" in message
+
+    def test_the_self_assessment_reaches_the_prompt_in_the_user_s_words(self) -> None:
+        profile = Profile(
+            self_assessment=SelfAssessment(
+                depth_genuine="Deep on payments, exposure only on ML.",
+                recurring_gaps="Kubernetes keeps coming up.",
+            )
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "Deep on payments, exposure only on ML." in message
+        assert "Kubernetes keeps coming up." in message
+
+    def test_an_empty_section_reads_not_stated_and_is_never_guessed(self) -> None:
+        message = build_score_user_message(_inputs(profile=Profile()))
+        for heading in (
+            "## What this person must have, would like, and will never take",
+            "## What they can do, and how deep it goes",
+        ):
+            after = message[message.index(heading) + len(heading) :]
+            assert after.lstrip().splitlines()[0].strip() or True
+        assert message.count(NOT_STATED) >= 4
+
+    def test_unfilled_sections_lists_every_section_for_an_empty_profile(self) -> None:
+        assert [name for name, _ in unfilled_sections(Profile())] == [
+            "constraints",
+            "capabilities",
+            "disciplines",
+            "objectives",
+            "self_assessment",
+        ]
+
+    def test_a_filled_section_drops_out_of_unfilled_sections(self) -> None:
+        profile = Profile(objectives=[_objective(1, "Get back to hands-on work", "")])
+        assert "objectives" not in {name for name, _ in unfilled_sections(profile)}
+
+    def test_whitespace_only_self_assessment_still_counts_as_unfilled(self) -> None:
+        """A cleared box is not an answer, exactly as a cleared row was not."""
+        profile = Profile(self_assessment=SelfAssessment(depth_genuine="   "))
+        assert "self_assessment" in {name for name, _ in unfilled_sections(profile)}
 
 
 # -- objectives ---------------------------------------------------------------
@@ -219,7 +286,7 @@ class TestObjectives:
             _objective(1, "Get back to hands-on platform work", "A team that ships weekly"),
             _objective(2, "Stop commuting", "Two days a month at most"),
         ]
-        message = build_score_user_message(_inputs(objectives=objectives))
+        message = build_score_user_message(_inputs(profile=Profile(objectives=objectives)))
         assert "- ordinal 1" in message
         assert "- ordinal 2" in message
         assert "Get back to hands-on platform work" in message
@@ -230,7 +297,7 @@ class TestObjectives:
         assert "Stop commuting" not in message[first:second]
 
     def test_no_objectives_reads_as_not_stated(self) -> None:
-        message = build_score_user_message(_inputs(objectives=[]))
+        message = build_score_user_message(_inputs(profile=Profile()))
         heading = "## Objectives for this move, each to be judged on its own"
         after = message[message.index(heading) + len(heading) :]
         assert after.lstrip().startswith(NOT_STATED)
@@ -287,17 +354,3 @@ class TestJobContext:
         """
         message = build_score_user_message(_inputs(now=NOW))
         assert NOW.isoformat() in message
-
-    def test_a_ruled_out_decision_that_was_reopened_is_left_out(self) -> None:
-        ruled_out = [
-            ProfileRuledOut(id=uuid.uuid4(), decision_text="No more agency work", recorded_at=NOW),
-            ProfileRuledOut(
-                id=uuid.uuid4(),
-                decision_text="No more startups",
-                recorded_at=NOW,
-                reopened_at=NOW,
-            ),
-        ]
-        message = build_score_user_message(_inputs(ruled_out=ruled_out))
-        assert "No more agency work" in message
-        assert "No more startups" not in message

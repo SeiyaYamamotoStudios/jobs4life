@@ -45,7 +45,6 @@ from jfl_web.routes import (
     drafts,
     jobs,
     pages,
-    profile,
     title_suggestions,
     tracking,
 )
@@ -111,7 +110,9 @@ def create_app(
     app.include_router(changes.router)
     app.include_router(title_suggestions.router)
     app.include_router(tracking.router)
-    app.include_router(profile.router)
+    # No /profile router: the B3a question pages went with
+    # profile_answers (2026-09-21). The screens over
+    # `jfl_core.profile.Profile` land next.
     app.include_router(candidate_facts.router)
     app.include_router(corpus.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

@@ -310,7 +310,8 @@ AnswerErrorCode = Literal[
 
 
 class ApplicationQuestionAnswer(BaseModel):
-    """One attempt to answer a question -- append-only, like `ProfileAnswer`.
+    """One attempt to answer a question -- append-only: a second attempt is a
+    new row, never an UPDATE, so what was tried first stays readable.
     `kind='user'` is the user's own words, checked by the claim gate;
     `kind='draft'` is generated from the corpus and gated automatically, with
     `answer_text` empty until the draft call finishes. `gate_result` is
@@ -763,87 +764,14 @@ class JobFeedMark(BaseModel):
     dismissed_at: dt.datetime | None = None
 
 
-# -- profile setup, PLAN.md slice B3a ----------------------------------------
+# -- the profile, docs/profile-schema.md -------------------------------------
 #
-# Every value here is the user's own words about themselves, stored verbatim --
-# never grounding (see CLAUDE.md's "generated documents influence form, never
-# truth"), and never logged (comp and deal-breakers are sensitive). The closed
-# set of keys lives in `jfl_core.profile_questions.QUESTION_KEYS`; mirrored here
-# as a Literal so the CHECK constraint, the tuple in `db.tables`, and this type
-# all agree (`test_value_lists_agree.py`).
-
-ProfileQuestionKey = Literal[
-    "location_commute",
-    "workplace_arrangements",
-    "levels",
-    "comp_floor",
-    "contract_types",
-    "notice_period",
-    "right_to_work",
-    "categorical_no",
-    "disciplines",
-    "trajectory",
-    "employer_deal_breakers",
-    "warning_signs",
-    # Questions 15 and 16. Unlike every other key above, these two are claims
-    # about the person rather than preferences, so saving them also records the
-    # user's words in the corpus -- see `jfl_core.profile_questions.CORPUS_QUESTION_KEYS`.
-    "depth_genuine",
-    "recurring_gaps",
-]
-
-
-class ProfileAnswer(BaseModel):
-    """One version of one question's answer. Append-only: a new answer to the
-    same question is a new row, never an UPDATE, so "what the user said, when"
-    stays readable after it changes. The current value is the latest row for a
-    given `question_key` -- see `jfl_core.storage.profile.get_current_answers`.
-
-    `structured` is populated only for the four questions that offer an
-    optional structured value alongside the free text (levels, comp floor,
-    contract types, disciplines) -- see `jfl_core.profile_questions`. Its shape
-    is question-specific and deliberately untyped here: a gate that reads it
-    reads a documented shape per key, not a Pydantic model whose fields would
-    have to unify all four.
-    """
-
-    id: uuid.UUID
-    question_key: ProfileQuestionKey
-    answer_text: str = ""
-    structured: dict[str, Any] | None = None
-    created_at: dt.datetime
-
-
-class ProfileObjective(BaseModel):
-    """One version of one objective slot (questions 10/11) -- separate
-    records per `ordinal` (1-4), never combined, so "what is this move for"
-    and "what would show it delivered" for objective 2 can never bleed into
-    objective 3's. Append-only, the same shape as `ProfileAnswer`: a save to
-    an ordinal is a new row, never an UPDATE, so what the user once said an
-    objective was is never lost. The current value of a slot is its latest
-    row -- see `jfl_core.storage.profile.PostgresProfileRepository`. A latest
-    row with both fields blank means the slot was cleared and reads as "no
-    objective", not as an empty objective.
-    """
-
-    id: uuid.UUID
-    ordinal: int
-    objective_text: str = ""
-    evidence_text: str = ""
-    created_at: dt.datetime
-
-
-class ProfileRuledOut(BaseModel):
-    """One ruled-out decision (question 17): dated, and kept forever. Marking
-    one reopened sets `reopened_at` -- it is never deleted, so a decision that
-    gets revisited is still on the record. Flagging when a ruled-out employer
-    or role reappears is future work; this only makes the data support it.
-    """
-
-    id: uuid.UUID
-    decision_text: str
-    recorded_at: dt.datetime
-    reopened_at: dt.datetime | None = None
+# One denormalised JSONB row per save. The models live in `jfl_core.profile`,
+# not here: that module is the only write path into `profiles.data`, and JSONB
+# carries no CHECK constraint, so keeping the shape and its validation in one
+# file is what stands in for one. `ProfileAnswer`, `ProfileObjective`,
+# `ProfileRuledOut` and `ProfileQuestionKey` were retired with the three tables
+# they described (2026-09-21).
 
 
 # -- CV intake, PLAN.md slice B6 ---------------------------------------------
@@ -1089,10 +1017,11 @@ class ScoreLever(BaseModel):
 
 
 class NotStated(BaseModel):
-    """A profile question this user has not answered. Reported as "not stated"
-    and never guessed at (PLAN.md B3a). `question_key` is deliberately `str`
-    rather than `ProfileQuestionKey`: this is stored JSONB, and a row written
-    before a key was retired must still parse back.
+    """A part of the profile this user has not filled in. Reported as "not
+    stated" and never guessed at. `question_key` names the section or field, as
+    free `str`: this is stored JSONB, and a row written before a name was
+    retired must still parse back -- which is exactly what happened when the
+    eighteen B3a questions gave way to `jfl_core.profile.Profile`.
     """
 
     question_key: str

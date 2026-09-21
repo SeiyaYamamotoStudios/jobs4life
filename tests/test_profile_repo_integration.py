@@ -1,8 +1,17 @@
-"""Profile setup storage against real Postgres -- PLAN.md slice B3a.
+"""Profile storage against real Postgres -- `docs/profile-schema.md`.
 
 Needs `docker compose up -d` and `alembic upgrade head`. Transaction-rollback
-fixtures, as in `test_job_filters_integration.py`: every test leaves the
-database as it found it. No network and no model call.
+fixtures: every test leaves the database as it found it. No network and no model
+call anywhere in this file.
+
+What is worth pinning here is what a defect would be silent about: a re-submitted
+form manufacturing a version the user never chose, history coming back in the
+wrong order so "the current profile" is the wrong one, a profile that fails to
+parse back out of JSONB, and one user reading another's.
+
+The self-assessment's corpus half -- profile questions 15 and 16 becoming spans
+through the one write path -- is at the end, because it is the only part of a
+save that leaves this table.
 """
 
 from __future__ import annotations
@@ -13,11 +22,30 @@ from collections.abc import Iterator
 
 import pytest
 from jfl_core.db.tables import users
-from jfl_core.storage.profile import PostgresProfileRepository, UnknownQuestionKeyError
+from jfl_core.ids import fact_fingerprint, role_key
+from jfl_core.models import ProposedFact
+from jfl_core.profile import (
+    Capability,
+    Constraint,
+    Disciplines,
+    Objective,
+    Profile,
+    SelfAssessment,
+)
+from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
+from jfl_core.storage.postgres import PostgresGroundingRepository
+from jfl_core.storage.profile import (
+    PostgresProfileRepository,
+    propose_capabilities_from_facts,
+    save_profile,
+)
+from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
 from sqlalchemy import create_engine, insert
 from sqlalchemy.engine import Connection, Engine
 
 pytestmark = pytest.mark.integration
+
+ACME = "Acme Ltd -- Engineering Manager, 2021-2024"
 
 
 @pytest.fixture(scope="module")
@@ -50,304 +78,375 @@ def bob(conn: Connection) -> uuid.UUID:
     return _make_user(conn)
 
 
-# -- all-blank save is valid -------------------------------------------------
+def _profile(**kw: object) -> Profile:
+    defaults: dict[str, object] = {
+        "constraints": [
+            Constraint(
+                kind="comp_floor",
+                stance="must",
+                value={"guaranteed": 120000, "headline": 145000, "ccy": "GBP"},
+                note="base + pension, ignoring equity",
+            )
+        ],
+        "disciplines": Disciplines(practises=["engineering management"], **{"not": ["frontend"]}),
+        "objectives": [Objective(rank=1, text="Back to hands-on work")],
+    }
+    defaults.update(kw)
+    return Profile(**defaults)  # type: ignore[arg-type]
 
 
-def test_saving_nothing_leaves_everything_not_stated(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    assert repo.get_current_answers() == {}
-    assert repo.list_objectives() == []
-    assert repo.list_ruled_out() == []
+# -- reading ------------------------------------------------------------------
 
 
-def test_saving_blank_answers_writes_nothing(conn: Connection, alice: uuid.UUID) -> None:
-    """An all-blank section save must not manufacture rows for questions the
-    user has never touched -- PLAN.md's "a skipped question is never
-    defaulted".
+class TestCurrent:
+    def test_a_user_who_has_saved_nothing_gets_an_empty_profile_not_none(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """ "No profile" and "an empty profile" are the same statement to every
+        caller. Returning None would put a check in six places and leave it out
+        of one.
+        """
+        current = PostgresProfileRepository(conn, alice).current()
+        assert current == Profile()
+        assert current.is_empty
+
+    def test_the_current_profile_is_the_latest_save(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile())
+        repo.save(_profile(objectives=[Objective(rank=1, text="Stop commuting")]))
+        assert repo.current().objectives[0].text == "Stop commuting"
+
+    def test_everything_saved_reads_back_exactly(self, conn: Connection, alice: uuid.UUID) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        span = uuid.uuid4()
+        saved = _profile(
+            capabilities=[
+                Capability(
+                    label="FX pricing platforms",
+                    tier="production_depth",
+                    interest="want_more",
+                    last_used=2024,
+                    evidence=[span],
+                    source="cv_fact",
+                )
+            ],
+            self_assessment=SelfAssessment(depth_genuine="Deep on payments."),
+        )
+        repo.save(saved)
+        current = repo.current()
+        assert current == saved
+        assert current.capabilities[0].evidence == [span]
+        assert current.disciplines.not_practised == ["frontend"]
+
+
+# -- writing ------------------------------------------------------------------
+
+
+class TestSave:
+    def test_a_save_appends_rather_than_overwriting(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """What you believed about yourself in March stays readable, and undo
+        is free.
+        """
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile())
+        repo.save(_profile(objectives=[Objective(rank=1, text="Stop commuting")]))
+        assert len(repo.history()) == 2
+
+    def test_an_identical_save_is_a_no_op(self, conn: Connection, alice: uuid.UUID) -> None:
+        """Re-submitting an untouched form must not appear in history as a
+        decision the user made -- the rule the retired `save_answer` followed.
+        """
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile())
+        returned = repo.save(_profile())
+        assert len(repo.history()) == 1
+        assert returned == repo.current()
+
+    def test_saving_an_empty_profile_over_nothing_is_still_a_no_op(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(Profile())
+        assert repo.history() == []
+
+    def test_clearing_a_section_is_a_change_worth_recording(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """Emptying a section is a decision, not an absence of one."""
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile())
+        repo.save(_profile(objectives=[]))
+        assert len(repo.history()) == 2
+        assert repo.current().objectives == []
+
+    def test_reordering_a_ranked_list_is_a_change(self, conn: Connection, alice: uuid.UUID) -> None:
+        """Disciplines are ranked, so a re-ranking is exactly the kind of
+        change history exists to keep.
+        """
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile(disciplines=Disciplines(practises=["a", "b"])))
+        repo.save(_profile(disciplines=Disciplines(practises=["b", "a"])))
+        assert len(repo.history()) == 2
+
+    def test_save_returns_what_was_stored(self, conn: Connection, alice: uuid.UUID) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        assert repo.save(_profile()) == repo.current()
+
+
+# -- history ------------------------------------------------------------------
+
+
+class TestHistory:
+    def test_versions_come_back_newest_first(self, conn: Connection, alice: uuid.UUID) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        for text in ("first", "second", "third"):
+            repo.save(_profile(objectives=[Objective(rank=1, text=text)]))
+        assert [v.data.objectives[0].text for v in repo.history()] == [
+            "third",
+            "second",
+            "first",
+        ]
+
+    def test_two_saves_in_one_transaction_do_not_tie(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """`created_at` defaults to `clock_timestamp()`, not `now()`: the
+        current profile is *the latest row*, and `now()` is transaction-start
+        time, so two saves in one request would make "latest" ambiguous exactly
+        where it decides what the user sees.
+        """
+        repo = PostgresProfileRepository(conn, alice)
+        repo.save(_profile(objectives=[Objective(rank=1, text="first")]))
+        repo.save(_profile(objectives=[Objective(rank=1, text="second")]))
+        stamps = [v.created_at for v in repo.history()]
+        assert stamps[0] > stamps[1]
+        assert repo.current().objectives[0].text == "second"
+
+    def test_the_limit_is_honoured_and_keeps_the_newest(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        for text in ("first", "second", "third"):
+            repo.save(_profile(objectives=[Objective(rank=1, text=text)]))
+        assert [v.data.objectives[0].text for v in repo.history(limit=2)] == [
+            "third",
+            "second",
+        ]
+
+    def test_no_history_for_a_user_who_has_saved_nothing(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        assert PostgresProfileRepository(conn, alice).history() == []
+
+
+class TestAt:
+    def test_a_version_reads_back_whole(self, conn: Connection, alice: uuid.UUID) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        first = _profile(objectives=[Objective(rank=1, text="first")])
+        repo.save(first)
+        repo.save(_profile(objectives=[Objective(rank=1, text="second")]))
+        oldest = repo.history()[-1]
+        assert repo.at(oldest.id) == first
+
+    def test_an_unknown_version_is_none(self, conn: Connection, alice: uuid.UUID) -> None:
+        assert PostgresProfileRepository(conn, alice).at(uuid.uuid4()) is None
+
+
+# -- tenancy ------------------------------------------------------------------
+
+
+class TestTenancy:
+    def test_one_user_s_profile_is_invisible_to_another(
+        self, conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+    ) -> None:
+        PostgresProfileRepository(conn, alice).save(_profile())
+        bob_repo = PostgresProfileRepository(conn, bob)
+        assert bob_repo.current() == Profile()
+        assert bob_repo.history() == []
+
+    def test_another_user_s_version_id_reads_as_absent(
+        self, conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+    ) -> None:
+        alice_repo = PostgresProfileRepository(conn, alice)
+        alice_repo.save(_profile())
+        version_id = alice_repo.history()[0].id
+        assert PostgresProfileRepository(conn, bob).at(version_id) is None
+
+    def test_a_save_by_one_user_does_not_touch_another_s_history(
+        self, conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+    ) -> None:
+        PostgresProfileRepository(conn, alice).save(_profile())
+        PostgresProfileRepository(conn, bob).save(_profile(objectives=[]))
+        assert len(PostgresProfileRepository(conn, alice).history()) == 1
+        assert len(PostgresProfileRepository(conn, bob).history()) == 1
+
+
+# -- the self-assessment's corpus half ----------------------------------------
+
+
+def _corpus_texts(conn: Connection, user_id: uuid.UUID) -> list[str]:
+    """Every live (non-retired) span's text for this user -- what the claim gate
+    would actually be handed.
     """
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_answers(
-        {
-            "location_commute": ("", None),
-            "notice_period": ("", None),
-        }
-    )
-    assert repo.get_current_answers() == {}
-
-
-# -- verbatim round trip, including unicode and newlines ---------------------
-
-
-def test_answers_round_trip_verbatim_including_unicode_and_newlines(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    text = "London — E14.\nWill travel ~1 day/week; café meetings fine. 你好"
-    saved = repo.save_answer("location_commute", answer_text=text)
-    assert saved is not None
-    assert saved.answer_text == text
-
-    current = repo.get_current_answers()
-    assert current["location_commute"].answer_text == text
-
-
-def test_structured_value_round_trips_alongside_free_text(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    saved = repo.save_answer(
-        "levels", answer_text="EM or above only", structured={"selected": ["em", "above_em"]}
-    )
-    assert saved is not None
-    assert saved.structured == {"selected": ["em", "above_em"]}
-
-    current = repo.get_current_answers()["levels"]
-    assert current.answer_text == "EM or above only"
-    assert current.structured == {"selected": ["em", "above_em"]}
-
-
-# -- structured inputs are optional -------------------------------------------
-
-
-def test_structured_is_optional_free_text_alone_is_a_complete_answer(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    saved = repo.save_answer(
-        "contract_types", answer_text="Permanent preferred, will consider outside IR35"
-    )
-    assert saved is not None
-    assert saved.structured is None
-    assert repo.get_current_answers()["contract_types"].structured is None
-
-
-def test_unknown_question_key_is_rejected_defensively(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    with pytest.raises(UnknownQuestionKeyError):
-        repo.save_answer("not_a_real_question", answer_text="x")
-
-
-# -- a second answer supersedes but history retains the first ----------------
-
-
-def test_a_second_answer_supersedes_but_history_keeps_the_first(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    first = repo.save_answer("trajectory", answer_text="Staff engineer track")
-    assert first is not None
-    second = repo.save_answer("trajectory", answer_text="Back to EM, ideally director in 2 years")
-    assert second is not None
-    assert second.id != first.id
-
-    current = repo.get_current_answers()["trajectory"]
-    assert current.answer_text == "Back to EM, ideally director in 2 years"
-
-    history = repo.history("trajectory")
-    assert [h.answer_text for h in history] == [
-        "Staff engineer track",
-        "Back to EM, ideally director in 2 years",
-    ]
-    assert history[0].id == first.id
-    assert history[1].id == second.id
-
-
-def test_resaving_the_same_answer_is_a_no_op_and_writes_no_history(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_answer("warning_signs", answer_text="Vague comp band, urgency language")
-    result = repo.save_answer("warning_signs", answer_text="Vague comp band, urgency language")
-    assert result is None
-    assert len(repo.history("warning_signs")) == 1
-
-
-def test_clearing_a_previous_answer_is_itself_a_recorded_change(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_answer("categorical_no", answer_text="No pure IC roles")
-    cleared = repo.save_answer("categorical_no", answer_text="")
-    assert cleared is not None
-    assert cleared.answer_text == ""
-    assert repo.get_current_answers()["categorical_no"].answer_text == ""
-    assert len(repo.history("categorical_no")) == 2
-
-
-# -- tenancy: user A cannot read or write user B's profile --------------------
-
-
-def test_a_user_cannot_read_another_users_answers(
-    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
-) -> None:
-    PostgresProfileRepository(conn, alice).save_answer(
-        "employer_deal_breakers", answer_text="No recent layoffs"
-    )
-    bobs = PostgresProfileRepository(conn, bob)
-    assert bobs.get_current_answers() == {}
-    assert bobs.history("employer_deal_breakers") == []
-
-
-def test_a_user_cannot_read_another_users_objectives_or_ruled_out(
-    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
-) -> None:
-    alices = PostgresProfileRepository(conn, alice)
-    alices.save_objective(1, objective_text="More scope", evidence_text="Bigger org chart")
-    alices.add_ruled_out("Not considering Acme again")
-
-    bobs = PostgresProfileRepository(conn, bob)
-    assert bobs.list_objectives() == []
-    assert bobs.list_ruled_out() == []
-    assert bobs.objective_history(1) == []
-
-
-def test_a_user_cannot_reopen_another_users_ruled_out_entry(
-    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
-) -> None:
-    alices = PostgresProfileRepository(conn, alice)
-    entry = alices.add_ruled_out("Not considering Acme again")
-    bobs = PostgresProfileRepository(conn, bob)
-    assert bobs.mark_reopened(entry.id) is None
-    # Untouched for its actual owner.
-    assert alices.list_ruled_out()[0].reopened_at is None
-
-
-# -- objectives: separate records, never combined, versioned like answers ----
-
-
-def test_objectives_are_separate_records_up_to_four(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_objective(1, objective_text="More comp", evidence_text="Offer at or above floor")
-    repo.save_objective(2, objective_text="More scope", evidence_text="Org of 40+, budget owner")
-
-    objectives = repo.list_objectives()
-    assert [o.ordinal for o in objectives] == [1, 2]
-    assert objectives[0].objective_text == "More comp"
-    assert objectives[1].evidence_text == "Org of 40+, budget owner"
-
-
-def test_saving_an_objective_twice_appends_a_new_current_version(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
-    assert first is not None
-    assert second is not None
-    assert second.id != first.id
-
-    objectives = repo.list_objectives()
-    assert len(objectives) == 1
-    assert objectives[0].evidence_text == "v2"
-    assert objectives[0].id == second.id
-
-
-def test_objective_history_is_retained_across_edits(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
-    assert first is not None
-    assert second is not None
-
-    history = repo.objective_history(1)
-    assert [h.evidence_text for h in history] == ["v1", "v2"]
-    assert history[0].id == first.id
-    assert history[1].id == second.id
-
-
-def test_clearing_both_fields_is_recorded_and_hides_the_objective(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    """Blanking a previously set objective is itself saved as a new version
-    (PLAN.md B3a: the owner decided objectives must keep history like every
-    other answer) -- it must not delete anything -- but the current view
-    treats an all-blank latest version as "no objective".
-    """
-    repo = PostgresProfileRepository(conn, alice)
-    repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    cleared = repo.save_objective(1, objective_text="  ", evidence_text="")
-    assert cleared is not None
-    assert cleared.objective_text == "  "
-    assert cleared.evidence_text == ""
-
-    assert repo.list_objectives() == []
-    history = repo.objective_history(1)
-    assert len(history) == 2
-    assert history[0].evidence_text == "v1"
-    assert history[1].id == cleared.id
-
-
-def test_blank_and_never_set_writes_nothing(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    result = repo.save_objective(2, objective_text="", evidence_text="   ")
-    assert result is None
-    assert repo.list_objectives() == []
-    assert repo.objective_history(2) == []
-
-
-def test_resaving_the_same_objective_is_a_no_op_and_writes_no_history(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    text = "More comp"
-    evidence = "Offer at or above floor"
-    repo.save_objective(1, objective_text=text, evidence_text=evidence)
-    result = repo.save_objective(1, objective_text=text, evidence_text=evidence)
-    assert result is None
-    assert len(repo.objective_history(1)) == 1
-
-
-def test_two_objective_saves_in_one_transaction_order_correctly(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    """`created_at` uses `clock_timestamp()`, not `now()` -- two saves to the
-    same ordinal inside one (test) transaction must not tie, or "the latest
-    version" would be ambiguous exactly where it matters most.
-    """
-    repo = PostgresProfileRepository(conn, alice)
-    first = repo.save_objective(1, objective_text="More comp", evidence_text="v1")
-    second = repo.save_objective(1, objective_text="More comp", evidence_text="v2")
-    assert first is not None
-    assert second is not None
-    assert first.created_at < second.created_at
-
-    history = repo.objective_history(1)
-    assert [h.evidence_text for h in history] == ["v1", "v2"]
-
-
-# -- ruled-out: dated, kept, reopen never deletes ------------------------------
-
-
-def test_ruled_out_entries_keep_their_dates_oldest_first(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    first = repo.add_ruled_out("Not considering Acme again")
-    second = repo.add_ruled_out("No more agencies from the 2024 batch")
-
-    entries = repo.list_ruled_out()
-    assert [e.id for e in entries] == [first.id, second.id]
-    assert entries[0].recorded_at <= entries[1].recorded_at
-    assert entries[0].reopened_at is None
-
-
-def test_marking_reopened_sets_the_date_and_never_deletes(
-    conn: Connection, alice: uuid.UUID
-) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    entry = repo.add_ruled_out("Not considering Acme again")
-    reopened = repo.mark_reopened(entry.id)
-    assert reopened is not None
-    assert reopened.id == entry.id
-    assert reopened.reopened_at is not None
-    assert reopened.decision_text == "Not considering Acme again"
-
-    # Still on the record, not deleted.
-    entries = repo.list_ruled_out()
-    assert len(entries) == 1
-    assert entries[0].reopened_at is not None
-
-
-def test_marking_an_unknown_entry_reopened_returns_none(conn: Connection, alice: uuid.UUID) -> None:
-    repo = PostgresProfileRepository(conn, alice)
-    assert repo.mark_reopened(uuid.uuid4()) is None
+    return [s.text for s in PostgresGroundingRepository(conn).all_spans(user_id)]
+
+
+class TestSelfAssessmentReachesTheCorpus:
+    def test_saving_a_profile_records_questions_15_and_16_as_spans(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """The two answers that are claims about the person rather than
+        preferences still become corpus text, through the one write path.
+        """
+        save_profile(
+            PostgresProfileRepository(conn, alice),
+            PostgresUserCorpusRepository(conn, alice),
+            _profile(
+                self_assessment=SelfAssessment(
+                    depth_genuine="Deep on payments, exposure only on ML.",
+                    recurring_gaps="Kubernetes keeps coming up.",
+                )
+            ),
+        )
+        texts = _corpus_texts(conn, alice)
+        assert "Deep on payments, exposure only on ML." in texts
+        assert "Kubernetes keeps coming up." in texts
+
+    def test_the_words_are_stored_verbatim(self, conn: Connection, alice: uuid.UUID) -> None:
+        """No model is anywhere on this path. A tidied sentence would hold the
+        user to wording they did not choose.
+        """
+        words = "Deep on payments; NOT on ML -- I've only *reviewed* models."
+        save_profile(
+            PostgresProfileRepository(conn, alice),
+            PostgresUserCorpusRepository(conn, alice),
+            Profile(self_assessment=SelfAssessment(depth_genuine=words)),
+        )
+        assert words in _corpus_texts(conn, alice)
+
+    def test_a_re_answer_supersedes_rather_than_joining(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        repo = PostgresProfileRepository(conn, alice)
+        corpus = PostgresUserCorpusRepository(conn, alice)
+        save_profile(repo, corpus, Profile(self_assessment=SelfAssessment(depth_genuine="Old.")))
+        save_profile(repo, corpus, Profile(self_assessment=SelfAssessment(depth_genuine="New.")))
+        texts = _corpus_texts(conn, alice)
+        assert "New." in texts
+        assert "Old." not in texts
+
+    def test_a_cleared_answer_stops_grounding(self, conn: Connection, alice: uuid.UUID) -> None:
+        """An answer the user deleted must not go on being cited at them."""
+        repo = PostgresProfileRepository(conn, alice)
+        corpus = PostgresUserCorpusRepository(conn, alice)
+        save_profile(repo, corpus, Profile(self_assessment=SelfAssessment(recurring_gaps="K8s.")))
+        save_profile(repo, corpus, Profile())
+        assert "K8s." not in _corpus_texts(conn, alice)
+
+    def test_the_profile_row_keeps_the_text_too(self, conn: Connection, alice: uuid.UUID) -> None:
+        """The corpus holds the citable fact; the profile holds what the screen
+        shows back. Both, because neither serves the other's purpose.
+        """
+        repo = PostgresProfileRepository(conn, alice)
+        save_profile(
+            repo,
+            PostgresUserCorpusRepository(conn, alice),
+            Profile(self_assessment=SelfAssessment(depth_genuine="Deep on payments.")),
+        )
+        assert repo.current().self_assessment.depth_genuine == "Deep on payments."
+
+    def test_nothing_reaches_the_corpus_from_any_other_section(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        """Constraints, capabilities, disciplines and objectives are
+        preferences, not claims about the person. A preference in the corpus
+        would be groundable evidence for something nobody asserted.
+        """
+        save_profile(
+            PostgresProfileRepository(conn, alice),
+            PostgresUserCorpusRepository(conn, alice),
+            _profile(capabilities=[Capability(label="FX pricing platforms", tier="working")]),
+        )
+        texts = " ".join(_corpus_texts(conn, alice))
+        assert "FX pricing platforms" not in texts
+        assert "Back to hands-on work" not in texts
+
+
+# -- seeding from confirmed CV facts ------------------------------------------
+
+
+class TestSeedingFromConfirmedFacts:
+    def _proposed(self, text: str, ordinal: int = 0) -> ProposedFact:
+        return ProposedFact(
+            role_label=ACME,
+            role_key=role_key(ACME),
+            source_line=f"- {text}",
+            fact_text=text,
+            fingerprint=fact_fingerprint(ACME, text),
+            ordinal=ordinal,
+        )
+
+    def test_a_confirmed_fact_seeds_a_capability_carrying_its_span(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        facts = PostgresCandidateFactRepository(conn, alice)
+        facts.add_proposed([self._proposed("Led a team of eight")])
+        fact = facts.list_facts()[0]
+        confirmed = facts.confirm(fact.id)
+        assert confirmed is not None and confirmed.span_id is not None
+
+        proposed = propose_capabilities_from_facts(facts, Profile())
+        assert [c.label for c in proposed] == [ACME]
+        assert proposed[0].evidence == [confirmed.span_id]
+        assert proposed[0].tier is None
+        assert proposed[0].source == "cv_fact"
+
+    def test_an_unconfirmed_fact_never_seeds_one(self, conn: Connection, alice: uuid.UUID) -> None:
+        """A CV's claim is not the user's. This is the 2026-09-18 decision
+        reaching the profile: grounding on unconfirmed CV text is what switches
+        the over-claim measurement off silently.
+        """
+        facts = PostgresCandidateFactRepository(conn, alice)
+        facts.add_proposed([self._proposed("Led a team of eight")])
+        assert propose_capabilities_from_facts(facts, Profile()) == []
+
+    def test_a_rejected_fact_never_seeds_one(self, conn: Connection, alice: uuid.UUID) -> None:
+        facts = PostgresCandidateFactRepository(conn, alice)
+        facts.add_proposed([self._proposed("Led a team of eight")])
+        fact = facts.list_facts()[0]
+        facts.confirm(fact.id)
+        facts.reject(fact.id)
+        assert propose_capabilities_from_facts(facts, Profile()) == []
+
+    def test_a_role_the_profile_already_covers_is_not_proposed_again(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        facts = PostgresCandidateFactRepository(conn, alice)
+        facts.add_proposed([self._proposed("Led a team of eight")])
+        facts.confirm(facts.list_facts()[0].id)
+        profile = Profile(capabilities=[Capability(label=ACME, tier="production_depth")])
+        assert propose_capabilities_from_facts(facts, profile) == []
+
+    def test_a_seeded_capability_can_be_saved_as_it_stands(
+        self, conn: Connection, alice: uuid.UUID
+    ) -> None:
+        facts = PostgresCandidateFactRepository(conn, alice)
+        facts.add_proposed([self._proposed("Led a team of eight")])
+        facts.confirm(facts.list_facts()[0].id)
+        repo = PostgresProfileRepository(conn, alice)
+        proposed = propose_capabilities_from_facts(facts, repo.current())
+        repo.save(Profile(capabilities=proposed))
+        assert repo.current().capabilities == proposed
+
+    def test_another_user_s_confirmed_facts_seed_nothing(
+        self, conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+    ) -> None:
+        alice_facts = PostgresCandidateFactRepository(conn, alice)
+        alice_facts.add_proposed([self._proposed("Led a team of eight")])
+        alice_facts.confirm(alice_facts.list_facts()[0].id)
+        bob_facts = PostgresCandidateFactRepository(conn, bob)
+        assert propose_capabilities_from_facts(bob_facts, Profile()) == []

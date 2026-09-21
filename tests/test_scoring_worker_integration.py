@@ -30,6 +30,7 @@ from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.ids import content_hash, job_id, requirement_id
 from jfl_core.models import Job, JobRequirement
+from jfl_core.profile import Constraint, Objective, Profile
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository
 from jfl_core.storage.profile import PostgresProfileRepository
@@ -231,10 +232,23 @@ def add_application(
 
 def add_profile(engine: Engine, user_id: uuid.UUID) -> None:
     with engine.begin() as conn:
-        profile = PostgresProfileRepository(conn, user_id)
-        profile.save_answer("location_commute", answer_text="Sheffield, one day a week at most")
-        profile.save_objective(
-            1, objective_text="Back to hands-on platform work", evidence_text="Ships weekly"
+        PostgresProfileRepository(conn, user_id).save(
+            Profile(
+                constraints=[
+                    Constraint(
+                        kind="location",
+                        stance="must",
+                        note="Sheffield, one day a week at most",
+                    )
+                ],
+                objectives=[
+                    Objective(
+                        rank=1,
+                        text="Back to hands-on platform work",
+                        evidence_of_delivery="Ships weekly",
+                    )
+                ],
+            )
         )
 
 
@@ -358,8 +372,10 @@ def test_the_handler_scores_and_marks_the_row_done(
     assert row.model == "claude-opus-5"
     assert row.cost_usd is not None and row.cost_usd > 0
     assert row.trace_id is not None
-    # PLAN.md B3a: everything the user has not answered is named, not guessed.
-    assert {n.question_key for n in row.not_stated} >= {"comp_floor", "right_to_work"}
+    # Every profile section left unfilled is named, not guessed at -- the
+    # profile above states constraints and objectives and nothing else.
+    unfilled = {n.question_key for n in row.not_stated}
+    assert unfilled == {"capabilities", "disciplines", "self_assessment"}
 
 
 def test_a_runs_row_is_written_for_the_model_call(
