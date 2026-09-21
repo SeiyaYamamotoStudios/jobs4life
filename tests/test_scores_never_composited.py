@@ -34,6 +34,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # Every module the two numbers pass through, from the call to the page.
 SCORE_PATH_MODULES = [
+    # Where the second number is derived from the verdicts. On the path since
+    # 2026-09-21, and the likeliest place for a convenience to creep in.
+    ROOT / "packages/core/src/jfl_core/fit.py",
     ROOT / "packages/generate/src/jfl_generate/scoring.py",
     ROOT / "packages/generate/src/jfl_generate/prompts.py",
     ROOT / "packages/generate/src/jfl_generate/schema.py",

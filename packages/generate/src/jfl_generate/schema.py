@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Literal
 
+from jfl_core.models import FitVerdict
 from pydantic import BaseModel, Field, field_validator
 
 Necessity = Literal["essential", "desirable", "unstated"]
@@ -108,25 +109,37 @@ class TitleSuggestionsOutput(BaseModel):
 # Field-for-field with SCORE_OUTPUT_SCHEMA in prompts.py. There is deliberately
 # no composite field and no property named `reason` -- see that schema's comment
 # and CLAUDE.md's standing decisions.
+#
+# And, since 2026-09-21, no `want_it_score` either: the model gives a four-word
+# verdict per constraint and per objective, and `jfl_core.fit.want_it_basis`
+# derives the number from those. See `docs/profile-schema.md`.
+
+
+class ConstraintVerdictItem(BaseModel):
+    """`index` is 1-based into the numbered constraints in the user message.
+    `jfl_generate.scoring` resolves it back to the user's own words, so a
+    verdict can never restate what they said their constraint was.
+    """
+
+    index: int
+    verdict: FitVerdict
+    note: str = ""
 
 
 class ObjectiveVerdictItem(BaseModel):
-    ordinal: int
-    verdict: str
-
-
-class HardGateBreachItem(BaseModel):
-    gate: str
-    breach: str
+    rank: int
+    verdict: FitVerdict
+    note: str = ""
 
 
 class LeverItem(BaseModel):
-    """`fact_index` is 1-based into the numbered unconfirmed claims in the user
-    message. `jfl_generate.scoring` resolves it back to the stored fact's own
-    words, so a lever can never paraphrase what the user's CV actually said.
+    """`claim_index` is 1-based into the numbered unevidenced claims in the
+    user message -- a capability the user tiered but never evidenced, or an
+    unconfirmed fact from their CV. `jfl_generate.scoring` resolves it back to
+    the stored claim's own words, so a lever can never paraphrase it.
     """
 
-    fact_index: int
+    claim_index: int
     would_move_to: int
     note: str
 
@@ -138,10 +151,9 @@ class ScoreOutput(BaseModel):
     # the CHECK constraint would reject at INSERT.
     could_get_score: int = Field(ge=1, le=10)
     could_get_assessment: str
-    want_it_score: int = Field(ge=1, le=10)
     want_it_assessment: str
+    constraint_verdicts: list[ConstraintVerdictItem]
     objective_verdicts: list[ObjectiveVerdictItem]
-    hard_gate_breaches: list[HardGateBreachItem]
     levers: list[LeverItem]
 
 

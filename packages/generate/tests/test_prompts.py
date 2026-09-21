@@ -8,7 +8,13 @@ from __future__ import annotations
 import uuid
 from typing import Any, cast
 
-from jfl_core.models import Job, JobRequirement, RequirementCoverage, Span
+from jfl_core.models import (
+    Job,
+    JobRequirement,
+    ProfileCapability,
+    RequirementCoverage,
+    Span,
+)
 from jfl_generate.prompts import (
     COVERAGE_OUTPUT_SCHEMA,
     DRAFT_OUTPUT_SCHEMA,
@@ -273,6 +279,64 @@ def test_draft_user_message_handles_a_requirement_with_no_coverage_recorded() ->
 
     assert requirement.text in message
     assert "unknown" in message
+
+
+# -- the drafting ceiling, docs/profile-schema.md ------------------------------
+#
+# "A draft may not claim above the tier you confirmed." An instruction, not
+# enforcement: nothing reads the draft back to check it was obeyed, because the
+# claim gate is the backstop and a second, weaker check in front of it would
+# only invite trusting it. What these pin is that the ceiling reaches the
+# prompt at all.
+
+
+def _capability(label: str, tier: str) -> ProfileCapability:
+    return ProfileCapability.model_validate({"label": label, "tier": tier})
+
+
+def test_the_confirmed_tier_reaches_the_draft_prompt_as_a_ceiling() -> None:
+    job = _job()
+    requirement = _requirement(job, "Kubernetes")
+    capabilities = [
+        _capability("FX pricing platforms", "production_depth"),
+        _capability("Kubernetes", "working"),
+        _capability("Data science", "oversight_only"),
+    ]
+
+    message = build_draft_user_message(job, [requirement], [], capabilities)
+
+    assert "ceiling on what you may claim" in message
+    assert "- FX pricing platforms: production depth" in message
+    assert "- Kubernetes: working" in message
+    assert "- Data science: oversight only" in message
+    assert "Working level is not deep expertise" in message
+
+
+def test_a_capability_the_person_says_is_absent_is_named_as_never_claimable() -> None:
+    job = _job()
+    message = build_draft_user_message(
+        job, [_requirement(job, "Frontend")], [], [_capability("Frontend", "absent")]
+    )
+    assert "Frontend: this person says they do NOT have this. Never claim it." in message
+
+
+def test_with_no_capabilities_the_prompt_says_so_rather_than_going_quiet() -> None:
+    """Silence here would read as "no ceiling". The instruction has to say that
+    nothing is confirmed, so an unlisted capability's depth is not
+    characterised at all.
+    """
+    job = _job()
+    message = build_draft_user_message(job, [_requirement(job, "Kubernetes")], [])
+    assert "(none confirmed)" in message
+    assert "no confirmed depth, so do not characterise its depth at all" in message
+
+
+def test_the_ceiling_is_volatile_and_never_in_the_cached_system_block() -> None:
+    """A user's capability list in `system` would invalidate the cached corpus
+    prefix on every call.
+    """
+    system = build_draft_system_prompt([_span("Led the platform team")], "cv_bullets")
+    assert "ceiling on what you may claim" not in system
 
 
 def test_draft_system_blocks_cache_corpus_is_byte_identical() -> None:

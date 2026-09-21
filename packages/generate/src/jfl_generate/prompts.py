@@ -10,20 +10,24 @@ duplicated.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
 from anthropic.types import TextBlockParam
 from jfl_core.models import (
+    FIT_VERDICTS,
     DraftKind,
     Job,
     JobRequirement,
+    NotStated,
+    Profile,
+    ProfileCapability,
+    ProfileConstraint,
     RequirementCoverage,
     Span,
 )
-from jfl_core.profile import Profile
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -507,8 +511,51 @@ def _split_system_blocks(
     return blocks
 
 
+# The ceiling on what a draft may claim -- `docs/profile-schema.md`, "How it
+# constrains generation": say `working` and no generated CV says "deep
+# expertise". This is the thesis applied to our own output, and it is cheaper
+# than catching the same over-claim at the gate. It is **not** enforcement --
+# the claim gate remains the backstop, and nothing inspects a finished draft to
+# see whether the instruction was obeyed.
+#
+# It goes in the volatile user message rather than the instructions for the
+# ordinary reason: a user's capability list in `system` would invalidate the
+# cached corpus prefix on every call.
+_DRAFT_CEILING_HEADING = (
+    "The depth this person confirmed, which is the ceiling on what you may claim"
+)
+
+_DRAFT_CEILING_RULE = (
+    "Do not write a claim above the depth listed here. Working level is not deep "
+    "expertise; oversight only is not hands-on. A capability that is not listed has "
+    "no confirmed depth, so do not characterise its depth at all."
+)
+
+
+def _draft_capability_ceiling(capabilities: Sequence[ProfileCapability]) -> list[str]:
+    lines = [f"## {_DRAFT_CEILING_HEADING}"]
+    listed = [c for c in capabilities if c.tier != "absent"]
+    if listed:
+        for capability in listed:
+            tier = TIER_WORDING.get(capability.tier, capability.tier)
+            lines.append(f"- {capability.label}: {tier}")
+    else:
+        lines.append("(none confirmed)")
+    for capability in capabilities:
+        if capability.tier == "absent":
+            lines.append(
+                f"- {capability.label}: this person says they do NOT have this. Never claim it."
+            )
+    lines.append(_DRAFT_CEILING_RULE)
+    lines.append("")
+    return lines
+
+
 def build_draft_user_message(
-    job: Job, requirements: Sequence[JobRequirement], coverage: Sequence[RequirementCoverage]
+    job: Job,
+    requirements: Sequence[JobRequirement],
+    coverage: Sequence[RequirementCoverage],
+    capabilities: Sequence[ProfileCapability] = (),
 ) -> str:
     """The volatile half of the request -- goes in `messages`, never in `system`, so
     a byte change here never invalidates the cached corpus prefix. Requirements are
@@ -532,57 +579,75 @@ def build_draft_user_message(
         lines.append(f"{i}. [{requirement.necessity}] {requirement.text}")
         lines.append(f"   coverage: {status} -- {evidence_note}")
     lines.append("")
+    lines.extend(_draft_capability_ceiling(capabilities))
     lines.append("Write the draft now.")
     return "\n".join(lines)
 
 
 ########################################################################
-# Slice B4: two scores for one application. One model call, no corpus in
-# the prompt -- "could I get this" is judged from the requirements and the
-# corpus coverage verdicts already recorded for the job, which is what
-# keeps it grounded on confirmed corpus facts only (coverage is computed
-# against spans, and spans are the confirmed corpus). See CLAUDE.md's
-# 2026-09-18 decision and PLAN.md B4.
+# Slice B4, rebuilt on the 2026-09-21 profile: two scores for one
+# application. One model call, no corpus in the prompt -- "could I get
+# this" is judged from the requirements, the corpus coverage verdicts
+# already recorded for the job, and the capabilities the user has
+# *evidenced*, which is what keeps it grounded on confirmed corpus facts
+# only (coverage is computed against spans, and spans are the confirmed
+# corpus).
+#
+# **The model is not asked for a "do I want this" number.** See
+# `docs/profile-schema.md`: computed person-job fit predicts satisfaction
+# at rho ~= .28 and people forecast their own job satisfaction badly, so
+# the honest product is a list of what the ad evidences and what it is
+# silent on. The model returns a four-word verdict per constraint and per
+# objective; `jfl_core.fit` derives the number from those, where it can
+# never say something the verdicts do not.
 ########################################################################
 
 # Kept in exact correspondence with jfl_generate.schema.ScoreOutput.
 #
-# There is deliberately no third number in this schema. CLAUDE.md's standing
-# decision: "do I want this" and "could I get this" are reported separately and
-# never averaged, so a composite has nowhere to be returned to.
+# There is deliberately no third number in this schema -- and, since
+# 2026-09-21, only one number at all. CLAUDE.md's standing decision: "do I want
+# this" and "could I get this" are reported separately and never averaged, so a
+# composite has nowhere to be returned to.
 #
 # Nothing here is named `reason` -- see CLAUDE.md's 2026-09-02 decision, where a
 # labelling prompt plus a schema demanding a label and a `reason` per item
-# tripped the API's reverse-engineering classifier on every call. The paragraph
-# behind each number is an `assessment`.
+# tripped the API's reverse-engineering classifier on every call. The sentences
+# behind a number are an `assessment`; the sentence behind a verdict is a `note`.
 SCORE_OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
         "could_get_score": {"type": "integer"},
         "could_get_assessment": {"type": "string"},
-        "want_it_score": {"type": "integer"},
+        # No `want_it_score`. It is derived from the verdicts below by
+        # `jfl_core.fit.want_it_basis`, so a number and the verdicts under it
+        # cannot disagree.
         "want_it_assessment": {"type": "string"},
+        "constraint_verdicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    # The constraint's number in the user message's list --
+                    # never its text, so a verdict cannot quietly restate what
+                    # the user said their constraint was.
+                    "index": {"type": "integer"},
+                    "verdict": {"type": "string", "enum": list(FIT_VERDICTS)},
+                    "note": {"type": "string"},
+                },
+                "required": ["index", "verdict", "note"],
+                "additionalProperties": False,
+            },
+        },
         "objective_verdicts": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "ordinal": {"type": "integer"},
-                    "verdict": {"type": "string"},
+                    "rank": {"type": "integer"},
+                    "verdict": {"type": "string", "enum": list(FIT_VERDICTS)},
+                    "note": {"type": "string"},
                 },
-                "required": ["ordinal", "verdict"],
-                "additionalProperties": False,
-            },
-        },
-        "hard_gate_breaches": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "gate": {"type": "string"},
-                    "breach": {"type": "string"},
-                },
-                "required": ["gate", "breach"],
+                "required": ["rank", "verdict", "note"],
                 "additionalProperties": False,
             },
         },
@@ -591,15 +656,16 @@ SCORE_OUTPUT_SCHEMA: dict[str, object] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    # The index of an unconfirmed claim in the user message's
-                    # numbered list -- never the claim's text. The stored fact's
-                    # own words are copied back by `jfl_generate.scoring`, so a
-                    # lever can never quietly paraphrase what the user's CV said.
-                    "fact_index": {"type": "integer"},
+                    # The index of an unevidenced claim in the user message's
+                    # numbered list -- never the claim's text. The stored
+                    # claim's own words are copied back by
+                    # `jfl_generate.scoring`, so a lever can never quietly
+                    # paraphrase what the user's CV or profile said.
+                    "claim_index": {"type": "integer"},
                     "would_move_to": {"type": "integer"},
                     "note": {"type": "string"},
                 },
-                "required": ["fact_index", "would_move_to", "note"],
+                "required": ["claim_index", "would_move_to", "note"],
                 "additionalProperties": False,
             },
         },
@@ -607,10 +673,9 @@ SCORE_OUTPUT_SCHEMA: dict[str, object] = {
     "required": [
         "could_get_score",
         "could_get_assessment",
-        "want_it_score",
         "want_it_assessment",
+        "constraint_verdicts",
         "objective_verdicts",
-        "hard_gate_breaches",
         "levers",
     ],
     "additionalProperties": False,
@@ -618,68 +683,82 @@ SCORE_OUTPUT_SCHEMA: dict[str, object] = {
 
 NOT_STATED = "not stated"
 
+# No `.format()` on this one: it is a constant, which is what makes the cached
+# system block byte-identical across every scoring call any user makes.
 _SCORE_INSTRUCTIONS = """\
 You are scoring one job for jobs4life, a tool that measures the distance between what a \
 person's own record actually evidences and what is being claimed, and shows the number \
 rather than flattering anyone.
 
-Score the job on two SEPARATE axes, each an integer from 1 to 10. Never combine, average \
-or reconcile them, and never return a third number. A role this person would love and \
-will not get, and one they would dislike and would walk into, must land on different \
-numbers on different axes: the disagreement between the two is the useful signal, and \
-merging them destroys it.
+There are two SEPARATE axes. Never combine, average or reconcile them, and never return a \
+third number. A role this person would love and will not get, and one they would dislike \
+and would walk into, must land on different numbers on different axes: the disagreement \
+between the two is the useful signal, and merging them destroys it.
 
 **could_get_score (1-10)** -- how far this person's recorded evidence covers what the job \
-asks for. Judge it ONLY from the requirements and the corpus coverage verdicts given in \
-the next message. Coverage is a report of what their corpus documents, never a judgement \
-of the person: "evidenced" means the corpus documents it, "partial" means something \
-adjacent, "absent" means the corpus is SILENT -- a gap in the record, not a shortcoming \
--- and "contradicted" means the corpus rules it out. Weigh essential requirements more \
-than desirable ones. Do not credit anything coverage does not evidence, and do not credit \
-the unconfirmed CV claims listed in that message: those are handled by `levers` below.
+asks for. Judge it ONLY from the requirements, the corpus coverage verdicts, and the \
+capabilities shown as evidenced in the next message. Coverage is a report of what their \
+corpus documents, never a judgement of the person: "evidenced" means the corpus documents \
+it, "partial" means something adjacent, "absent" means the corpus is SILENT -- a gap in \
+the record, not a shortcoming -- and "contradicted" means the corpus rules it out. Weigh \
+essential requirements more than desirable ones.
 
-**want_it_score (1-10)** -- how well this job matches what this person has said they \
-want. Judge it against their profile, in this order: their constraints, their \
-disciplines, then each objective separately. Where anything is given as "{not_stated}", \
-say so in your assessment and do NOT guess what they would have said. An unfilled section \
-narrows what you can conclude; it never raises or lowers the score by assumption.
+A requirement met by a capability at production depth with corpus evidence behind it is \
+not the same as one met by a working-level claim with nothing behind it. Only an \
+evidenced capability counts as evidence. Credit nothing from the "CLAIMED, NOT EVIDENCE" \
+section -- those are handled by `levers` below.
 
-**could_get_assessment** and **want_it_assessment** are one paragraph each, in plain \
-words, explaining that number: what drove it, and what is unknown. Write about the record \
-and the job, not about the person's worth.
+**could_get_assessment** -- ONE OR TWO SENTENCES in plain words: what drove that number, \
+and what is unknown. Not a paragraph. The per-requirement detail is already on the page, \
+and repeating it there wastes the reader's attention. Write about the record and the job, \
+never about the person's worth.
 
-**hard_gate_breaches** -- one entry for every constraint marked **must** or **never** \
-that this ad breaks: location, working arrangement, level, the lowest package they would \
-accept, contract type, notice or start date, right to work or clearance, or anything they \
-said they categorically will not do. A constraint marked **nice** is not a gate and never \
-belongs here. `gate` names which one; `breach` states in plain words what the ad does \
-about it ("the ad is on-site in Manchester five days a week; they will travel to an office \
-at most one day a week"). State every breach even though the number already reflects it -- \
-a gate the ad breaks must never be folded silently into a score. Never invent one from a \
-constraint given as "{not_stated}", and return an empty list if the ad breaks none.
+**You are not asked for a "do I want this" number.** That number is computed from the \
+verdicts you give below, so that it can never say something your own verdicts do not. \
+Report instead, for every constraint and every objective listed, what THE AD evidences, \
+using exactly one of these four words:
 
-**objective_verdicts** -- one short verdict per objective listed, keyed by its `ordinal`, \
-each judged on its own evidence. Never merge two objectives into one verdict. Give a \
-verdict for every objective listed and for none that is not.
+- `evidenced` -- the ad states something that satisfies it.
+- `partial` -- the ad points that way without stating it.
+- `silent` -- the ad does not say. This is the most useful verdict you can give and it is \
+never a failure: a silence is a question to ask at interview. Never fill one in from what \
+employers usually do, from the sector, or from the job title.
+- `contradicted` -- the ad states something that breaks it.
 
-**levers** -- only about the numbered unconfirmed CV claims in the next message. Those are \
-things this person's own CVs claim that they have not confirmed, so they are not evidence \
-and did not count towards could_get_score. Where confirming one would raise that score, \
-return its `fact_index`, the score it would move to (`would_move_to`, 1-10, higher than \
-could_get_score), and a `note` naming which requirement it would cover. Return an empty \
-list when none of them would change anything.
+The verdict is always about the person's constraint, never about the thing itself. For a \
+constraint they hold as `never`, `evidenced` means the ad rules that thing out and \
+`contradicted` means the ad does it.
 
-Do not soften either number to be encouraging, and do not deflate it to look rigorous. \
-The whole product is that these numbers are honest.
+**constraint_verdicts** -- one entry per numbered constraint, keyed by its `index`, for \
+every one of them including the ones you mark `silent`. `note` is one short sentence \
+naming or quoting what in the ad decided it, or saying plainly that the ad does not \
+mention it. Never invent a breach out of a silence.
+
+**objective_verdicts** -- one entry per numbered objective, keyed by its `rank`, each \
+judged on its own evidence. Never merge two objectives into one verdict, and never give a \
+verdict for an objective that is not listed.
+
+**want_it_assessment** -- ONE OR TWO SENTENCES on what the ad evidences of what this \
+person said matters, and what it is silent on. State no number: you are not given one.
+
+**levers** -- only about the numbered claims in the "CLAIMED, NOT EVIDENCE" section. Those \
+are things this person's own CVs or profile claim that no confirmed evidence stands \
+behind, so they are not evidence and did not count towards could_get_score. Where \
+confirming one would raise that score, return its `claim_index`, the score it would move \
+to (`would_move_to`, 1-10, higher than could_get_score), and a `note` naming which \
+requirement it would cover. Return an empty list when none of them would change anything.
+
+Do not soften either judgement to be encouraging, and do not deflate it to look rigorous. \
+The whole product is that these are honest.
 """
 
 
 def build_score_system_prompt() -> str:
     """Constant: everything volatile -- the job, the coverage verdicts, the
-    profile answers, the unconfirmed claims and the current time -- goes in the
-    user message, so this block can be cached across every scoring call.
+    profile, the unevidenced claims and the current time -- goes in the user
+    message, so this block can be cached across every scoring call.
     """
-    return _SCORE_INSTRUCTIONS.format(not_stated=NOT_STATED)
+    return _SCORE_INSTRUCTIONS
 
 
 def build_score_system_blocks() -> list[TextBlockParam]:
@@ -715,12 +794,12 @@ class ProposedFactView:
 class ScoreInputs:
     """Everything one scoring call is told, assembled by the caller.
 
-    `profile` is `PostgresProfileRepository.current()` -- the whole thing in
-    one read (`docs/profile-schema.md`). An empty section means the user has
-    not filled it in, which is rendered "not stated" and never guessed at.
-    `proposed_facts` are the **unconfirmed** CV claims: they are not evidence
-    and appear in the prompt only so the model can name which of them would
-    move the first number.
+    `profile` is `PostgresProfileRepository.current()`. An empty section means
+    the user has not filled it in, which is rendered "not stated" and never
+    guessed at. `proposed_facts` are the **unconfirmed** CV claims: like a
+    capability the user tiered but never evidenced, they are not evidence and
+    appear in the prompt only so the model can name which of them would move
+    the first number.
     """
 
     job: Job
@@ -731,75 +810,112 @@ class ScoreInputs:
     now: datetime | None = None
 
 
-# The profile sections a score can be argued from, with the wording shown back
-# to the user where one is empty. Keyed by the section name, which is what
-# `jfl_core.models.NotStated.question_key` carries (free `str` on purpose -- a
-# stored row written under an older name must still parse back).
-_PROFILE_SECTIONS: tuple[tuple[str, str], ...] = (
-    ("constraints", "What you must have, would like, and will never take"),
-    ("capabilities", "What you can do, how deep it goes, and what you want more of"),
-    ("disciplines", "What you practise, and what you do not"),
-    ("objectives", "What this move is for, and what would show a role delivers it"),
-    (
-        "self_assessment",
-        "Where your depth is genuine, and the gaps that keep coming up",
-    ),
-)
+# How each tier reads on the page and in the prompt. Our scale in our words --
+# see `jfl_core.models.CapabilityTier`.
+TIER_WORDING: Mapping[str, str] = {
+    "production_depth": "production depth",
+    "working": "working",
+    "oversight_only": "oversight only",
+    "absent": "absent",
+}
+
+_KIND_WORDING: Mapping[str, str] = {
+    "location": "location",
+    "workplace": "working arrangement",
+    "level_floor": "level",
+    "comp_floor": "lowest package",
+    "contract": "contract type",
+    "right_to_work": "right to work",
+    "notice": "notice or start date",
+    "categorical_no": "categorically will not do",
+}
+
+# Which profile sections a score reports as "not stated" when they are empty.
+# Not a guess and not a default: an empty section narrows what the score can
+# conclude and never moves it by assumption.
+_SECTION_WORDING: Mapping[str, str] = {
+    "constraints": "What you must have, would like, and will not accept",
+    "capabilities": "What you can do, and at what depth",
+    "disciplines": "What you practise, and what you do not",
+    "objectives": "What this move is for",
+}
 
 
-def unfilled_sections(profile: Profile) -> list[tuple[str, str]]:
-    """The profile sections this user has not filled in, as (name, wording).
-
-    An empty section is reported as "not stated" and never guessed at. The
-    result is what the score row's `not_stated` list is built from, which is
-    what makes an unfilled section visible on the page as a limit on the number
-    rather than as a silent absence.
+def constraint_label(constraint: ProfileConstraint) -> str:
+    """One constraint in the user's own words, as both the prompt and the
+    stored verdict label it. The value is rendered as the JSON the user's own
+    form wrote -- a comp floor carries guaranteed and headline separately, and
+    flattening it to one number here would assert something they did not.
     """
+    parts = [_KIND_WORDING.get(constraint.kind, constraint.kind.replace("_", " "))]
+    if constraint.value:
+        parts.append(json.dumps(constraint.value, sort_keys=True))
+    note = constraint.note.strip()
+    if note:
+        parts.append(note)
+    return " -- ".join(parts)
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedItem:
+    """One thing that is claimed and not evidenced, whatever claimed it.
+
+    A capability the user tiered but never backed with a corpus span, and an
+    unconfirmed fact from their own CV, are the same status -- a claim -- and
+    the prompt numbers them in one list so a lever can point at either. The
+    order is fixed here, and `jfl_generate.scoring` resolves an index back
+    against the same list, so the model never gets to supply the text.
+    """
+
+    text: str
+    role_label: str = ""
+    claim_kind: str = "cv_fact"
+    tier: str = ""
+
+
+def claimed_items(inputs: ScoreInputs) -> list[ClaimedItem]:
+    """Capabilities with no evidence behind them, then unconfirmed CV facts.
+
+    A capability tiered `absent` is not a claim -- the user is saying they do
+    not have it -- so it is never a lever.
+    """
+    items = [
+        ClaimedItem(
+            text=capability.label,
+            claim_kind="capability",
+            tier=TIER_WORDING.get(capability.tier, capability.tier),
+        )
+        for capability in inputs.profile.capabilities
+        if capability.tier != "absent" and not capability.has_evidence
+    ]
+    items += [
+        ClaimedItem(text=fact.fact_text, role_label=fact.role_label)
+        for fact in inputs.proposed_facts
+    ]
+    return items
+
+
+def not_stated_sections(profile: Profile) -> list[NotStated]:
+    """The profile sections this user has not filled in, in assessment order."""
     filled = {
         "constraints": bool(profile.constraints),
         "capabilities": bool(profile.capabilities),
-        "disciplines": bool(profile.disciplines.practises or profile.disciplines.not_practised),
+        "disciplines": bool(profile.disciplines.practises or profile.disciplines.not_this),
         "objectives": bool(profile.objectives),
-        "self_assessment": bool(
-            profile.self_assessment.depth_genuine.strip()
-            or profile.self_assessment.recurring_gaps.strip()
-        ),
     }
-    return [(name, wording) for name, wording in _PROFILE_SECTIONS if not filled[name]]
+    return [
+        NotStated(question_key=key, wording=wording)
+        for key, wording in _SECTION_WORDING.items()
+        if not filled[key]
+    ]
 
 
-def _constraint_lines(profile: Profile) -> list[str]:
-    if not profile.constraints:
-        return [NOT_STATED]
-    lines: list[str] = []
-    for constraint in profile.constraints:
-        lines.append(f"- [{constraint.stance}] {constraint.kind}")
-        if constraint.note.strip():
-            lines.append(f"  {constraint.note.strip()}")
-        if constraint.value:
-            lines.append(f"  (value: {json.dumps(constraint.value, sort_keys=True)})")
-    return lines
-
-
-def _capability_lines(profile: Profile) -> list[str]:
-    """Tier and interest are separate axes and are printed separately: what
-    someone is good at and what they want to keep doing are different
-    questions, and merging them is how a score credits depth nobody wants to
-    use again. An untiered row says so -- it is a claim the user has not yet
-    graded, never an assumed depth.
-    """
-    if not profile.capabilities:
-        return [NOT_STATED]
-    lines: list[str] = []
-    for capability in profile.capabilities:
-        parts = [f"depth: {capability.tier or NOT_STATED}"]
-        parts.append(f"interest: {capability.interest or NOT_STATED}")
-        if capability.last_used is not None:
-            parts.append(f"last used: {capability.last_used}")
-        if not capability.evidence:
-            parts.append("no corpus evidence recorded -- a claim, not a fact")
-        lines.append(f"- {capability.label} ({'; '.join(parts)})")
-    return lines
+def _capability_line(capability: ProfileCapability) -> str:
+    tier = TIER_WORDING.get(capability.tier, capability.tier)
+    bits = [f"[{tier}]", capability.label]
+    if capability.last_used is not None:
+        bits.append(f"(last used {capability.last_used})")
+    return " ".join(bits)
 
 
 def build_score_user_message(inputs: ScoreInputs) -> str:
@@ -811,6 +927,7 @@ def build_score_user_message(inputs: ScoreInputs) -> str:
     guessing without it.
     """
     job = inputs.job
+    profile = inputs.profile
     lines: list[str] = []
     if inputs.now is not None:
         lines.append(f"The current date and time is {inputs.now.isoformat()}.")
@@ -836,63 +953,73 @@ def build_score_user_message(inputs: ScoreInputs) -> str:
         lines.append("(none extracted)")
     lines.append("")
 
-    profile = inputs.profile
-
-    lines.append("## What this person must have, would like, and will never take")
-    lines.append(
-        "Each is marked must, nice or never. A `never` is a statement in its own "
-        "right, not the absence of a `must`."
-    )
-    lines.extend(_constraint_lines(profile))
+    lines.append("## Capabilities with corpus evidence behind them -- these ARE evidence")
+    evidenced = [c for c in profile.capabilities if c.has_evidence and c.tier != "absent"]
+    if evidenced:
+        for capability in evidenced:
+            lines.append(f"- {_capability_line(capability)}")
+    else:
+        lines.append(NOT_STATED)
     lines.append("")
 
-    lines.append("## What they can do, and how deep it goes")
-    lines.extend(_capability_lines(profile))
+    lines.append("## What this person says they do NOT have")
+    absent = [c.label for c in profile.capabilities if c.tier == "absent"]
+    absent += list(profile.disciplines.not_this)
+    if absent:
+        for label in absent:
+            lines.append(f"- {label}")
+    else:
+        lines.append(NOT_STATED)
     lines.append("")
 
-    lines.append("## What they practise, and what they do not")
-    lines.append(f"- practises: {', '.join(profile.disciplines.practises) or NOT_STATED}")
-    lines.append(f"- not: {', '.join(profile.disciplines.not_practised) or NOT_STATED}")
+    lines.append("## What this person practises, in their own words")
+    if profile.disciplines.practises:
+        for discipline in profile.disciplines.practises:
+            lines.append(f"- {discipline}")
+    else:
+        lines.append(NOT_STATED)
     lines.append("")
 
-    lines.append("## Objectives for this move, each to be judged on its own")
+    lines.append("## Constraints -- give a verdict for every one of these, by index")
+    if profile.constraints:
+        for i, constraint in enumerate(profile.constraints, start=1):
+            lines.append(f"{i}. [{constraint.stance}] {constraint_label(constraint)}")
+    else:
+        lines.append(NOT_STATED)
+    lines.append("")
+
+    lines.append("## Objectives -- give a verdict for every one of these, by rank")
     if profile.objectives:
-        for objective in sorted(profile.objectives, key=lambda o: o.rank):
-            lines.append(f"- ordinal {objective.rank}")
-            lines.append(f"  What is this move for? {objective.text.strip() or NOT_STATED}")
+        for objective in profile.objectives:
+            lines.append(f"- rank {objective.rank}")
+            lines.append(f"  what this move is for: {objective.text.strip() or NOT_STATED}")
             lines.append(
-                "  What would show a role delivers it? "
+                "  what would show a role delivers it: "
                 f"{objective.evidence_of_delivery.strip() or NOT_STATED}"
             )
     else:
         lines.append(NOT_STATED)
     lines.append("")
 
-    lines.append("## What they say about their own depth and gaps, in their own words")
+    lines.append("## CLAIMED, NOT EVIDENCE")
     lines.append(
-        "- Where is your depth genuine, and where is it exposure only?\n"
-        f"  {profile.self_assessment.depth_genuine.strip() or NOT_STATED}"
+        "Their own CVs and profile claim these and nothing confirmed stands behind them, "
+        "so they did not count towards could_get_score. Cite one by its number in `levers` "
+        "if confirming it would raise that score."
     )
-    lines.append(
-        "- Gaps that keep coming up in roles you want\n"
-        f"  {profile.self_assessment.recurring_gaps.strip() or NOT_STATED}"
-    )
-    lines.append("")
-
-    lines.append("## Unconfirmed claims from this person's own CVs -- NOT evidence")
-    lines.append(
-        "These have not been confirmed, so they did not count towards could_get_score. "
-        "Cite one by its number in `levers` if confirming it would raise that score."
-    )
-    if inputs.proposed_facts:
-        for i, fact in enumerate(inputs.proposed_facts, start=1):
-            label = f" [{fact.role_label}]" if fact.role_label else ""
-            lines.append(f"{i}.{label} {fact.fact_text}")
+    claimed = claimed_items(inputs)
+    if claimed:
+        for i, item in enumerate(claimed, start=1):
+            if item.claim_kind == "capability":
+                lines.append(f"{i}. [claimed at {item.tier}, no evidence] {item.text}")
+            else:
+                label = f" [{item.role_label}]" if item.role_label else ""
+                lines.append(f"{i}.{label} {item.text}")
     else:
         lines.append("(none)")
     lines.append("")
 
-    lines.append("Score this job on both axes now, separately.")
+    lines.append("Score this job now: one number for could_get_score, and a verdict each.")
     return "\n".join(lines)
 
 

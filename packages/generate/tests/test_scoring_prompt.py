@@ -1,10 +1,12 @@
-"""What one scoring call is actually told -- PLAN.md B4's context builder.
+"""What one scoring call is actually told -- PLAN.md B4's context builder,
+rebuilt on the 2026-09-21 profile.
 
 No model, no network, no database: these assemble the prompt and read it back.
-The properties worth pinning are the ones a defect would be invisible in --
-an unfilled profile section silently becoming a guess, two objectives being
-merged, an unconfirmed CV claim reaching the prompt as though it were evidence,
-or a schema property called `reason` coming back into existence.
+The properties worth pinning are the ones a defect would be invisible in -- a
+constraint reaching the prompt without the stance that gives it its meaning, an
+unfilled section silently becoming a guess, two objectives being merged, an
+unevidenced claim reaching the prompt as though it were evidence, or a schema
+property called `reason` coming back into existence.
 """
 
 from __future__ import annotations
@@ -13,17 +15,15 @@ import datetime as dt
 import uuid
 
 from jfl_core.models import (
+    FIT_VERDICTS,
     Job,
     JobRequirement,
-    RequirementCoverage,
-)
-from jfl_core.profile import (
-    Capability,
-    Constraint,
-    Disciplines,
-    Objective,
     Profile,
-    SelfAssessment,
+    ProfileCapability,
+    ProfileConstraint,
+    ProfileDisciplines,
+    ProfileObjectiveItem,
+    RequirementCoverage,
 )
 from jfl_generate.prompts import (
     NOT_STATED,
@@ -33,7 +33,9 @@ from jfl_generate.prompts import (
     build_score_system_blocks,
     build_score_system_prompt,
     build_score_user_message,
-    unfilled_sections,
+    claimed_items,
+    constraint_label,
+    not_stated_sections,
 )
 
 USER = uuid.UUID("0425d123-ed29-5a6a-a06d-d00267574046")
@@ -77,8 +79,20 @@ def _coverage(requirement: JobRequirement, status: str, note: str) -> Requiremen
     )
 
 
-def _objective(rank: int, what: str, evidence: str) -> Objective:
-    return Objective(rank=rank, text=what, evidence_of_delivery=evidence)
+def _constraint(kind: str, stance: str, **kw: object) -> ProfileConstraint:
+    return ProfileConstraint.model_validate({"kind": kind, "stance": stance, **kw})
+
+
+def _capability(
+    label: str, tier: str, evidence: list[uuid.UUID] | None = None
+) -> ProfileCapability:
+    return ProfileCapability.model_validate(
+        {"label": label, "tier": tier, "evidence": evidence or []}
+    )
+
+
+def _objective(rank: int, text: str, evidence: str = "") -> ProfileObjectiveItem:
+    return ProfileObjectiveItem(rank=rank, text=text, evidence_of_delivery=evidence)
 
 
 def _inputs(**kw: object) -> ScoreInputs:
@@ -111,13 +125,31 @@ class TestInstructions:
         assert "Never combine, average" in prompt
         assert "never return a third number" in prompt
 
-    def test_it_tells_the_model_not_to_guess_an_unfilled_section(self) -> None:
-        assert f'"{NOT_STATED}"' in build_score_system_prompt()
-
-    def test_it_says_unconfirmed_claims_are_not_evidence(self) -> None:
+    def test_it_says_the_second_number_is_not_the_models_to_give(self) -> None:
+        """The whole point of the 2026-09-21 change: the model gives verdicts,
+        and `jfl_core.fit` derives the number from them.
+        """
         prompt = build_score_system_prompt()
-        assert "not evidence" in prompt
+        assert 'You are not asked for a "do I want this" number.' in prompt
+        assert "State no number: you are not given one." in prompt
+
+    def test_it_names_all_four_verdicts_and_says_silence_is_a_question(self) -> None:
+        prompt = build_score_system_prompt()
+        for word in FIT_VERDICTS:
+            assert f"`{word}`" in prompt
+        assert "a silence is a question to ask at interview" in prompt
+        assert "Never invent a breach out of a silence." in prompt
+
+    def test_it_makes_the_tier_the_bridge_and_keeps_claims_out_of_evidence(self) -> None:
+        prompt = build_score_system_prompt()
+        assert "Only an evidenced capability counts as evidence." in prompt
         assert "did not count towards could_get_score" in prompt
+
+    def test_it_asks_for_sentences_not_paragraphs(self) -> None:
+        """The owner asked for a score plus one or two sentences per axis. The
+        per-constraint verdicts carry the detail.
+        """
+        assert build_score_system_prompt().count("ONE OR TWO SENTENCES") == 2
 
 
 # -- the schema ---------------------------------------------------------------
@@ -140,187 +172,214 @@ class TestSchema:
     def test_no_property_is_named_reason_anywhere_in_it(self) -> None:
         """CLAUDE.md's 2026-09-02 decision: a long labelling prompt plus a
         schema demanding a label and a `reason` per item reads to the API as a
-        distillation harvest, and every call refuses. The paragraph here is an
-        `assessment`.
+        distillation harvest, and every call refuses. The sentences here are an
+        `assessment` and a `note`.
         """
         assert "reason" not in _property_names(SCORE_OUTPUT_SCHEMA)
 
-    def test_it_carries_two_scores_and_no_composite(self) -> None:
+    def test_it_carries_one_number_and_no_composite(self) -> None:
+        """`want_it_score` is absent on purpose -- it is derived from the
+        verdicts, so there is nowhere for the model to return one that
+        disagrees with them.
+        """
         properties = SCORE_OUTPUT_SCHEMA["properties"]
         assert isinstance(properties, dict)
         assert "could_get_score" in properties
-        assert "want_it_score" in properties
+        assert "want_it_score" not in properties
         for forbidden in ("overall", "overall_score", "combined", "composite", "average"):
             assert forbidden not in properties
 
-    def test_a_lever_names_a_fact_by_index_never_by_text(self) -> None:
-        """So a lever cannot quietly paraphrase what the user's CV said."""
+    def test_a_verdict_is_one_of_exactly_four_words(self) -> None:
+        properties = SCORE_OUTPUT_SCHEMA["properties"]
+        assert isinstance(properties, dict)
+        for key in ("constraint_verdicts", "objective_verdicts"):
+            item_properties = properties[key]["items"]["properties"]
+            assert item_properties["verdict"]["enum"] == list(FIT_VERDICTS)
+
+    def test_a_verdict_names_its_subject_by_index_never_by_text(self) -> None:
+        """So a verdict cannot quietly restate what the user said mattered."""
+        properties = SCORE_OUTPUT_SCHEMA["properties"]
+        assert isinstance(properties, dict)
+        assert set(properties["constraint_verdicts"]["items"]["properties"]) == {
+            "index",
+            "verdict",
+            "note",
+        }
+        assert set(properties["objective_verdicts"]["items"]["properties"]) == {
+            "rank",
+            "verdict",
+            "note",
+        }
+
+    def test_a_lever_names_a_claim_by_index_never_by_text(self) -> None:
         properties = SCORE_OUTPUT_SCHEMA["properties"]
         assert isinstance(properties, dict)
         lever_properties = properties["levers"]["items"]["properties"]
-        assert set(lever_properties) == {"fact_index", "would_move_to", "note"}
+        assert set(lever_properties) == {"claim_index", "would_move_to", "note"}
 
 
-# -- the profile ---------------------------------------------------------------
+# -- constraints --------------------------------------------------------------
 
 
-class TestProfileSections:
-    def test_constraints_carry_their_stance_and_the_user_s_own_words(self) -> None:
+class TestConstraints:
+    def test_every_constraint_is_numbered_and_carries_its_stance(self) -> None:
         profile = Profile(
             constraints=[
-                Constraint(
-                    kind="location",
-                    stance="must",
-                    note="Sheffield, one day a week at most",
-                ),
-                Constraint(
-                    kind="comp_floor",
-                    stance="must",
-                    value={"guaranteed": 120000, "headline": 145000, "ccy": "GBP"},
-                ),
-                Constraint(kind="categorical_no", stance="never", note="No agency work"),
+                _constraint("workplace", "must", note="Remote, or one day a week at most"),
+                _constraint("comp_floor", "nice", value={"guaranteed": 120000, "ccy": "GBP"}),
+                _constraint("categorical_no", "never", note="No defence work"),
             ]
         )
         message = build_score_user_message(_inputs(profile=profile))
-        assert "- [must] location" in message
-        assert "Sheffield, one day a week at most" in message
-        assert '"guaranteed": 120000' in message
-        assert "- [never] categorical_no" in message
-        assert "No agency work" in message
+        assert "1. [must] working arrangement -- Remote, or one day a week at most" in message
+        assert '2. [nice] lowest package -- {"ccy": "GBP", "guaranteed": 120000}' in message
+        assert "3. [never] categorically will not do -- No defence work" in message
 
-    def test_a_nice_to_have_is_marked_as_one_so_it_is_not_read_as_a_gate(self) -> None:
-        """Stance is what separates a hard gate from a preference, and the
-        instructions say a `nice` is never a breach -- so the stance has to
-        reach the model beside the constraint, not only in the prompt's rules.
+    def test_the_comp_floor_keeps_guaranteed_and_headline_apart(self) -> None:
+        """A headline number is not an offer. Flattening the two into one here
+        would assert something the user did not.
         """
-        profile = Profile(
-            constraints=[Constraint(kind="workplace", stance="nice", note="Mostly remote")]
+        constraint = _constraint(
+            "comp_floor", "must", value={"guaranteed": 120000, "headline": 145000, "ccy": "GBP"}
         )
-        message = build_score_user_message(_inputs(profile=profile))
-        assert "- [nice] workplace" in message
+        label = constraint_label(constraint)
+        assert '"guaranteed": 120000' in label
+        assert '"headline": 145000' in label
 
-    def test_depth_and_interest_are_reported_as_two_axes_never_merged(self) -> None:
+    def test_no_constraints_reads_as_not_stated(self) -> None:
+        message = build_score_user_message(_inputs(profile=Profile()))
+        heading = "## Constraints -- give a verdict for every one of these, by index"
+        after = message[message.index(heading) + len(heading) :]
+        assert after.lstrip().startswith(NOT_STATED)
+
+
+# -- capabilities and the tier bridge ------------------------------------------
+
+
+class TestCapabilities:
+    def test_only_an_evidenced_capability_is_shown_as_evidence(self) -> None:
         profile = Profile(
             capabilities=[
-                Capability(
-                    label="FX pricing platforms",
-                    tier="production_depth",
-                    interest="want_more",
-                    last_used=2024,
-                    evidence=[uuid.uuid4()],
-                )
+                _capability("FX pricing platforms", "production_depth", [uuid.uuid4()]),
+                _capability("Kubernetes", "working"),
             ]
         )
         message = build_score_user_message(_inputs(profile=profile))
-        assert "depth: production_depth" in message
-        assert "interest: want_more" in message
-        assert "last used: 2024" in message
-
-    def test_an_untiered_capability_says_so_rather_than_being_assumed(self) -> None:
-        """A row seeded from a CV arrives with no tier. Rendering one as any
-        particular depth would be the tool asserting something nobody stated.
-        """
-        profile = Profile(capabilities=[Capability(label="Kubernetes", source="cv_fact")])
-        message = build_score_user_message(_inputs(profile=profile))
-        assert f"Kubernetes (depth: {NOT_STATED}; interest: {NOT_STATED}" in message
-
-    def test_a_capability_with_no_evidence_is_flagged_as_a_claim(self) -> None:
-        profile = Profile(capabilities=[Capability(label="Kubernetes", tier="working")])
-        message = build_score_user_message(_inputs(profile=profile))
-        assert "a claim, not a fact" in message
-
-    def test_disciplines_carry_both_halves(self) -> None:
-        profile = Profile(
-            disciplines=Disciplines(practises=["engineering management"], **{"not": ["frontend"]})
-        )
-        message = build_score_user_message(_inputs(profile=profile))
-        assert "- practises: engineering management" in message
-        assert "- not: frontend" in message
-
-    def test_the_self_assessment_reaches_the_prompt_in_the_user_s_words(self) -> None:
-        profile = Profile(
-            self_assessment=SelfAssessment(
-                depth_genuine="Deep on payments, exposure only on ML.",
-                recurring_gaps="Kubernetes keeps coming up.",
+        evidence_block = message[
+            message.index("## Capabilities with corpus evidence behind them") : message.index(
+                "## What this person says they do NOT have"
             )
-        )
+        ]
+        assert "FX pricing platforms" in evidence_block
+        assert "production depth" in evidence_block
+        assert "Kubernetes" not in evidence_block
+
+    def test_an_unevidenced_capability_is_a_claim_and_can_become_a_lever(self) -> None:
+        profile = Profile(capabilities=[_capability("Kubernetes", "working")])
         message = build_score_user_message(_inputs(profile=profile))
-        assert "Deep on payments, exposure only on ML." in message
-        assert "Kubernetes keeps coming up." in message
-
-    def test_an_empty_section_reads_not_stated_and_is_never_guessed(self) -> None:
-        message = build_score_user_message(_inputs(profile=Profile()))
-        for heading in (
-            "## What this person must have, would like, and will never take",
-            "## What they can do, and how deep it goes",
-        ):
-            after = message[message.index(heading) + len(heading) :]
-            assert after.lstrip().splitlines()[0].strip() or True
-        assert message.count(NOT_STATED) >= 4
-
-    def test_unfilled_sections_lists_every_section_for_an_empty_profile(self) -> None:
-        assert [name for name, _ in unfilled_sections(Profile())] == [
-            "constraints",
-            "capabilities",
-            "disciplines",
-            "objectives",
-            "self_assessment",
+        assert "1. [claimed at working, no evidence] Kubernetes" in message
+        claims = claimed_items(_inputs(profile=profile))
+        assert [(c.text, c.claim_kind, c.tier) for c in claims] == [
+            ("Kubernetes", "capability", "working")
         ]
 
-    def test_a_filled_section_drops_out_of_unfilled_sections(self) -> None:
-        profile = Profile(objectives=[_objective(1, "Get back to hands-on work", "")])
-        assert "objectives" not in {name for name, _ in unfilled_sections(profile)}
+    def test_a_capability_the_person_says_is_absent_is_never_a_lever(self) -> None:
+        """They are saying they do not have it. Offering to "confirm" it would
+        be the tool arguing with them about their own record.
+        """
+        profile = Profile(capabilities=[_capability("Frontend", "absent")])
+        message = build_score_user_message(_inputs(profile=profile))
+        assert claimed_items(_inputs(profile=profile)) == []
+        absent_block = message[
+            message.index("## What this person says they do NOT have") : message.index(
+                "## What this person practises"
+            )
+        ]
+        assert "Frontend" in absent_block
 
-    def test_whitespace_only_self_assessment_still_counts_as_unfilled(self) -> None:
-        """A cleared box is not an answer, exactly as a cleared row was not."""
-        profile = Profile(self_assessment=SelfAssessment(depth_genuine="   "))
-        assert "self_assessment" in {name for name, _ in unfilled_sections(profile)}
+    def test_the_not_this_disciplines_are_shown_beside_absent_capabilities(self) -> None:
+        profile = Profile(disciplines=ProfileDisciplines.model_validate({"not": ["frontend"]}))
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "- frontend" in message
 
 
 # -- objectives ---------------------------------------------------------------
 
 
 class TestObjectives:
-    def test_each_objective_is_rendered_separately_with_its_ordinal(self) -> None:
-        objectives = [
-            _objective(1, "Get back to hands-on platform work", "A team that ships weekly"),
-            _objective(2, "Stop commuting", "Two days a month at most"),
-        ]
-        message = build_score_user_message(_inputs(profile=Profile(objectives=objectives)))
-        assert "- ordinal 1" in message
-        assert "- ordinal 2" in message
+    def test_each_objective_is_rendered_separately_with_its_rank(self) -> None:
+        profile = Profile(
+            objectives=[
+                _objective(1, "Get back to hands-on platform work", "A team that ships weekly"),
+                _objective(2, "Stop commuting", "Two days a month at most"),
+            ]
+        )
+        message = build_score_user_message(_inputs(profile=profile))
+        assert "- rank 1" in message
+        assert "- rank 2" in message
         assert "Get back to hands-on platform work" in message
         assert "Stop commuting" in message
         # Neither objective's text has been folded into the other's block.
-        first = message.index("- ordinal 1")
-        second = message.index("- ordinal 2")
+        first = message.index("- rank 1")
+        second = message.index("- rank 2")
         assert "Stop commuting" not in message[first:second]
 
     def test_no_objectives_reads_as_not_stated(self) -> None:
         message = build_score_user_message(_inputs(profile=Profile()))
-        heading = "## Objectives for this move, each to be judged on its own"
+        heading = "## Objectives -- give a verdict for every one of these, by rank"
         after = message[message.index(heading) + len(heading) :]
         assert after.lstrip().startswith(NOT_STATED)
 
 
-# -- unconfirmed CV claims ----------------------------------------------------
+# -- unfilled sections ---------------------------------------------------------
 
 
-class TestProposedFacts:
-    def test_they_are_numbered_and_labelled_as_not_evidence(self) -> None:
+class TestNotStated:
+    def test_an_empty_profile_reports_every_section_and_guesses_at_none(self) -> None:
+        sections = not_stated_sections(Profile())
+        assert {s.question_key for s in sections} == {
+            "constraints",
+            "capabilities",
+            "disciplines",
+            "objectives",
+        }
+        assert all(s.wording for s in sections)
+
+    def test_a_filled_section_is_not_reported(self) -> None:
+        profile = Profile(constraints=[_constraint("location", "must", note="Sheffield")])
+        assert "constraints" not in {s.question_key for s in not_stated_sections(profile)}
+
+    def test_only_a_not_this_list_still_counts_as_a_filled_discipline(self) -> None:
+        profile = Profile(disciplines=ProfileDisciplines.model_validate({"not": ["frontend"]}))
+        assert "disciplines" not in {s.question_key for s in not_stated_sections(profile)}
+
+
+# -- unevidenced claims --------------------------------------------------------
+
+
+class TestClaimedNotEvidence:
+    def test_cv_facts_are_numbered_and_labelled_as_not_evidence(self) -> None:
         facts = [
             ProposedFactView(fact_text="Ran a team of 12", role_label="Northwind, EM"),
             ProposedFactView(fact_text="Owned the FX pricing platform", role_label="Contoso"),
         ]
         message = build_score_user_message(_inputs(proposed_facts=facts))
-        assert "NOT evidence" in message
+        assert "CLAIMED, NOT EVIDENCE" in message
         assert "1. [Northwind, EM] Ran a team of 12" in message
         assert "2. [Contoso] Owned the FX pricing platform" in message
 
+    def test_capabilities_are_numbered_before_cv_facts_in_one_list(self) -> None:
+        """One list, so a lever's index means the same thing whichever kind of
+        claim it points at.
+        """
+        profile = Profile(capabilities=[_capability("Kubernetes", "working")])
+        facts = [ProposedFactView(fact_text="Ran a team of 12")]
+        claims = claimed_items(_inputs(profile=profile, proposed_facts=facts))
+        assert [c.claim_kind for c in claims] == ["capability", "cv_fact"]
+
     def test_none_stored_means_no_levers_to_offer(self) -> None:
         message = build_score_user_message(_inputs(proposed_facts=[]))
-        heading = "## Unconfirmed claims from this person's own CVs -- NOT evidence"
-        assert "(none)" in message[message.index(heading) :]
+        assert "(none)" in message[message.index("## CLAIMED, NOT EVIDENCE") :]
 
 
 # -- requirements, coverage, time ---------------------------------------------

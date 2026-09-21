@@ -18,12 +18,18 @@ import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
 from jfl_core.context import RequestContext
 from jfl_core.models import (
+    FIT_VERDICTS,
+    ConstraintVerdict,
     Job,
     JobRequirement,
+    ObjectiveVerdict,
+    Profile,
+    ProfileCapability,
+    ProfileConstraint,
+    ProfileObjectiveItem,
     RequirementCoverage,
     RunRecord,
 )
-from jfl_core.profile import Objective, Profile
 from jfl_gate.pricing import MODEL
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import ProposedFactView, ScoreInputs
@@ -119,14 +125,23 @@ def _inputs(**kw: object) -> ScoreInputs:
 PAYLOAD: dict[str, Any] = {
     "could_get_score": 6,
     "could_get_assessment": "Your record evidences the Python and the team size. ",
-    "want_it_score": 3,
     "want_it_assessment": "The commute breaks what you said you would travel.",
+    "constraint_verdicts": [],
     "objective_verdicts": [],
-    "hard_gate_breaches": [
-        {"gate": "location", "breach": "On site five days a week in Manchester."}
-    ],
     "levers": [],
 }
+
+
+def _constraint(kind: str, stance: str, **kw: Any) -> ProfileConstraint:
+    return ProfileConstraint.model_validate({"kind": kind, "stance": stance, **kw})
+
+
+def _capability(
+    label: str, tier: str, evidence: list[uuid.UUID] | None = None
+) -> ProfileCapability:
+    return ProfileCapability.model_validate(
+        {"label": label, "tier": tier, "evidence": evidence or []}
+    )
 
 
 def _response(
@@ -168,10 +183,13 @@ class TestTheCall:
         _patch(monkeypatch, client)
         runs = _FakeRunRepo()
 
-        result = score_application(_ctx(), runs, _inputs())
+        profile = Profile(constraints=[_constraint("location", "must", note="Sheffield")])
+        result = score_application(_ctx(), runs, _inputs(profile=profile))
 
         assert result.could_get_score == 6
-        assert result.want_it_score == 3
+        # Derived from the one constraint's verdict, which the payload leaves
+        # unanswered and therefore silent -- see `jfl_core.fit`.
+        assert result.want_it_score == 1
         assert result.could_get_assessment == (
             "Your record evidences the Python and the team size."
         )
@@ -267,8 +285,17 @@ class TestTheCall:
         [
             "not json at all",
             json.dumps({**PAYLOAD, "could_get_score": 0}),
-            json.dumps({**PAYLOAD, "want_it_score": 11}),
+            json.dumps({**PAYLOAD, "could_get_score": 11}),
             json.dumps({k: v for k, v in PAYLOAD.items() if k != "want_it_assessment"}),
+            # A verdict outside the four words: the wire schema is an enum, so
+            # one arriving anyway is a defect worth a `runs` row, not something
+            # to quietly read as "silent".
+            json.dumps(
+                {
+                    **PAYLOAD,
+                    "constraint_verdicts": [{"index": 1, "verdict": "maybe", "note": ""}],
+                }
+            ),
         ],
     )
     def test_an_unusable_response_is_a_parse_failure_with_a_runs_row(
@@ -291,8 +318,8 @@ class TestTheCall:
 # --- mapping one response onto two stored scores -----------------------------
 
 
-def _objective(rank: int, what: str) -> Objective:
-    return Objective(rank=rank, text=what)
+def _objective(rank: int, what: str) -> ProfileObjectiveItem:
+    return ProfileObjectiveItem(rank=rank, text=what)
 
 
 def _output(**kw: Any) -> ScoreOutput:
@@ -300,46 +327,186 @@ def _output(**kw: Any) -> ScoreOutput:
 
 
 class TestBuildResult:
-    def test_both_numbers_are_carried_through_untouched(self) -> None:
-        result = build_result(_output(), _inputs())
-        assert (result.could_get_score, result.want_it_score) == (6, 3)
+    def test_could_get_is_carried_through_untouched(self) -> None:
+        assert build_result(_output(), _inputs()).could_get_score == 6
 
-    def test_a_breach_is_kept_as_written(self) -> None:
-        result = build_result(_output(), _inputs())
-        assert [(b.gate, b.breach) for b in result.hard_gate_breaches] == [
-            ("location", "On site five days a week in Manchester.")
-        ]
+    def test_an_empty_profile_has_no_want_it_number_at_all(self) -> None:
+        """Not a 1. With no constraints and no objectives there is nothing for
+        the ad to be measured against, and a number would be a claim where
+        there is only a silence.
+        """
+        result = build_result(_output(), _inputs(profile=Profile()))
+        assert result.want_it_score is None
+        assert {s.question_key for s in result.not_stated} == {
+            "constraints",
+            "capabilities",
+            "disciplines",
+            "objectives",
+        }
 
-    def test_an_empty_breach_is_dropped_rather_than_shown_blank(self) -> None:
-        output = _output(hard_gate_breaches=[{"gate": "comp", "breach": "  "}])
-        assert build_result(output, _inputs()).hard_gate_breaches == []
-
-    def test_each_objective_keeps_its_own_words_and_its_own_verdict(self) -> None:
-        objectives = [_objective(1, "Back to hands-on work"), _objective(2, "Stop commuting")]
-        output = _output(
-            objective_verdicts=[
-                {"ordinal": 2, "verdict": "Fully remote, so yes."},
-                {"ordinal": 1, "verdict": "An EM role, so probably not."},
+    def test_the_want_it_number_is_derived_from_the_verdicts(self) -> None:
+        """Two musts, both evidenced: the top of the range. The model never
+        returned a number -- `SCORE_OUTPUT_SCHEMA` has nowhere to put one.
+        """
+        profile = Profile(
+            constraints=[
+                _constraint("location", "must", note="Sheffield"),
+                _constraint("workplace", "must", note="Remote"),
             ]
         )
-        result = build_result(output, _inputs(profile=Profile(objectives=objectives)))
-        assert [(v.ordinal, v.objective) for v in result.objective_verdicts] == [
+        output = _output(
+            constraint_verdicts=[
+                {"index": 1, "verdict": "evidenced", "note": "Sheffield-based."},
+                {"index": 2, "verdict": "evidenced", "note": "Fully remote."},
+            ]
+        )
+        assert build_result(output, _inputs(profile=profile)).want_it_score == 10
+
+    def test_an_ad_that_says_nothing_scores_low_and_says_why(self) -> None:
+        """Silence is not half-credit. The number answers "how much of what you
+        said matters does this ad evidence", and an ad that says nothing
+        evidences nothing.
+        """
+        profile = Profile(constraints=[_constraint("location", "must", note="Sheffield")])
+        result = build_result(_output(), _inputs(profile=profile))
+        assert result.want_it_score == 1
+        assert [v.verdict for v in result.constraint_verdicts] == ["silent"]
+
+    def test_a_constraint_the_model_skipped_reads_silent_rather_than_vanishing(self) -> None:
+        profile = Profile(
+            constraints=[
+                _constraint("location", "must", note="Sheffield"),
+                _constraint("comp_floor", "nice", note="120k"),
+            ]
+        )
+        output = _output(
+            constraint_verdicts=[{"index": 1, "verdict": "evidenced", "note": "Sheffield."}]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert [(v.verdict, v.note) for v in result.constraint_verdicts] == [
+            ("evidenced", "Sheffield."),
+            ("silent", ""),
+        ]
+
+    def test_a_verdict_for_a_constraint_the_user_never_recorded_is_dropped(self) -> None:
+        profile = Profile(constraints=[_constraint("location", "must", note="Sheffield")])
+        output = _output(
+            constraint_verdicts=[
+                {"index": 1, "verdict": "evidenced", "note": "Sheffield."},
+                {"index": 7, "verdict": "contradicted", "note": "Invented."},
+            ]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert len(result.constraint_verdicts) == 1
+
+    def test_each_constraint_keeps_the_users_own_words_as_its_label(self) -> None:
+        profile = Profile(
+            constraints=[_constraint("workplace", "must", note="One day a week at most")]
+        )
+        result = build_result(_output(), _inputs(profile=profile))
+        assert result.constraint_verdicts[0].label.endswith("One day a week at most")
+        assert result.constraint_verdicts[0].stance == "must"
+
+    def test_a_contradicted_must_becomes_a_breach_and_caps_the_number(self) -> None:
+        """A gate the ad breaks is stated in plain words, and the number does
+        not sit above the sentence explaining it.
+        """
+        profile = Profile(
+            constraints=[
+                _constraint("workplace", "must", note="One day a week at most"),
+                _constraint("location", "nice", note="Sheffield"),
+                _constraint("contract", "nice", note="Permanent"),
+            ]
+        )
+        output = _output(
+            constraint_verdicts=[
+                {"index": 1, "verdict": "contradicted", "note": "On site five days a week."},
+                {"index": 2, "verdict": "evidenced", "note": "Sheffield."},
+                {"index": 3, "verdict": "evidenced", "note": "Permanent."},
+            ]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert [(b.breach) for b in result.hard_gate_breaches] == ["On site five days a week."]
+        assert result.want_it_score == 2
+
+    def test_a_contradicted_nice_is_a_disappointment_not_a_breach(self) -> None:
+        profile = Profile(constraints=[_constraint("comp_floor", "nice", note="120k")])
+        output = _output(
+            constraint_verdicts=[{"index": 1, "verdict": "contradicted", "note": "Pays 90k."}]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert result.hard_gate_breaches == []
+
+    def test_a_never_the_ad_does_is_a_breach_too(self) -> None:
+        profile = Profile(
+            constraints=[_constraint("categorical_no", "never", note="No defence work")]
+        )
+        output = _output(
+            constraint_verdicts=[{"index": 1, "verdict": "contradicted", "note": "Defence prime."}]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert [b.breach for b in result.hard_gate_breaches] == ["Defence prime."]
+
+    def test_each_objective_keeps_its_own_words_and_its_own_verdict(self) -> None:
+        profile = Profile(
+            objectives=[_objective(1, "Back to hands-on work"), _objective(2, "Stop commuting")]
+        )
+        output = _output(
+            objective_verdicts=[
+                {"rank": 2, "verdict": "evidenced", "note": "Fully remote, so yes."},
+                {"rank": 1, "verdict": "contradicted", "note": "An EM role, so no."},
+            ]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert [(v.rank, v.objective) for v in result.objective_verdicts] == [
             (1, "Back to hands-on work"),
             (2, "Stop commuting"),
         ]
-        assert result.objective_verdicts[0].verdict == "An EM role, so probably not."
+        assert result.objective_verdicts[0].verdict == "contradicted"
+        assert result.objective_verdicts[0].note == "An EM role, so no."
 
     def test_a_verdict_for_an_objective_the_user_never_wrote_is_dropped(self) -> None:
-        output = _output(objective_verdicts=[{"ordinal": 4, "verdict": "Invented."}])
-        result = build_result(
-            output, _inputs(profile=Profile(objectives=[_objective(1, "Back to hands-on")]))
+        profile = Profile(objectives=[_objective(1, "Back to hands-on")])
+        output = _output(
+            objective_verdicts=[{"rank": 4, "verdict": "evidenced", "note": "Invented."}]
         )
-        assert result.objective_verdicts == []
+        result = build_result(output, _inputs(profile=profile))
+        assert [v.rank for v in result.objective_verdicts] == [1]
+        assert result.objective_verdicts[0].verdict == "silent"
+
+    def test_the_four_verdict_words_round_trip_through_storage(self) -> None:
+        """Each of the four survives being written to JSONB and read back --
+        this is the vocabulary the number is derived from, so a word that did
+        not round-trip would silently change a score.
+        """
+        profile = Profile(
+            constraints=[_constraint("contract", "must", note=str(i)) for i in range(4)]
+        )
+        output = _output(
+            constraint_verdicts=[
+                {"index": i, "verdict": word, "note": ""}
+                for i, word in enumerate(FIT_VERDICTS, start=1)
+            ]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        stored = [v.model_dump(mode="json") for v in result.constraint_verdicts]
+        assert [v["verdict"] for v in stored] == list(FIT_VERDICTS)
+        assert [ConstraintVerdict.model_validate(v).verdict for v in stored] == list(FIT_VERDICTS)
+
+    def test_a_stored_row_from_before_this_vocabulary_still_parses(self) -> None:
+        """Old `application_scores` rows carry free text where the verdict word
+        now goes. A panel that raises on an old row is a worse failure than one
+        that says the ad was silent.
+        """
+        legacy = {"ordinal": 2, "objective": "Stop commuting", "verdict": "Fully remote, so yes."}
+        parsed = ObjectiveVerdict.model_validate(legacy)
+        assert parsed.verdict == "silent"
+        assert parsed.objective == "Stop commuting"
 
     def test_a_lever_carries_the_stored_fact_verbatim(self) -> None:
         facts = [ProposedFactView(fact_text="Ran a team of 12", role_label="Northwind")]
         output = _output(
-            levers=[{"fact_index": 1, "would_move_to": 8, "note": "Covers requirement 1."}]
+            levers=[{"claim_index": 1, "would_move_to": 8, "note": "Covers requirement 1."}]
         )
         result = build_result(output, _inputs(proposed_facts=facts))
         assert len(result.levers) == 1
@@ -347,9 +514,31 @@ class TestBuildResult:
         assert lever.fact_text == "Ran a team of 12"
         assert lever.role_label == "Northwind"
         assert lever.would_move_to == 8
+        assert lever.claim_kind == "cv_fact"
 
-    def test_a_lever_naming_no_stored_fact_is_dropped(self) -> None:
-        output = _output(levers=[{"fact_index": 9, "would_move_to": 8, "note": "Invented."}])
+    def test_an_unevidenced_capability_becomes_a_lever_never_evidence(self) -> None:
+        """docs/profile-schema.md: a tier with no evidence is a claim, not a
+        fact. It can say "confirm this and the number moves"; it can never be
+        the reason the number is where it is.
+        """
+        profile = Profile(capabilities=[_capability("Kubernetes", "working")])
+        output = _output(
+            levers=[{"claim_index": 1, "would_move_to": 8, "note": "Covers requirement 1."}]
+        )
+        result = build_result(output, _inputs(profile=profile))
+        assert [(lever.fact_text, lever.claim_kind, lever.tier) for lever in result.levers] == [
+            ("Kubernetes", "capability", "working")
+        ]
+
+    def test_an_evidenced_capability_is_never_offered_as_a_lever(self) -> None:
+        profile = Profile(
+            capabilities=[_capability("FX pricing", "production_depth", [uuid.uuid4()])]
+        )
+        output = _output(levers=[{"claim_index": 1, "would_move_to": 8, "note": "Invented."}])
+        assert build_result(output, _inputs(profile=profile)).levers == []
+
+    def test_a_lever_naming_no_stored_claim_is_dropped(self) -> None:
+        output = _output(levers=[{"claim_index": 9, "would_move_to": 8, "note": "Invented."}])
         result = build_result(output, _inputs(proposed_facts=[]))
         assert result.levers == []
 
@@ -362,20 +551,11 @@ class TestBuildResult:
         """
         facts = [ProposedFactView(fact_text="Ran a team of 12")]
         output = _output(
-            levers=[{"fact_index": 1, "would_move_to": would_move_to, "note": "Covers it."}]
+            levers=[{"claim_index": 1, "would_move_to": would_move_to, "note": "Covers it."}]
         )
         result = build_result(output, _inputs(proposed_facts=facts))
         assert result.levers[0].would_move_to is None
         assert result.levers[0].note == "Covers it."
-
-    def test_unfilled_profile_sections_come_back_as_not_stated(self) -> None:
-        profile = Profile(objectives=[_objective(1, "Back to hands-on work")])
-        result = build_result(_output(), _inputs(profile=profile))
-        keys = {n.question_key for n in result.not_stated}
-        assert "objectives" not in keys
-        assert "constraints" in keys
-        assert "capabilities" in keys
-        assert all(n.wording for n in result.not_stated)
 
     def test_the_result_carries_no_combined_number(self) -> None:
         result = build_result(_output(), _inputs())

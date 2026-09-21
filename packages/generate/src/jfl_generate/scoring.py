@@ -11,13 +11,26 @@ the person would love and will not get, and one they would dislike and would
 walk into, must never land on the same number. Nothing downstream averages
 them either, and `tests/test_scores_never_composited.py` says so mechanically.
 
+**Only one of the two numbers is the model's.** "Do I want this" is not asked
+for: the model gives a four-word verdict -- evidenced / partial / silent /
+contradicted -- on every constraint and every objective the user recorded, and
+`jfl_core.fit.want_it_basis` derives the number from those. See
+`docs/profile-schema.md`: computed person-job fit predicts satisfaction at
+rho ~= .28, so a number asked for directly would be a forecast nobody can make.
+The judgement stays the model's, item by item; only the arithmetic over its own
+verdicts is ours, which is what stops the number saying something the verdicts
+listed under it do not. **The silences are the product**: a `must` the ad is
+silent on is a question to ask at interview, and the panel reads that way.
+
 **Only confirmed corpus facts count as evidence.** "Could I get this" is judged
-from the job's requirements and the corpus coverage verdicts already recorded
-for it -- coverage is computed against spans, and spans are the confirmed
-corpus, so the unconfirmed CV claims this call is also shown can only ever
-appear as *levers*: "your CVs claim X; confirm it and this moves from 5 to 7".
-Their own words are copied back from the stored fact, never taken from the
-model's paraphrase.
+from the job's requirements, the corpus coverage verdicts already recorded for
+it, and the profile capabilities that carry corpus evidence -- coverage is
+computed against spans, and spans are the confirmed corpus. A capability the
+user tiered but never evidenced is a claim, the same status a CV line has
+before confirmation, so it and the unconfirmed CV facts can only ever appear as
+*levers*: "your profile claims X at working level; confirm it and this moves
+from 5 to 7". Their own words are copied back from the stored claim, never
+taken from the model's paraphrase.
 
 **It ships unmeasured, and says so on screen.** There is no golden set for fit
 and inventing one would be the synthetic-data prohibition in a new coat. The
@@ -31,6 +44,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
@@ -38,7 +52,9 @@ from typing import Literal
 import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
+from jfl_core.fit import want_it_basis
 from jfl_core.models import (
+    ConstraintVerdict,
     HardGateBreach,
     NotStated,
     ObjectiveVerdict,
@@ -54,12 +70,15 @@ from jfl_generate.prompts import (
     ScoreInputs,
     build_score_system_blocks,
     build_score_user_message,
-    unfilled_sections,
+    claimed_items,
+    constraint_label,
+    not_stated_sections,
 )
 from jfl_generate.schema import ScoreOutput
 
-# Two paragraphs, a handful of short verdicts and a few levers. Generous
-# against what the schema can hold, and small against a gate call's 16k.
+# Two short assessments, a one-line verdict per constraint and objective, and a
+# few levers. Generous against what the schema can hold, and small against a
+# gate call's 16k.
 MAX_TOKENS = 4096
 
 MIN_SCORE = 1
@@ -72,20 +91,26 @@ Outcome = Literal["ok", "error", "refused", "skipped"]
 class ScoreResult:
     """One scoring run's answer, in core types, ready to store.
 
-    Two numbers and two paragraphs, deliberately not reducible to one: there is
-    no `overall`, no `average`, and no method here that would produce one.
+    Two numbers and two short assessments, deliberately not reducible to one:
+    there is no `overall`, no third field, and no method here that would
+    produce one.
+
+    `want_it_score` is None when the profile records no constraints and no
+    objectives. There is then nothing for the ad to be measured against, and
+    a 1 would be a claim where there is only a silence.
     """
 
     could_get_score: int
     could_get_assessment: str
-    want_it_score: int
+    want_it_score: int | None
     want_it_assessment: str
+    constraint_verdicts: list[ConstraintVerdict] = field(default_factory=list)
     objective_verdicts: list[ObjectiveVerdict] = field(default_factory=list)
     hard_gate_breaches: list[HardGateBreach] = field(default_factory=list)
     levers: list[ScoreLever] = field(default_factory=list)
-    # The profile questions the user has not answered, computed here rather
-    # than by the model, and reported as "not stated" on the page. PLAN.md B3a:
-    # a skipped question is never guessed at.
+    # The profile sections the user has not filled in, computed here rather
+    # than by the model, and reported as "not stated" on the page. An empty
+    # section is never guessed at.
     not_stated: list[NotStated] = field(default_factory=list)
 
 
@@ -262,73 +287,115 @@ def score_application(
 def build_result(parsed: ScoreOutput, inputs: ScoreInputs) -> ScoreResult:
     """Turn one parsed response into stored types, keeping the user's own words.
 
-    Pure, and separated from the call so it can be tested without a client. The
-    two numbers are carried through untouched and are never combined.
+    Pure, and separated from the call so it can be tested without a client.
+    "Could I get this" is carried through untouched; "do I want this" is
+    derived here from the verdicts below and from nothing else. The two are
+    never combined.
     """
+    constraint_verdicts = _constraint_verdicts(parsed, inputs)
+    objective_verdicts = _objective_verdicts(parsed, inputs)
+    basis = want_it_basis(constraint_verdicts, objective_verdicts)
     return ScoreResult(
         could_get_score=parsed.could_get_score,
         could_get_assessment=parsed.could_get_assessment.strip(),
-        want_it_score=parsed.want_it_score,
+        want_it_score=basis.score,
         want_it_assessment=parsed.want_it_assessment.strip(),
-        objective_verdicts=_objective_verdicts(parsed, inputs),
-        hard_gate_breaches=[
-            HardGateBreach(gate=b.gate.strip(), breach=b.breach.strip())
-            for b in parsed.hard_gate_breaches
-            if b.breach.strip()
-        ],
+        constraint_verdicts=constraint_verdicts,
+        objective_verdicts=objective_verdicts,
+        hard_gate_breaches=_breaches(constraint_verdicts),
         levers=_levers(parsed, inputs),
-        not_stated=[
-            NotStated(question_key=name, wording=wording)
-            for name, wording in unfilled_sections(inputs.profile)
-        ],
+        not_stated=not_stated_sections(inputs.profile),
     )
 
 
-def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[ObjectiveVerdict]:
-    """One verdict per objective the user actually listed, in ordinal order.
+def _constraint_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[ConstraintVerdict]:
+    """One verdict per constraint the user actually recorded, in their order.
 
-    A verdict for an ordinal the user has no objective in is dropped rather
-    than shown: the page would otherwise attribute an objective to them that
-    they never wrote. The objective's own text comes from the stored profile,
-    not from the response. `ordinal` here is the objective's `rank`, which is
-    what the stored result has always keyed verdicts by.
+    A verdict for an index naming no constraint is dropped rather than shown:
+    the page would otherwise attribute a constraint to them that they never
+    wrote, and the derived number would count it. A constraint the model gave
+    no verdict for reads `silent`, which is the honest default -- it is what
+    the panel says when nothing decided it either way.
     """
-    by_ordinal = {o.rank: o for o in inputs.profile.objectives}
-    seen: set[int] = set()
-    verdicts: list[ObjectiveVerdict] = []
-    for item in parsed.objective_verdicts:
-        objective = by_ordinal.get(item.ordinal)
-        if objective is None or item.ordinal in seen:
-            continue
-        seen.add(item.ordinal)
+    constraints = list(inputs.profile.constraints)
+    notes: dict[int, tuple[str, str]] = {}
+    for item in parsed.constraint_verdicts:
+        if 1 <= item.index <= len(constraints) and item.index not in notes:
+            notes[item.index] = (item.verdict, item.note.strip())
+    verdicts = []
+    for i, constraint in enumerate(constraints, start=1):
+        verdict, note = notes.get(i, ("silent", ""))
         verdicts.append(
-            ObjectiveVerdict(
-                ordinal=item.ordinal,
-                objective=objective.text.strip(),
-                verdict=item.verdict.strip(),
+            ConstraintVerdict(
+                kind=constraint.kind,
+                stance=constraint.stance,
+                label=constraint_label(constraint),
+                verdict=verdict,  # type: ignore[arg-type]
+                note=note,
             )
         )
-    return sorted(verdicts, key=lambda v: v.ordinal)
+    return verdicts
+
+
+def _objective_verdicts(parsed: ScoreOutput, inputs: ScoreInputs) -> list[ObjectiveVerdict]:
+    """One verdict per objective the user actually listed, in rank order.
+
+    Same rule as constraints: a verdict for a rank they have no objective at is
+    dropped, and an objective the model skipped reads `silent`. The objective's
+    own text comes from the stored profile, not from the response.
+    """
+    objectives = sorted(inputs.profile.objectives, key=lambda o: o.rank)
+    notes: dict[int, tuple[str, str]] = {}
+    ranks = {o.rank for o in objectives}
+    for item in parsed.objective_verdicts:
+        if item.rank in ranks and item.rank not in notes:
+            notes[item.rank] = (item.verdict, item.note.strip())
+    verdicts = []
+    for objective in objectives:
+        verdict, note = notes.get(objective.rank, ("silent", ""))
+        verdicts.append(
+            ObjectiveVerdict(
+                rank=objective.rank,
+                objective=objective.text.strip(),
+                verdict=verdict,  # type: ignore[arg-type]
+                note=note,
+            )
+        )
+    return verdicts
+
+
+def _breaches(verdicts: Sequence[ConstraintVerdict]) -> list[HardGateBreach]:
+    """The `must` and `never` constraints the ad contradicts, in plain words.
+
+    Derived from the verdicts rather than asked for separately, so the panel
+    can never show a breach the verdicts do not carry -- and a `nice` the ad
+    contradicts is a disappointment, not a breach, so it is not listed here.
+    """
+    return [
+        HardGateBreach(gate=v.label, breach=v.note)
+        for v in verdicts
+        if v.verdict == "contradicted" and v.stance in ("must", "never")
+    ]
 
 
 def _levers(parsed: ScoreOutput, inputs: ScoreInputs) -> list[ScoreLever]:
-    """Resolve each lever's `fact_index` back to the stored fact's own words.
+    """Resolve each lever's `claim_index` back to the stored claim's own words.
 
-    An index naming no fact is dropped -- there is nothing honest to show for
+    An index naming no claim is dropped -- there is nothing honest to show for
     it. `would_move_to` is kept only when it is a real move: inside 1-10 and
     above the score it would move from. Otherwise the lever still appears, with
     its note and without a number, because "confirming this would cover
     requirement X" is worth saying even when the model's arithmetic is not.
     """
-    facts = list(inputs.proposed_facts)
+    claims = claimed_items(inputs)
     seen: set[int] = set()
     levers: list[ScoreLever] = []
     for item in parsed.levers:
-        index = item.fact_index
-        if not (1 <= index <= len(facts)) or index in seen:
+        index = item.claim_index
+        if not (1 <= index <= len(claims)) or index in seen:
             continue
         seen.add(index)
-        fact = facts[index - 1]
+        claim = claims[index - 1]
         # A real move is inside 1-10 AND above the score it moves from;
         # anything else is not arithmetic worth showing the user.
         real_move = (
@@ -337,10 +404,12 @@ def _levers(parsed: ScoreOutput, inputs: ScoreInputs) -> list[ScoreLever]:
         )
         levers.append(
             ScoreLever(
-                fact_text=fact.fact_text,
-                role_label=fact.role_label,
+                fact_text=claim.text,
+                role_label=claim.role_label,
                 would_move_to=item.would_move_to if real_move else None,
                 note=item.note.strip(),
+                claim_kind=claim.claim_kind,
+                tier=claim.tier,
             )
         )
     return levers

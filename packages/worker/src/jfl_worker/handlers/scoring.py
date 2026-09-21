@@ -17,9 +17,15 @@ the button that enqueues this says so -- it is never silent.
 
 **Only confirmed corpus facts are evidence.** Coverage is computed against
 spans, which are the confirmed corpus. The user's *unconfirmed* CV-derived
-facts are read too, but only so the model can name which of them would move the
-first number if confirmed (`ScoreLever`). They never raise a score by
-themselves.
+facts are read too, and so are the profile capabilities they tiered without
+evidencing, but only so the model can name which of them would move the first
+number if confirmed (`ScoreLever`). They never raise a score by themselves.
+
+**One of the two numbers is not the model's.** "Do I want this" is derived from
+the model's per-constraint and per-objective verdicts by `jfl_core.fit` inside
+`score_application`; nothing in this handler computes, adjusts or combines
+either number. It may be None, which is a finished run over an empty profile
+and not a failure.
 
 **The key is never data.** Fetched from `user_credentials`, unsealed with the
 worker's master key, held in one local, handed to the generate calls, and
@@ -195,10 +201,6 @@ def _score_application(
             if job_id is None
             else PostgresJobRepository(conn).latest_coverage(ctx.user_id, job_id)
         )
-        # One read for the whole profile -- constraints, capabilities,
-        # disciplines, objectives and the self-assessment
-        # (docs/profile-schema.md). Empty for a user who has filled nothing in,
-        # never None, so there is no "has a profile?" branch here.
         profile = PostgresProfileRepository(conn, ctx.user_id).current()
         # Unconfirmed, and therefore never evidence -- see the module docstring
         # and `jfl_core.storage.candidate_facts`.
@@ -273,6 +275,7 @@ def _score_application(
             could_get_assessment=result.could_get_assessment,
             want_it_score=result.want_it_score,
             want_it_assessment=result.want_it_assessment,
+            constraint_verdicts=result.constraint_verdicts,
             objective_verdicts=result.objective_verdicts,
             hard_gate_breaches=result.hard_gate_breaches,
             levers=result.levers,
@@ -283,7 +286,8 @@ def _score_application(
         )
 
     # Both numbers, separately, and no third one -- the success log line is not
-    # the place a composite gets invented either.
+    # the place a composite gets invented either. "Do I want this" may be None
+    # here: an empty profile has nothing for the ad to be measured against.
     return {
         "score_id": str(score_id),
         "could_get_score": result.could_get_score,
