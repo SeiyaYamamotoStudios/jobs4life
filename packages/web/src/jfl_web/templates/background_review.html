@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Check what was read — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Check what was read</h1>
+</div>
+<p class="lede">
+  This is the text this tool will read, and the lines it will quote back to you
+  as your own words. Nothing has been stored yet.
+</p>
+<p class="note">
+  A PDF does not hold lines, it holds letters at positions on a page, so reading
+  one is always a guess at the order. Two columns can interleave, a header or a
+  page number can land in the middle of a sentence, and a ligature can come out
+  as one odd character. Fix anything that came out wrong here — it is far cheaper
+  than every later quotation being wrong.
+</p>
+
+<form method="post" action="/background/confirm" class="cv-review">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  {% for item in review %}
+  <fieldset class="cv-review-item">
+    <legend>{{ item.filename }}</legend>
+    {% if item.note %}<p class="note">{{ item.note }}</p>{% endif %}
+    {% set long_note = read_note(item.text | length) %}
+    {% if long_note %}<p class="note">{{ long_note }}</p>{% endif %}
+    <label for="name-{{ loop.index }}">Name for this CV</label>
+    <input type="text" id="name-{{ loop.index }}" name="filenames" value="{{ item.filename }}">
+    <label for="text-{{ loop.index }}">What was read</label>
+    <textarea id="text-{{ loop.index }}" name="texts" rows="20"
+              spellcheck="false">{{ item.text }}</textarea>
+  </fieldset>
+  {% endfor %}
+
+  <p class="cv-review-actions">
+    <button type="submit">This is right — store and read {{ review | length }}
+      CV{{ '' if review | length == 1 else 's' }}</button>
+    <a href="/background">Cancel</a>
+  </p>
+</form>
+{% endblock %}

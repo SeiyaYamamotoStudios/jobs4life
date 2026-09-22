@@ -10,6 +10,10 @@ dependencies = [
   "alembic>=1.14",
   # AES-GCM for credential custody (jfl_core.crypto.envelope).
   "cryptography>=44",
+  # PDF text extraction (jfl_core.ingest.pdf). Pure Python, BSD-3, no system
+  # binary -- and one reader, so the claim gate and CV upload can never
+  # disagree about what a PDF says.
+  "pypdf>=5.1",
 ]
 
 [project.optional-dependencies]

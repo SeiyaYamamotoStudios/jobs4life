@@ -16,6 +16,7 @@ import httpx2
 import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
 from jfl_core.context import RequestContext
+from jfl_core.cv_limits import MAX_CV_READ_CHARS
 from jfl_core.ids import fact_fingerprint
 from jfl_core.models import RunRecord
 from jfl_generate.cv_facts import (
@@ -317,6 +318,34 @@ class TestExtractCvFacts:
         assert call["messages"] == [{"role": "user", "content": CV_TEXT}]
         assert call["max_tokens"] == MAX_TOKENS
         assert call["output_config"]["format"]["schema"] == CV_FACTS_OUTPUT_SCHEMA
+
+    def test_a_long_cv_is_cut_to_the_read_ceiling_before_the_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A CV is stored whole and read in part -- `jfl_core.cv_limits`. The cut
+        happens here because this is the line above a call billed to the user's
+        own key, and no caller can forget it.
+        """
+        client = _FakeAnthropicClient(_response(_PAYLOAD))
+        _patch_client(monkeypatch, client)
+        long_cv = "Led a platform team of eight engineers.\n" * 5_000
+        assert len(long_cv) > MAX_CV_READ_CHARS
+
+        extract_cv_facts(_ctx(), _FakeRunRepo(), cv_text=long_cv, now=NOW)
+
+        sent = client.messages.calls[0]["messages"][0]["content"]
+        assert len(sent) <= MAX_CV_READ_CHARS
+        assert long_cv.startswith(sent)
+
+    def test_a_cv_inside_the_read_ceiling_is_sent_whole(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _FakeAnthropicClient(_response(_PAYLOAD))
+        _patch_client(monkeypatch, client)
+
+        extract_cv_facts(_ctx(), _FakeRunRepo(), cv_text=CV_TEXT, now=NOW)
+
+        assert client.messages.calls[0]["messages"][0]["content"] == CV_TEXT
 
     def test_an_empty_cv_never_reaches_the_api(self, monkeypatch: pytest.MonkeyPatch) -> None:
         client = _FakeAnthropicClient(_response(_PAYLOAD))

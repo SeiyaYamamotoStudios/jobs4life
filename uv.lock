@@ -906,6 +906,7 @@ dependencies = [
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "pypdf" },
     { name = "sqlalchemy" },
 ]
 
@@ -922,6 +923,7 @@ requires-dist = [
     { name = "pgvector", specifier = ">=0.3.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },
+    { name = "pypdf", specifier = ">=5.1" },
     { name = "sentence-transformers", marker = "extra == 'embeddings'", specifier = ">=3.3" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "torch", marker = "extra == 'embeddings'", specifier = ">=2.7" },
@@ -952,14 +954,12 @@ source = { editable = "packages/gate" }
 dependencies = [
     { name = "anthropic" },
     { name = "jfl-core" },
-    { name = "pypdf" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "jfl-core", editable = "packages/core" },
-    { name = "pypdf", specifier = ">=5.1" },
 ]
 
 [[package]]

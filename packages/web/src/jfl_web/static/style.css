@@ -1401,3 +1401,54 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
     overscroll-behavior-x: contain;
   }
 }
+
+/* -- pdf upload -------------------------------------------------------------
+   The review screen a PDF upload lands on. Its whole job is to make the
+   extracted text easy to actually read before it is believed, so the boxes are
+   tall, monospaced and full width: a wrapped proportional column hides exactly
+   the interleaved-column and stray-header damage the screen exists to catch. */
+
+.cv-review-item {
+  margin: 0 0 1.5rem;
+}
+.cv-review-item .note {
+  margin: 0.1rem 0 0.5rem;
+}
+.cv-review textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-wrap: normal;
+  /* Horizontal scrolling inside the box, deliberately: a line that came out
+     of the PDF too long should look too long, not be folded into something
+     that reads as if it were fine. */
+  overflow-x: auto;
+}
+.cv-review input[name="filenames"] {
+  width: 100%;
+}
+.cv-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+/* The CV table's name column carries the "stored in full, first N read" note
+   under the filename, so it needs to stack rather than sit on one line. */
+table.cvs td .note {
+  display: block;
+  margin: 0.15rem 0 0;
+}
+
+@media (max-width: 40rem) {
+  /* Under one hand, a 20-row box is most of the screen. Shorter, and the
+     monospace size comes up to the 16px that stops iOS zooming on focus --
+     the same rule the other controls follow. */
+  .cv-review textarea {
+    font-size: 16px;
+    max-height: 60vh;
+  }
+}

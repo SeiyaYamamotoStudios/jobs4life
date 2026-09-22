@@ -28,13 +28,21 @@
   <form method="post" action="/background/upload" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label for="files">CV files</label>
-    <input type="file" id="files" name="files" multiple accept=".md,.txt,.markdown,.text">
+    <input type="file" id="files" name="files" multiple accept=".pdf,.md,.txt,.markdown,.text">
     <button type="submit">Upload</button>
   </form>
   <p class="note">
-    Plain text only in this step: <code>.md</code> and <code>.txt</code>. PDF and Word
-    files are not read yet — open one and paste the text below instead. Up to
-    {{ max_files }} files at a time, each up to {{ "{:,}".format(max_cv_chars) }} characters.
+    <strong>PDF</strong>, <code>.md</code> and <code>.txt</code>. A PDF is read and then
+    shown back to you to check and correct before anything is stored — reading one is
+    always a guess at the order the text was in. Word and OpenDocument files are not
+    read: save one as a PDF, or paste the text below.
+  </p>
+  <p class="note">
+    Up to {{ max_files }} files at a time, {{ max_file_mb }} MB each and
+    {{ max_upload_mb }} MB in one go. A CV is stored whole up to
+    {{ "{:,}".format(max_cv_chars) }} characters; the first
+    {{ "{:,}".format(max_read_chars) }} of it are what gets read, because reading is a
+    model call billed to your own key.
   </p>
 
   <form method="post" action="/background/paste" class="cv-paste">
@@ -59,7 +67,11 @@
       <tbody>
         {% for cv in cvs %}
         <tr>
-          <td>{{ cv.title or cv.path }}</td>
+          <td>
+            {{ cv.title or cv.path }}
+            {% set long_note = read_note(cv.length_chars) %}
+            {% if long_note %}<span class="note">{{ long_note }}</span>{% endif %}
+          </td>
           <td>{{ cv.created_at | humanize_dt }}</td>
           <td>
             {% if cv.extraction_status == "pending" %}

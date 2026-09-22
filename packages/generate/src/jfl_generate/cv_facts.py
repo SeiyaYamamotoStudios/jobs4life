@@ -33,6 +33,7 @@ from typing import Literal
 import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
+from jfl_core.cv_limits import for_reading
 from jfl_core.ids import fact_fingerprint, role_key
 from jfl_core.models import ProposedFact, RunRecord
 from jfl_core.repositories import RunRepository
@@ -158,6 +159,13 @@ def extract_cv_facts(
     """
     if not cv_text.strip():
         raise GenerateError("no text found in the CV")
+
+    # A CV is stored whole and read in part -- see `jfl_core.cv_limits`. The cut
+    # happens here rather than at upload so that the document on file stays the
+    # author's own, and so that no caller can forget it: the ceiling protects a
+    # call billed to the user's key, and the only place that cannot be bypassed
+    # is the line above the call.
+    cv_text, _truncated = for_reading(cv_text)
 
     # An explicit key from the context wins; with no key, hand the SDK a bare
     # client so it resolves an `ant auth login` OAuth profile -- see
