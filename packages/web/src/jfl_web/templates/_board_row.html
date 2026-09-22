@@ -2,11 +2,11 @@
    Needs in context: session, row (board, platform_label, last_check,
    open_job_count, held, checking, match_count). #}
 <tr id="board-{{ row.board.id }}">
-  <td class="col-board">
+  <td class="col-board" data-label="Board">
     <a href="/boards/{{ row.board.id }}">{{ row.board.label or row.board.board_url }}</a>
     <div class="note">{{ row.platform_label }}</div>
   </td>
-  <td class="col-check">
+  <td class="col-check" data-label="Last check">
     {% if row.held %}
     <span class="status-badge status-held">held</span>
     <div class="note">Open job count dropped sharply — held rather than applied.</div>
@@ -22,18 +22,18 @@
       {% endif %}
     {% endif %}
   </td>
-  <td class="col-updated">
+  <td class="col-updated" data-label="Last checked">
     {% if row.last_check %}
     <span title="{{ row.last_check.finished_at.isoformat() }}">{{ row.last_check.finished_at | humanize_dt }}</span>
     {% else %}—{% endif %}
   </td>
-  <td class="col-updated" title="{{ row.board.created_at.isoformat() }}">
+  <td class="col-updated" data-label="Added" title="{{ row.board.created_at.isoformat() }}">
     {{ row.board.created_at | humanize_dt }}
   </td>
-  <td class="col-open-jobs">
+  <td class="col-open-jobs" data-label="Open jobs">
     {% if row.open_job_count is none %}first check pending{% else %}{{ row.open_job_count }}{% endif %}
   </td>
-  <td class="col-matching">
+  <td class="col-matching" data-label="Matching">
     {% if row.open_job_count is none %}—{% elif row.match_count %}<a href="/jobs">{{ row.match_count.matching }} of {{ row.match_count.open_total }} match</a>{% else %}0 of 0 match{% endif %}
   </td>
   <td class="col-actions">

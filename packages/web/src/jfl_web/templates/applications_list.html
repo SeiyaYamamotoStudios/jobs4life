@@ -15,17 +15,17 @@
 <div class="table-wrap">
   <table class="applications">
     <thead>
-      <tr><th>Title</th><th>Employer</th><th>Status</th><th>Archived</th><th></th></tr>
+      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col">Archived</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
     </thead>
     <tbody>
       {% for application in applications %}
       <tr id="application-{{ application.id }}">
-        <td class="col-title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
-        <td class="col-employer">{{ application.employer or "—" }}</td>
-        <td class="col-status">
+        <td class="col-title" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+        <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
+        <td class="col-status" data-label="Status">
           <span class="status-badge status-{{ application.status }}">{{ application.status }}</span>
         </td>
-        <td class="col-updated" title="{{ application.archived_at.isoformat() }}">
+        <td class="col-updated" data-label="Archived" title="{{ application.archived_at.isoformat() }}">
           {{ application.archived_at | humanize_dt }}
         </td>
         <td class="col-actions">
@@ -61,7 +61,7 @@
 </p>
 {% endif %}
 
-<nav class="status-filter">
+<nav class="status-filter" aria-label="Filter applications by status">
   <a href="/applications" class="{{ 'active' if active_status is none else '' }}">All</a>
   {% for s in statuses %}
   <a href="/applications?status={{ s }}" class="{{ 'active' if s == active_status else '' }}">{{ s }}</a>
@@ -72,7 +72,7 @@
 <div class="table-wrap">
   <table class="applications">
     <thead>
-      <tr><th>Title</th><th>Employer</th><th>Status</th><th>Updated</th></tr>
+      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col">Updated</th></tr>
     </thead>
     <tbody>
       {% for application in applications %}

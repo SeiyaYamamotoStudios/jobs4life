@@ -1020,6 +1020,10 @@ a, code, .draft-citations li { overflow-wrap: anywhere; }
    shared table rules at all, which is why its rows sat unaligned next to every
    other list in the app. */
 .table-wrap { overflow-x: auto; }
+/* A floor, so a dense table scrolls inside its wrapper rather than crushing
+   its columns. Neutralised in the small-screen block below, where these
+   tables become cards and a floor wider than the viewport would reintroduce
+   exactly the sideways scroll the cards exist to remove. */
 .table-wrap > table { min-width: 34rem; }
 table.cvs {
   width: 100%;
@@ -1104,3 +1108,296 @@ textarea, input[type="text"], input[type="url"], input[type="password"], select 
    something. */
 .setting-reject { margin-top: 0.3rem; }
 .setting-run { margin-top: 0.75rem; }
+
+/* --------------------------------------------------------------------
+   -- small screens --
+
+   Everything below this line is hardening, not a redesign. The desktop
+   rules above are untouched; these override them at two named widths.
+
+     --lap    64rem / 1024px   the header stops fitting on one line
+     --phone  40rem / 640px    one hand, one column
+
+   Two, because there are only two things that actually break. The header
+   runs out of room first -- ten links, a sign-out form and an email
+   address need about 1150px on one line -- and everything else survives
+   until the viewport is narrower than a table column is useful.
+
+   The app is not designed for a phone so much as it is now honest on one:
+   what fits, fits; what does not, degrades where you can see it.
+   -------------------------------------------------------------------- */
+
+/* The one rule here outside a media query, because the failure it fixes is
+   not a phone failure. `nav` was a non-wrapping flex row, so between about
+   1150px and the widths below -- an ordinary laptop window, a split screen --
+   the nav overflowed the header box and pushed the page wider than the
+   viewport. Wrapping is correct at every size. The breakpoints below only
+   decide how the wrapped rows sit. */
+header { flex-wrap: wrap; }
+nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
+
+/* ====================================================================
+   --lap: 64rem. Below this the header is a column -- wordmark on its own
+   line, nav wrapping underneath across the full width. No menu, no
+   disclosure, no JavaScript: every destination stays a link in the tab
+   order, which is the behaviour a <details> menu would have had to be
+   careful not to lose.
+   ==================================================================== */
+@media (max-width: 64rem) {
+  header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+    padding: 0.95rem 1.25rem;
+  }
+  nav { justify-content: flex-start; column-gap: 1rem; }
+  /* The address is the first thing to give up room: it is the longest item
+     in the nav and the least often read. */
+  .signed-in-as { max-width: 11rem; }
+}
+
+/* ====================================================================
+   --phone: 40rem. One column, 16px gutters, thumb-sized controls.
+   ==================================================================== */
+@media (max-width: 40rem) {
+
+  /* -- long strings ----------------------------------------------------
+     A board URL, a span id or the account uuid must wrap rather than push
+     the page wider than the screen. `break-word` inherits from body and
+     only breaks a word that cannot fit; `anywhere` additionally lowers the
+     element's min-content width, which is what grid and flex track sizing
+     actually reads -- so the uuid in `.facts` needs the stronger one. */
+  body { overflow-wrap: break-word; }
+  code,
+  .drift-dimension,
+  .answer-text,
+  .draft-text { overflow-wrap: anywhere; }
+
+  /* -- header ---------------------------------------------------------- */
+  header { padding: 0.8rem 1rem; }
+  nav {
+    align-items: center;
+    font-size: 0.9rem;
+    column-gap: 1.1rem;
+    row-gap: 0.1rem;
+  }
+  /* 40px, not 44: three rows of 44px chrome is a third of a phone screen
+     before any content. 40px with a 1.1rem gap between items clears the
+     WCAG 2.2 minimum comfortably and keeps the header to three lines. */
+  nav a,
+  nav button.link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+  }
+  /* Deliberately dropped on a phone: the signed-in address. It is a
+     ~30-character string that would take a header row to itself, and
+     Settings names the same account in the first line of its first panel.
+     What is lost is the glance -- you have to open Settings to see which
+     Google account the browser picked. */
+  .signed-in-as { display: none; }
+
+  /* -- page ------------------------------------------------------------ */
+  main { padding: 1.5rem 1rem 3rem; }
+  h1 { font-size: 1.4rem; }
+  h2 { margin-top: 1.8rem; }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .page-header-actions { flex-wrap: wrap; gap: 0.6rem 1rem; }
+
+  .status-filter { gap: 0 1.1rem; }
+  .status-filter a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+  }
+
+  /* Every panel keeps the same 1rem inner gutter as the page, so a card's
+     text lines up with the prose above it instead of being inset twice. */
+  .facts,
+  .draft,
+  .fact,
+  .fact-progress,
+  .pushback,
+  .exception,
+  .title-suggestion,
+  .ruled-out-entry,
+  .application-question,
+  .archived-banner,
+  .score-axis,
+  .drift-meter,
+  .corpus-note,
+  .job-filter form {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* `max-content 1fr` cannot hold a 36-character uuid in 256px, so the
+     definition list stacks: label over value. */
+  .facts {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .facts dt {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .facts dd { margin: 0 0 0.7rem; }
+  .facts dd:last-child { margin-bottom: 0; }
+
+  .drift-dimensions li { flex-wrap: wrap; gap: 0 0.75rem; }
+  .draft-meta { white-space: normal; }
+
+  /* -- forms and targets ----------------------------------------------- */
+
+  /* 16px minimum on anything you can type into. Below it, iOS Safari zooms
+     the page on focus and does not zoom back out. `font: inherit` already
+     gives 16px today; stating it here means a later `font-size: 0.9rem` on
+     a control cannot quietly reintroduce the zoom. */
+  input[type="text"],
+  input[type="url"],
+  input[type="password"],
+  input[type="email"],
+  input[type="search"],
+  input[type="number"],
+  select,
+  textarea { font-size: 16px; }
+
+  input[type="text"],
+  input[type="url"],
+  input[type="password"],
+  select {
+    min-height: 2.75rem;
+    padding: 0.6rem 0.7rem;
+  }
+  input[type="file"] { max-width: 100%; }
+  textarea { padding: 0.6rem 0.7rem; }
+
+  button, .button {
+    min-height: 2.75rem;
+    padding: 0.65rem 1rem;
+  }
+  /* The link-styled buttons this app uses for in-row actions -- Dismiss,
+     Check now, Put it back. They stay text; they stop being 16px tall. */
+  button.link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.2rem;
+  }
+
+  /* A form whose only control is one submit reads as a single decision, so
+     it gets the full width rather than a button floating at the left. */
+  .board-add-row input[type="url"] { flex: 1 1 100%; }
+  .board-add-row button,
+  .check-all-row button,
+  .cv-upload form > button,
+  .cv-paste > button,
+  .api-key-form button,
+  .job-filter form > button[type="submit"],
+  .fact > form > button,
+  p > .button { width: 100%; }
+  .fact > form.fact-reject { display: block; }
+
+  /* -- tables ----------------------------------------------------------
+     Decided per table, not once.
+
+     `table.applications` and `table.boards` stack into cards. The selector
+     `table.boards` also carries /jobs and /changes, which are marked up as
+     `boards jobs` and `boards jobs changes`. Every one of those rows is an
+     object you act on from the row itself -- change a status, check a
+     board, stop watching, track a job, dismiss a change -- and an action
+     you have to scroll sideways to reach is an action you do not take.
+
+     Each cell keeps its column's meaning as a label above the value, read
+     from `data-label` on the cell. A bare value with no label would be
+     worse than scrolling, so `<thead>` only goes away where every cell has
+     one; the cells that hold a self-naming control (Track as application,
+     Stop watching) carry no label and get a rule above them instead.
+
+     `table.cvs` on /background does NOT stack -- see below. */
+  table.applications,
+  table.boards { display: block; }
+
+  table.applications thead,
+  table.boards thead { display: none; }
+
+  table.applications tbody,
+  table.boards tbody { display: block; }
+
+  table.applications tr,
+  table.boards tr {
+    display: block;
+    margin: 0 0 0.75rem;
+    padding: 0.8rem 1rem;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+
+  table.applications td,
+  table.boards td {
+    display: block;
+    min-width: 0;
+    padding: 0.2rem 0;
+    border-bottom: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  table.applications td[data-label]::before,
+  table.boards td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+  }
+
+  /* The status picker is the whole point of an applications row. */
+  table.applications td select { width: 100%; }
+
+  /* The self-naming controls, ruled off from the data above them. */
+  table.applications td.col-actions,
+  table.boards td.col-actions,
+  table.boards td.col-track {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem 1.25rem;
+    margin-top: 0.55rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--rule-soft);
+  }
+  table.boards .col-actions { white-space: normal; }
+  table.applications td.col-actions button,
+  table.boards td.col-actions button { margin-top: 0; }
+
+  /* /jobs sets a floor on this column for the desktop table; a stacked card
+     has no columns to keep apart. */
+  table.jobs .col-workplace { min-width: 0; }
+
+  /* `table.cvs` keeps the horizontal scroll. It is four read-only status
+     columns -- name, when, read or not, how many facts -- that you scan
+     rather than act on: there is no control in any cell, so nothing is put
+     out of reach by scrolling. Stacking it would turn a glance down a
+     column into four labelled lines per CV for no gain. The min-width
+     makes the scroll deliberate rather than four columns crushed to 60px. */
+  /* The desktop floor comes off: below this width these tables are cards,
+     not tables, so a floor would only push the page wider than the phone. */
+  .table-wrap > table { min-width: 0; }
+  table.cvs { min-width: 30rem; }
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}

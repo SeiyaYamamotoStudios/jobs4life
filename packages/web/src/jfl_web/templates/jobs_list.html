@@ -118,25 +118,25 @@
   <div class="table-wrap">
     <table class="boards jobs">
       <thead>
-        <tr><th>Job</th><th>Board</th><th>Workplace</th><th>Locations</th><th>Seen since</th><th>Track</th></tr>
+        <tr><th scope="col">Job</th><th scope="col">Board</th><th scope="col">Workplace</th><th scope="col">Locations</th><th scope="col">Seen since</th><th scope="col">Track</th></tr>
       </thead>
       <tbody>
         {% for match in rows %}
         {% set job = match.job %}
         {% set board = board_by_id[job.board_id] %}
         <tr>
-          <td class="col-job">
+          <td class="col-job" data-label="Job">
             {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
           </td>
-          <td class="col-board">
+          <td class="col-board" data-label="Board">
             <a href="/boards/{{ board.id }}">{{ board.label or board.board_url }}</a>
             <div class="note">{{ platform_label(board.platform) }}</div>
           </td>
-          <td class="col-workplace">
+          <td class="col-workplace" data-label="Workplace">
             {% include "_workplace_badge.html" %}
           </td>
-          <td class="col-locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
-          <td class="col-updated" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>
+          <td class="col-locations" data-label="Locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
+          <td class="col-updated" data-label="Seen since" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>
           <td class="col-track">{% include "_track_button.html" %}</td>
         </tr>
         {% endfor %}
