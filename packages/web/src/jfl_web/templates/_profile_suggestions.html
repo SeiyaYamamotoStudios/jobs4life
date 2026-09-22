@@ -1,0 +1,178 @@
+{# The CV-read profile settings panel, rendered both inside /profile and on its
+   own by GET /profile/suggestions/{id}.
+
+   The polling trigger lives on this element and only while the run is
+   `pending`, so a finished run stops the poll by virtue of what came back:
+   there is no timer to cancel and no client-side state to get out of step with
+   the row. `hx-swap="outerHTML"` because the element replaces itself. Same
+   trick as `_capability_clusters.html`.
+
+   `suggestions` is a `jfl_web.profilesuggestions.SuggestionsView`, or None when
+   the page did not look one up (an error re-render) -- in which case only the
+   button shows, because "no run yet" is a claim this template cannot make.
+
+   Every proposal carries the CV line it came from. That is the point of the
+   panel: a wrong suggestion should be obvious, not plausible. Nothing here is
+   applied until a button is pressed, and anything the user has already stated
+   is shown beside the suggestion rather than replaced. #}
+<section id="profile-suggestions" class="profile-suggestions"
+         {% if suggestions and suggestions.run and suggestions.run.status == "pending" %}
+         hx-get="/profile/suggestions/{{ suggestions.run.id }}"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML"
+         {% endif %}>
+
+  <h3>Read my settings off my CVs</h3>
+  <p class="note">
+    Your CVs already say which disciplines you practise, where you have worked
+    and what level you have been operating at. This reads those off so you can
+    accept each with a click instead of typing them again. It is one cheap call,
+    billed to your own API key, and <strong>nothing is recorded until you accept
+    it</strong>.
+  </p>
+  <p class="note">
+    It will never suggest pay, contract type, right to work, notice or anything
+    you would refuse. A CV does not state those, and a guess would put a
+    requirement on your profile that you never made.
+  </p>
+
+  {% if suggest_status == "no_cvs" %}
+  <p class="note" role="status">
+    You have not uploaded a CV yet, so there is nothing to read.
+    Upload one under <a href="/background">Background</a> and then come back.
+  </p>
+  {% elif suggest_status == "needs_key" %}
+  <p class="note" role="alert">
+    This needs your own Anthropic API key — reading your CVs is a model call,
+    billed to you rather than to this app.
+    <a href="/settings">Add an API key</a>.
+  </p>
+  {% elif suggest_status == "already_running" %}
+  <p class="note" role="status">A read is already running. One press, one call.</p>
+  {% elif has_cvs is sameas false and not (suggestions and suggestions.run) %}
+  <p class="note" role="status">
+    No CV uploaded yet. Add one under <a href="/background">Background</a> and
+    this will have something to read.
+  </p>
+  {% endif %}
+
+  {% if suggestions and suggestions.run %}
+  {% set run = suggestions.run %}
+
+  {% if run.status == "pending" %}
+  <p class="note" role="status">Reading your CVs… this takes a few seconds.</p>
+
+  {% elif run.status == "failed" %}
+  <p class="error" role="alert">
+    {{ suggestions.failure.message }}
+    {% if suggestions.failure.fix_url %}<a href="{{ suggestions.failure.fix_url }}">{{ suggestions.failure.fix_label }}</a>.{% endif %}
+  </p>
+
+  {% elif run.status == "done" %}
+  <p class="note">
+    Read {{ run.cv_count }} CV{{ '' if run.cv_count == 1 else 's' }}
+    — this run cost {{ suggestions.cost | usd }} on your own key.
+  </p>
+
+  {% if suggestions.suggestions %}
+  <ul class="setting-proposals">
+    {% for item in suggestions.suggestions %}
+    <li class="setting-proposal setting-{{ item.verdict }}" id="suggestion-{{ item.key }}">
+      <h4>{{ item.heading }}</h4>
+      <p class="setting-value">{{ item.text }}</p>
+      <p class="note">{{ item.note }}</p>
+
+      {% if item.source_lines %}
+      <details class="setting-source">
+        <summary>What in your CV suggested this</summary>
+        <ul class="fact-list">
+          {% for line in item.source_lines %}
+          <li><q>{{ line }}</q></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if item.verdict == "agrees" %}
+      <p class="note" role="status">
+        You already say this — <q>{{ item.current }}</q>. Accepting adds nothing.
+      </p>
+      {% elif item.verdict == "conflict" %}
+      <p class="note setting-conflict" role="alert">
+        Your profile already says something else here: <q>{{ item.current }}</q>.
+        Nothing is changed unless you say so below.
+      </p>
+      {% endif %}
+
+      <form method="post"
+            action="/profile/suggestions/{{ run.id }}/{{ item.key }}/accept"
+            class="setting-accept">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+        {% if item.kind == "location" %}
+        <label for="places-{{ item.key }}">Where you would work, best first — one per line</label>
+        <p class="note">Taken from your CVs, most recent first. Reorder or edit it; it is yours.</p>
+        <textarea id="places-{{ item.key }}" name="places" rows="3">{{ item.values | join('\n') }}</textarea>
+        {% endif %}
+
+        {% if item.kind == "level" %}
+        <label for="level-{{ item.key }}">The lowest level you would take, in your words</label>
+        <p class="note">
+          Deliberately blank. What your CVs describe is above; what you would
+          take next is a decision, and this tool does not make it for you.
+        </p>
+        <textarea id="level-{{ item.key }}" name="level_text" rows="2"
+                  maxlength="{{ max_suggestion_text }}"
+                  placeholder="Engineering manager or above; not back to individual contributor"></textarea>
+        {% endif %}
+
+        {% if item.needs_stance %}
+        <label for="stance-{{ item.key }}">Is this a must, a nice to have, or a never?</label>
+        <select id="stance-{{ item.key }}" name="stance">
+          <option value="" selected>Not stated</option>
+          {% for value, name in stance_choices %}
+          <option value="{{ value }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+        <p class="note">Required. A CV cannot tell us which of the three this is.</p>
+        {% endif %}
+
+        {% if item.verdict == "conflict" %}
+        <label class="inline setting-replace">
+          <input type="checkbox" name="replace" value="yes">
+          Replace what I have
+        </label>
+        {% endif %}
+
+        <button type="submit">Put this on my profile</button>
+      </form>
+
+      <form method="post"
+            action="/profile/suggestions/{{ run.id }}/{{ item.key }}/reject"
+            class="setting-reject">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="link">Not true of me</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="note">
+    A suggestion you turn down is remembered: reading your CVs again will not
+    offer it a second time.
+  </p>
+  {% else %}
+  <p class="note">
+    Nothing left to answer here — every suggestion from this run has been
+    accepted or turned down.
+  </p>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+
+  {% if not (suggestions and suggestions.run and suggestions.run.status == "pending") %}
+  <form method="post" action="/profile/suggestions" class="setting-run">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Suggest settings from my CVs</button>
+  </form>
+  {% endif %}
+</section>

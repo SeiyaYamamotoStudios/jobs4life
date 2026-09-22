@@ -24,6 +24,7 @@ import hashlib
 import re
 import unicodedata
 import uuid
+from collections.abc import Sequence
 
 NS_ROOT = uuid.UUID("6f5c2f7e-1c5a-5f9e-9b1e-6a3d0c8f4a21")
 NS_DOCUMENT = uuid.uuid5(NS_ROOT, "document")
@@ -158,3 +159,22 @@ def fact_fingerprint(role_label: str, fact_text: str) -> str:
     """
     key = f"{fold(role_label)}|{fold(fact_text)}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def setting_key(kind: str, values: Sequence[str]) -> str:
+    """Stable id for one proposed profile setting -- see
+    `jfl_core.models.ProposedSetting`.
+
+    There is no id column to name a proposal by: the run's proposals are one
+    JSONB list, and the screens need something to put in a form action. Content
+    derived rather than positional, the same rule `capability_key` follows, so a
+    form posted against a stale page can never answer the proposal next to the
+    one on screen.
+
+    Folded, so "Engineering management" and "engineering  management" are one
+    suggestion and not two. The kind is part of the key because the same word
+    proposed as a discipline and as a discipline the person does *not* practise
+    are opposite claims that must never collapse into one row.
+    """
+    joined = "|".join(fold(value) for value in values)
+    return hashlib.sha256(f"{fold(kind)}|{joined}".encode()).hexdigest()[:16]

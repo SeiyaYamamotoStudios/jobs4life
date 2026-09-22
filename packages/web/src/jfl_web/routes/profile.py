@@ -35,14 +35,18 @@ reads as two pieces of evidence. The page says so in plain words, because a tool
 that quietly turned "I want more scope" into evidence about what you have done
 would be doing the exact thing this project exists to oppose.
 
-**One model call is reachable from this page, and it is not made here.**
+**Two model calls are reachable from this page, and neither is made here.**
 "Suggest capabilities from my confirmed facts" enqueues a background task
 (`jfl_worker.handlers.capability_clusters`) that groups confirmed facts into
 capability labels on the user's own key -- because a role is not a capability
 and one fact is not one either. What comes back is **proposals**: accept,
 rename or reject, never applied silently, and a rename is the user's word from
-then on. Nothing in this module calls a model itself; a two-minute call never
-runs inside a request.
+then on. "Suggest settings from my CVs" enqueues the other
+(`jfl_worker.handlers.profile_suggestions`), which reads the CVs in the
+sent-document store for the plain settings they state -- disciplines,
+where the person has worked, the level the CV describes -- and proposes them
+straight into the profile. Nothing in this module calls a model itself; a
+two-minute call never runs inside a request.
 
 Screens:
 
@@ -56,6 +60,10 @@ Screens:
   POST .../cluster/{id}/{key}/reject       -- section 2, reject one
   POST /profile/capabilities/{key}         -- section 2, tier one row
   POST /profile/capabilities/{key}/remove  -- section 2, drop a row
+  POST /profile/suggestions                -- read settings off the user's CVs
+  GET  /profile/suggestions/{id}           -- that run's panel, for polling
+  POST .../suggestions/{id}/{key}/accept   -- accept one, on the user's terms
+  POST .../suggestions/{id}/{key}/reject   -- reject one, remembered across runs
   POST /profile/disciplines                -- section 3
   POST /profile/objectives                 -- section 4, four ranked slots
   POST /profile/self-assessment            -- section 5, ALSO to the corpus
@@ -93,8 +101,10 @@ from jfl_web.deps import (
     CredentialRepoDep,
     CsrfDep,
     ProfileRepoDep,
+    ProfileSuggestionRepoDep,
     RunRepoDep,
     SectionRepoDep,
+    SentDocumentRepoDep,
     SessionDep,
     TaskRepoDep,
     UserCorpusRepoDep,
@@ -126,7 +136,18 @@ from jfl_web.profile import (
     parse_capability,
     parse_constraints,
     parse_disciplines,
+    parse_lines,
     parse_objectives,
+    parse_stance,
+)
+from jfl_web.profilesuggestions import (
+    MAX_LEVEL_TEXT,
+    MissingLevelTextError,
+    NoPlacesGivenError,
+    SuggestionConflictError,
+    SuggestionsView,
+    applied,
+    suggestions_view,
 )
 from jfl_web.sections import profile_sections
 from jfl_web.templating import render
@@ -220,10 +241,15 @@ def _context(
         "max_objective_text": MAX_OBJECTIVE_TEXT,
         "max_self_assessment": MAX_SELF_ASSESSMENT,
         "max_cluster_label": MAX_CLUSTER_LABEL,
+        "max_suggestion_text": MAX_LEVEL_TEXT,
         # Set by the routes that actually looked one up. None means "not looked
         # up", which the panel renders as the button alone -- never as "no run
         # yet", which would be a claim this context cannot make.
         "cluster": None,
+        "suggestions": None,
+        # None means "not looked up" -- the empty state is a claim about this
+        # account's CVs, and an error re-render has not asked.
+        "has_cvs": None,
     }
     ctx.update(extra)
     # Built last, because three of the five summaries count things the context
@@ -305,6 +331,8 @@ def profile_page(
     store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
     clusters: CapabilityClusterRepoDep,
+    settings: ProfileSuggestionRepoDep,
+    documents: SentDocumentRepoDep,
     run_repo: RunRepoDep,
     ui_sections: SectionRepoDep,
 ) -> Response:
@@ -322,6 +350,9 @@ def profile_page(
             # Never rendered, only matched: anything that is not one of the five
             # section names simply forces nothing open.
             open_section=request.query_params.get("open"),
+            suggestions=_suggestions_view(session, store, settings, run_repo),
+            suggest_status=request.query_params.get("suggest"),
+            has_cvs=bool(documents.list_cvs()),
         ),
     )
 
@@ -597,6 +628,212 @@ def remove_capability(
     if len(remaining) != len(profile.capabilities):
         store.save(profile.model_copy(update={"capabilities": remaining}))
     return _saved("capabilities")
+
+
+# -- profile settings read off the user's CVs --------------------------------
+#
+# The other model call reachable from this page, and like the clustering one it
+# is not made here. A CV states claims about the world -- those go through the
+# fact-confirmation path and become corpus one at a time. It also states plain
+# settings: which disciplines someone practises, where they have worked, the
+# level they have been operating at. Those are proposed straight into the
+# profile and accepted with a click.
+#
+# Nothing is applied silently, every proposal shows the CV line behind it, and
+# a setting the user has already stated always wins -- the rules live in
+# `jfl_web.profilesuggestions`.
+
+SUGGEST_PROFILE_SETTINGS_KIND = "suggest_profile_settings"
+
+_NO_SUCH_SUGGESTION = "No such suggestion -- it may belong to another account."
+
+
+def _suggest_redirect(flag: str | None = None) -> RedirectResponse:
+    """POST/redirect/GET, and the flag is a short literal -- never a message,
+    which would be text from a query string rendered into a page.
+    """
+    suffix = f"?suggest={flag}" if flag else ""
+    return RedirectResponse(f"/profile{suffix}#profile-suggestions", status_code=303)
+
+
+def _suggestions_view(
+    session: SessionDep,
+    store: ProfileRepoDep,
+    suggestions: ProfileSuggestionRepoDep,
+    run_repo: RunRepoDep,
+    run_id: uuid.UUID | None = None,
+) -> SuggestionsView | None:
+    """The suggestion panel's state, priced against the profile as it stands.
+
+    Cost comes from `runs` by the run's own trace, the same way the clustering
+    panel prices itself -- this table stores no money, and the one place that
+    does is the one built for querying it.
+
+    The profile is read here rather than passed in because every proposal is
+    shown against what the user has **already** stated: that comparison is the
+    difference between "accept this" and "this conflicts with what you said".
+    """
+    run = suggestions.get(run_id) if run_id is not None else suggestions.latest()
+    if run_id is not None and run is None:
+        return None
+    cost = (
+        run_repo.cost_for_trace(session.user.id, run.trace_id)
+        if run is not None and run.status != "pending"
+        else None
+    )
+    return suggestions_view(run, store.current(), cost=cost)
+
+
+@router.post("/profile/suggestions")
+def start_profile_suggestions(
+    request: Request,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    suggestions: ProfileSuggestionRepoDep,
+    documents: SentDocumentRepoDep,
+    credentials: CredentialRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Ask the model to read this user's uploaded CVs for profile settings.
+
+    One call, on the user's own key, through the queue -- a model call never
+    runs inside a request. Three refusals before anything is enqueued, each of
+    which says so on the page rather than spending the user's money to find
+    out:
+
+      * **no CVs uploaded.** There is nothing to read, and the panel points at
+        where CVs are uploaded;
+      * **no API key stored.** Nothing is enqueued and the panel says to add one;
+      * **a run already in flight.** Pressing the button twice buys one call.
+    """
+    if not documents.list_cvs():
+        return _suggest_redirect("no_cvs")
+    if credentials.summary(ANTHROPIC_API_KEY) is None:
+        return _suggest_redirect("needs_key")
+    if suggestions.pending() is not None:
+        return _suggest_redirect("already_running")
+
+    # The trace is minted here so the run is priceable whatever happens to it.
+    row = suggestions.create_pending(trace_id=uuid.uuid4())
+    tasks.enqueue(kind=SUGGEST_PROFILE_SETTINGS_KIND, payload={"suggestion_run_id": str(row.id)})
+    return _suggest_redirect()
+
+
+@router.get("/profile/suggestions/{run_id}")
+def profile_suggestions_panel(
+    request: Request,
+    run_id: uuid.UUID,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    suggestions: ProfileSuggestionRepoDep,
+    run_repo: RunRepoDep,
+) -> Response:
+    """The panel, standalone -- what a pending run polls. Same view-building
+    function the inline panel uses, so the two can never render one run's state
+    differently.
+    """
+    view = _suggestions_view(session, store, suggestions, run_repo, run_id)
+    if view is None:
+        return render(
+            request,
+            "error.html",
+            {"session": session, "user": session.user, "message": _NO_SUCH_SUGGESTION},
+            status_code=404,
+        )
+    return render(
+        request,
+        "_profile_suggestions.html",
+        {
+            "session": session,
+            "suggestions": view,
+            "stance_choices": STANCE_CHOICES,
+            "max_items": MAX_ITEMS,
+            "max_suggestion_text": MAX_LEVEL_TEXT,
+        },
+    )
+
+
+@router.post("/profile/suggestions/{run_id}/{key}/accept")
+async def accept_profile_suggestion(
+    request: Request,
+    run_id: uuid.UUID,
+    key: str,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    suggestions: ProfileSuggestionRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Put one proposed setting on the profile, on the user's own terms.
+
+    The order matters and is deliberate: the profile is updated **first**, and
+    the proposal is marked answered only once that succeeded. A refused accept
+    -- a conflict with nothing ticked, a constraint with no stance, a level
+    box left empty -- therefore leaves the proposal open and still answerable,
+    rather than consuming it to record nothing.
+
+    Nothing is read out of the form that the profile did not already know how
+    to hold: a stance from the choices the page offers, the places as the user
+    left them, and their own words for a level floor.
+    """
+    form = await request.form()
+    submitted = {k: v for k, v in form.items() if isinstance(v, str)}
+    run = suggestions.get(run_id)
+    proposal = (
+        next((p for p in run.open_proposals if p.key == key), None) if run is not None else None
+    )
+    if proposal is None:
+        return _error(request, session, store, facts, _NO_SUCH_SUGGESTION, 404)
+
+    try:
+        stance = parse_stance(submitted.get("stance", ""))
+        places = parse_lines(submitted.get("places", "")) if proposal.kind == "location" else None
+        level_text = checked_text(submitted.get("level_text", ""), MAX_LEVEL_TEXT)
+        updated = applied(
+            store.current(),
+            proposal,
+            stance=stance,
+            places=places,
+            level_text=level_text,
+            replace=submitted.get("replace", "") == "yes",
+        )
+    except (
+        *_FORM_ERRORS,
+        SuggestionConflictError,
+        MissingLevelTextError,
+        NoPlacesGivenError,
+    ) as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+
+    store.save(updated)
+    suggestions.set_proposal_state(run_id, key, "accepted")
+    return _suggest_redirect()
+
+
+@router.post("/profile/suggestions/{run_id}/{key}/reject")
+def reject_profile_suggestion(
+    request: Request,
+    run_id: uuid.UUID,
+    key: str,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    suggestions: ProfileSuggestionRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Say no to one proposed setting, permanently.
+
+    Nothing is written to the profile, and the rejection is remembered across
+    runs: `answered_keys` is subtracted before a later run's proposals are
+    stored, and the key folds the same way, so the same suggestion from the
+    same CV -- or from a later one saying the same thing -- is never offered
+    again.
+    """
+    if suggestions.set_proposal_state(run_id, key, "rejected") is None:
+        return _error(request, session, store, facts, _NO_SUCH_SUGGESTION, 404)
+    return _suggest_redirect()
 
 
 @router.post("/profile/disciplines")

@@ -823,6 +823,107 @@ class CapabilityCluster(BaseModel):
         return [p for p in self.proposals if p.state == "open"]
 
 
+# -- profile suggestions from uploaded CVs -----------------------------------
+#
+# A CV states claims about the world, which become `candidate_facts` and are
+# confirmed one at a time. It also states plain **settings** -- which
+# disciplines someone practises, where they have worked, what level they have
+# been operating at -- and those are not claims to be measured against a corpus.
+# One cheap model call reads the user's own CVs and proposes them.
+#
+# Nothing here is a profile row. A proposal reaches `profiles.data` only when
+# the user accepts it, and a setting they have already stated always wins --
+# see `jfl_web.profilesuggestions`.
+
+ProfileSuggestionStatus = Literal["pending", "done", "failed"]
+
+# The same subset `CapabilityClusterErrorCode` takes, and for the same reason:
+# the CVs are already stored, so the only failures are about the credential,
+# the model, or the call.
+ProfileSuggestionErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+]
+
+# **The whole allow-list, and the exclusions are its complement.** A CV records
+# what someone has done; it does not state what they now require. Comp, contract
+# type, right to work, notice, a categorical no and a workplace preference are
+# therefore absent by construction rather than by a rule someone has to
+# remember -- a guessed constraint of any of those kinds would be read by
+# scoring as the user's own requirement.
+#
+# `level` is an **observation** ("has been operating at engineering-manager
+# level"), never a demand: `level_floor` is a choice the user makes, so
+# accepting one still asks them for a stance and for their own words.
+ProfileSuggestionKind = Literal["discipline", "not_discipline", "location", "level"]
+PROFILE_SUGGESTION_KINDS: tuple[ProfileSuggestionKind, ...] = (
+    "discipline",
+    "not_discipline",
+    "location",
+    "level",
+)
+
+# Inside JSONB, so no CHECK constraint holds it -- the Pydantic model below is
+# the only write path, the same trade the profile itself makes.
+SuggestionState = Literal["open", "accepted", "rejected"]
+
+
+class ProposedSetting(BaseModel):
+    """One profile setting a CV suggests, and the CV's own words behind it.
+
+    `values` is a list for every kind so that one shape serves all four: a
+    discipline and a level observation carry one entry, a location carries the
+    places in the order the model read them, most recent first.
+    `source_lines` runs in step with it -- **every proposal shows what in the CV
+    suggested it**, which is what makes a wrong one obvious rather than
+    plausible.
+
+    `key` is `jfl_core.ids.setting_key`, derived from the kind and the folded
+    values: it names the proposal in a form action, and it is what makes a
+    rejection stick, since a later run's identical suggestion folds to the same
+    key and is never offered again.
+
+    No property named `reason` here or in the schema that produces it -- see
+    CLAUDE.md's 2026-09-02 decision.
+    """
+
+    kind: ProfileSuggestionKind
+    key: str
+    values: list[str] = Field(default_factory=list)
+    source_lines: list[str] = Field(default_factory=list)
+    state: SuggestionState = "open"
+
+
+class ProfileSuggestionRun(BaseModel):
+    """One run of the CV-reading call: what it read and what it proposed.
+
+    `cv_count` is how many stored CVs went into the call, so the screen can say
+    what the answer was drawn from. `trace_id` is how that screen prices the run
+    (`RunRepository.cost_for_trace`) without this table holding a cost of its
+    own.
+    """
+
+    id: uuid.UUID
+    status: ProfileSuggestionStatus
+    trace_id: uuid.UUID
+    proposals: list[ProposedSetting] = Field(default_factory=list)
+    cv_count: int = 0
+    error_code: ProfileSuggestionErrorCode | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @property
+    def open_proposals(self) -> list[ProposedSetting]:
+        """The ones still awaiting an answer. Answered rows stay on the run, so
+        re-running is a decision about new material rather than a chance to be
+        asked the same question twice.
+        """
+        return [p for p in self.proposals if p.state == "open"]
+
+
 class DueBoard(BaseModel):
     """A board the scheduler found due, and whose it is. Ids only, by design --
     see `jfl_core.storage.boards.PostgresBoardScheduler`.

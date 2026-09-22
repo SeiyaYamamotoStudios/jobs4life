@@ -1066,3 +1066,41 @@ textarea, input[type="text"], input[type="url"], input[type="password"], select 
   box-sizing: border-box;
 }
 .draft-text { width: 100%; }
+
+/* -- profile suggestions -- */
+/* The panel that reads plain settings off a user's CVs. Shaped like the
+   capability-clustering panel on the same page, because it is the same kind of
+   thing: a model's proposals, none of which are applied until pressed. */
+.profile-suggestions {
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1.25rem;
+  margin: 1rem 0 1.5rem;
+}
+.profile-suggestions h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.setting-proposals { list-style: none; margin: 1rem 0 0; padding: 0; }
+.setting-proposal {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.setting-proposal h4 { margin: 0 0 0.2rem; font-size: 0.98rem; }
+.setting-value { margin: 0 0 0.3rem; font-weight: 600; }
+/* A conflict is marked on the row itself, not only in a sentence inside it:
+   the one thing the reader must not miss is that this disagrees with something
+   they already said. */
+.setting-conflict { border-left: 3px solid var(--accent); padding-left: 0.6rem; }
+.setting-proposal.setting-agrees { opacity: 0.85; }
+.setting-source { margin-top: 0.5rem; }
+.setting-source summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+.setting-accept { margin-top: 0.6rem; }
+.setting-accept .note { margin: 0.2rem 0 0.5rem; }
+.setting-accept textarea, .setting-accept select { width: 100%; }
+.setting-replace { display: block; margin: 0.5rem 0; }
+/* Reject is a link, not a button: turning a suggestion down throws nothing
+   away, and it must not compete visually with the action that records
+   something. */
+.setting-reject { margin-top: 0.3rem; }
+.setting-run { margin-top: 0.75rem; }

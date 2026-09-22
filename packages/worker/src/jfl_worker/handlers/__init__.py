@@ -48,6 +48,8 @@ from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.feed_marks import KIND as PURGE_STALE_FEED_MARKS
 from jfl_worker.handlers.feed_marks import purge_stale_feed_marks
+from jfl_worker.handlers.profile_suggestions import KIND as SUGGEST_PROFILE_SETTINGS
+from jfl_worker.handlers.profile_suggestions import build_suggest_profile_settings
 from jfl_worker.handlers.pushback import KIND as CLASSIFY_PUSHBACK
 from jfl_worker.handlers.pushback import build_classify_pushback
 from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION
@@ -74,6 +76,7 @@ __all__ = [
     "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
     "SCORE_APPLICATION",
+    "SUGGEST_PROFILE_SETTINGS",
     "SUGGEST_TITLES",
     "build_check_application_answer",
     "build_check_board",
@@ -88,6 +91,7 @@ __all__ = [
     "build_registry",
     "build_schedule_board_checks",
     "build_score_application",
+    "build_suggest_profile_settings",
     "build_suggest_titles",
     "purge_expired_sessions",
     "purge_stale_feed_marks",
@@ -167,6 +171,17 @@ def build_registry(
         # True: one Anthropic call on the user's own key. The kill switch holds
         # it, which is also what makes "press it again" safe under an incident
         # -- the run sits `pending` rather than being claimed and charged.
+        calls_model=True,
+    )
+    registry.register(
+        SUGGEST_PROFILE_SETTINGS,
+        # No `model=` -- `jfl_generate.profile_suggestions.suggest_profile_settings`
+        # always calls claude-haiku-4-5, never the deployment's configured model.
+        build_suggest_profile_settings(master_key=settings.master_key),
+        # True: one Anthropic call on the user's own key, reading their uploaded
+        # CVs. The kill switch holds it, which is also what makes "press it
+        # again" safe under an incident -- the run sits `pending` rather than
+        # being claimed and charged.
         calls_model=True,
     )
     registry.register(

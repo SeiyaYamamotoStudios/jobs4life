@@ -1407,6 +1407,62 @@ capability_clusters = Table(
 )
 
 # --------------------------------------------------------------------------
+# Profile suggestions: one row per CV-reading call that proposes plain profile
+# *settings* -- disciplines, where the person has worked, the level the CV
+# describes. Distinct from `candidate_facts`, which holds the claims a CV makes
+# about the world and which are confirmed one at a time into the corpus.
+#
+# `proposals` is a JSONB list of `jfl_core.models.ProposedSetting`. Nothing in
+# it reaches `profiles.data` until the user accepts it, and an answered
+# proposal stays on the row so that rejecting one keeps it from being offered
+# again.
+#
+# `trace_id` prices the run through `runs` (`cost_for_trace`) rather than
+# storing a cost here.
+# --------------------------------------------------------------------------
+_PROFILE_SUGGESTION_STATUSES = ("pending", "done", "failed")
+
+# The same subset `_CAPABILITY_CLUSTER_ERROR_CODES` takes: the CVs are already
+# stored, so nothing here can be missing or too long.
+_PROFILE_SUGGESTION_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+)
+
+profile_suggestions = Table(
+    "profile_suggestions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", Text, nullable=False, server_default="pending"),
+    # Minted when the run is created, not when it finishes, so a failed run can
+    # still be priced.
+    Column("trace_id", UUID(as_uuid=True), nullable=False),
+    Column("proposals", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("cv_count", Integer, nullable=False, server_default=text("0")),
+    Column("error_code", Text),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_PROFILE_SUGGESTION_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('"
+        + "','".join(_PROFILE_SUGGESTION_ERROR_CODES)
+        + "')",
+        name="error_code",
+    ),
+    Index("ix_profile_suggestions_user_id_created_at", "user_id", text("created_at DESC")),
+)
+
+
+# --------------------------------------------------------------------------
 # The profile (docs/profile-schema.md, 2026-09-21). One denormalised row per
 # save, append-only, latest wins -- replacing `profile_answers`,
 # `profile_objectives` and `profile_ruled_out`, which held the eighteen

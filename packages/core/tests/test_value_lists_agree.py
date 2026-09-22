@@ -38,6 +38,8 @@ VALUE_SETS = [
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
     (models.CapabilityClusterStatus, tables._CAPABILITY_CLUSTER_STATUSES),
     (models.CapabilityClusterErrorCode, tables._CAPABILITY_CLUSTER_ERROR_CODES),
+    (models.ProfileSuggestionStatus, tables._PROFILE_SUGGESTION_STATUSES),
+    (models.ProfileSuggestionErrorCode, tables._PROFILE_SUGGESTION_ERROR_CODES),
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
     (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
     (models.ScoreStatus, tables._SCORE_STATUSES),
