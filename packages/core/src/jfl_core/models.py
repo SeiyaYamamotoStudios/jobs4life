@@ -1217,3 +1217,107 @@ class ApplicationScore(BaseModel):
     trace_id: uuid.UUID | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
+
+
+# --------------------------------------------------------------------------
+# Pushback: the user disagreeing with a score, recorded whether or not it
+# changes anything. The arithmetic is `jfl_core.pushback`; these are the
+# stored shapes.
+#
+# Nothing here is named `reason` -- see CLAUDE.md's 2026-09-02 decision. The
+# model's one-line account of why it classified a pushback the way it did is a
+# `classification_note`.
+# --------------------------------------------------------------------------
+
+PushbackStatus = Literal["awaiting_classification", "classified", "applied"]
+
+# Same closed-set discipline as `ScoreErrorCode`: the worker writes this column
+# holding the user's decrypted API key, and a free-text column is where a
+# careless `str(exc)` ends up.
+PushbackErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+]
+
+ClassificationSource = Literal["none", "model", "user"]
+
+
+class Pushback(BaseModel):
+    """One disagreement with one score, and exactly what it did.
+
+    `user_text` is the user's own words, byte for byte. `shown_score` and
+    `shown_explanation` are the stimulus they were answering -- preferences are
+    constructed at the moment of elicitation rather than retrieved, so a
+    pushback typed after reading our sentence is partly a response to our
+    sentence, and the sentence is part of the record.
+
+    `applied_delta` is None until the user has confirmed the classification, and
+    0.0 is a normal, frequent and honest value afterwards: every capability
+    claim that the number should go up lands on it, by design.
+    """
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    score_id: uuid.UUID
+    axis: str
+    dimension: str
+    target_dimension: str = ""
+    shown_score: int | None = None
+    shown_explanation: str = ""
+    user_text: str
+    asserted_direction: str
+    asserted_points: float = 1.0
+    status: PushbackStatus = "awaiting_classification"
+    # Free `str` rather than the Literal for the same reason `ScoreLever.claim_kind`
+    # is: this is read back out of a table that outlives a vocabulary change.
+    classification: str | None = None
+    classification_source: ClassificationSource = "none"
+    classification_note: str = ""
+    new_information: bool | None = None
+    error_code: PushbackErrorCode | None = None
+    trace_id: uuid.UUID | None = None
+    applied_delta: float | None = None
+    prior_observations: int | None = None
+    disposition: str | None = None
+    effect: dict[str, Any] = Field(default_factory=dict)
+    evidence_question: str = ""
+    resulting_span_id: uuid.UUID | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    applied_at: dt.datetime | None = None
+
+    @property
+    def awaiting_user(self) -> bool:
+        """Whether the user still has to see and confirm the classification.
+
+        Nothing is applied until they have. A misclassified pushback silently
+        changes the wrong thing, and "silently" is the word that makes it
+        unacceptable here.
+        """
+        return self.status != "applied"
+
+    @property
+    def moved(self) -> bool:
+        return bool(self.applied_delta)
+
+
+class ScoreOverride(BaseModel):
+    """A displayed number the user set by hand, for one application only.
+
+    The escape hatch, and honest about being one: shown as an override wherever
+    it appears, scoped to this application, feeding no dimension's displacement,
+    reaching no other job's score, and changing nothing about what the claim
+    gate will say about a CV bullet that asserts the same thing. `value` of None
+    is the override taken off, kept as a row because the record of what you
+    believed in March stays readable.
+    """
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    axis: str
+    value: int | None = None
+    note: str = ""
+    created_at: dt.datetime

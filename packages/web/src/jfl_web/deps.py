@@ -33,6 +33,10 @@ from jfl_core.storage.postgres import (
     PostgresRunRepository,
 )
 from jfl_core.storage.profile import PostgresProfileRepository
+from jfl_core.storage.pushbacks import (
+    PostgresPushbackRepository,
+    PostgresScoreOverrideRepository,
+)
 from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
@@ -204,6 +208,33 @@ def profile_repo(session: SessionDep, conn: ConnDep) -> PostgresProfileRepositor
 
 
 ProfileRepoDep = Annotated[PostgresProfileRepository, Depends(profile_repo)]
+
+
+def pushback_repo(session: SessionDep, conn: ConnDep) -> PostgresPushbackRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    The pushback log is the whole of what a disagreement with a score changes
+    -- there is no preference weight anywhere else for a second repository to
+    reach, which is what makes "pushback cannot touch the corpus, the coverage
+    statuses or the claim gate" a property of the wiring rather than a promise.
+    """
+    return PostgresPushbackRepository(conn, session.user.id)
+
+
+PushbackRepoDep = Annotated[PostgresPushbackRepository, Depends(pushback_repo)]
+
+
+def score_override_repo(session: SessionDep, conn: ConnDep) -> PostgresScoreOverrideRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    Deliberately separate from `pushback_repo`: an override is the user setting
+    a displayed number by hand for one application and must not be able to
+    reach a dimension's displacement even by accident.
+    """
+    return PostgresScoreOverrideRepository(conn, session.user.id)
+
+
+ScoreOverrideRepoDep = Annotated[PostgresScoreOverrideRepository, Depends(score_override_repo)]
 
 
 def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSuggestionRepository:

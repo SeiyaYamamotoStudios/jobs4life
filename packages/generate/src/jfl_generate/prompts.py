@@ -26,6 +26,7 @@ from jfl_core.models import (
     Span,
 )
 from jfl_core.profile import Capability, Constraint, Profile
+from jfl_core.pushback import PUSHBACK_KINDS
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -1182,3 +1183,101 @@ def build_cv_facts_prompt(*, now: datetime) -> str:
     message, assembled by the caller.
     """
     return _CV_FACTS_INSTRUCTIONS.format(now=now.isoformat())
+
+
+########################################################################
+# Pushback classification. The same shape as the title call above: short,
+# cheap, standalone, no corpus -- this call classifies one disagreement with a
+# score, it does not weigh it. See jfl_generate.pushback.classify_pushback and
+# jfl_core.pushback's module docstring for the loop this feeds.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.PushbackClassificationOutput.
+PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": list(PUSHBACK_KINDS)},
+        "new_information": {"type": "boolean"},
+        # Never `reason` -- see CLAUDE.md's 2026-09-02 decision and
+        # PLAN.md's C7a: a schema property named `reason`, combined with a
+        # labelling system prompt, has tripped the API's
+        # reverse-engineering/duplication classifier before. This is a note
+        # *to the user* about what kind of statement this is, never the
+        # model's reasoning about how it decided.
+        "classification_note": {"type": "string"},
+    },
+    "required": ["kind", "new_information", "classification_note"],
+    "additionalProperties": False,
+}
+
+# No free-text "reason" field and no instruction to justify the pick at length --
+# see the schema comment above. The note field is described as being for the
+# user, not for showing working.
+_PUSHBACK_CLASSIFICATION_INSTRUCTIONS = """\
+You are classifying one person's disagreement with a score jobs4life showed them, for a \
+tool whose whole claim is measuring the distance between what someone can evidence and what \
+they assert -- applied here to a score instead of a CV bullet. Read their words and decide \
+which of three kinds this is. The three have sharply different consequences, so pick the \
+kind that is actually true of the sentence rather than the one that sounds most agreeable.
+
+- "preference" -- a statement about what the person WANTS. Accepted and folded into the \
+number, shrunk by how many times they have already said something about this dimension.
+- "capability" -- a statement about what the person CAN DO or HAS DONE. If they are saying \
+the tool rated them too high, the number moves down immediately. If they are saying the \
+tool rated them too low, the number moves NOTHING -- a claim of greater capability needs \
+evidence, not agreement, so this opens a question instead of taking their word for it.
+- "factual" -- a statement about the JOB AD itself, not about the person -- disputing what \
+it says rather than what they want or can do. Nothing about the person moves; the ad gets \
+re-read.
+
+They pushed back on {dimension_label} ("{axis_words}"), currently shown as {shown_score} out \
+of 10, with this explanation: "{shown_explanation}". They think this number should be \
+{direction_words}.
+
+Their words: "{user_text}"
+
+{earlier_section}
+
+Decide `new_information`: whether this pushback states a fact the earlier ones on this same \
+dimension did not already state. Restating the same point more forcefully, or adding \
+emphasis with no new fact, is NOT new information -- it is the same claim said again, and \
+saying it again should not count as saying more.
+
+Do not rewrite, tidy or improve the person's words anywhere in your answer. \
+`classification_note` is a short note to them about what kind of statement you read this as, \
+never a paraphrase of what they said and never your reasoning about how you decided.
+
+The current date and time is {now}.
+"""
+
+
+_AXIS_WORDS = {"want": "do I want this", "get": "could I get this"}
+_DIRECTION_WORDS = {"up": "higher", "down": "lower"}
+
+
+def build_pushback_classification_prompt(
+    *,
+    user_text: str,
+    axis: str,
+    direction: str,
+    shown_score: int | None,
+    shown_explanation: str,
+    dimension_label: str,
+    earlier_texts: Sequence[str],
+    now: datetime,
+) -> str:
+    if earlier_texts:
+        bullets = "\n".join(f'- "{text}"' for text in earlier_texts)
+        earlier_section = f"Earlier things they have said about this same dimension:\n{bullets}"
+    else:
+        earlier_section = "They have said nothing else about this dimension before."
+    return _PUSHBACK_CLASSIFICATION_INSTRUCTIONS.format(
+        dimension_label=dimension_label,
+        axis_words=_AXIS_WORDS.get(axis, axis),
+        direction_words=_DIRECTION_WORDS.get(direction, direction),
+        shown_score=shown_score if shown_score is not None else "unscored",
+        shown_explanation=shown_explanation or "(none)",
+        user_text=user_text,
+        earlier_section=earlier_section,
+        now=now.isoformat(),
+    )

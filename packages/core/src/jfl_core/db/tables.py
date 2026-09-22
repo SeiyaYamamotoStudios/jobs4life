@@ -1696,3 +1696,219 @@ candidate_facts = Table(
     Index("ix_candidate_facts_user_id_role_key_ordinal", "user_id", "role_key", "ordinal"),
     Index("ix_candidate_facts_user_id_state", "user_id", "state"),
 )
+
+
+# --------------------------------------------------------------------------
+# Pushback: what happens when the user disagrees with a score.
+#
+# Design: `~/jobs4life-profile-research/feedback-loops.md`, "The loop we should
+# build"; the arithmetic is `jfl_core.pushback`, pure and testable without a
+# database.
+#
+# **Append-only, and the log is the store.** There is no stored preference
+# weight anywhere, on purpose: a dimension's displacement is the sum of the
+# applied deltas in this table, so "the profile drifted" is not a state that can
+# happen quietly -- it is a query, and the drift meter is that query shown to
+# the user. Nothing here writes to `profiles`, `spans`, `requirement_coverage`
+# or `application_scores`, and nothing in this table could.
+#
+# **The user's words are stored verbatim**, with the exact number and sentence
+# they were shown beside them: a pushback typed straight after reading our
+# explanation is partly a response to our explanation, so the stimulus is part
+# of the record rather than context that has to be reconstructed later.
+#
+# A row is inserted the moment the user submits, before anything is classified
+# and before anything moves -- "recorded whether or not it changes anything" is
+# the rule, and `status` says which of those happened.
+# --------------------------------------------------------------------------
+
+# `awaiting_classification` -- recorded, nothing applied, a cheap model call in
+# flight (or failed, which is not an error the user has to care about: they can
+# classify it themselves). `classified` -- the classification is on the row and
+# the user has not confirmed it yet. `applied` -- the user confirmed or
+# corrected it and the effect is recorded. Terminal, because the log is
+# append-only: changing your mind is a new pushback, not an edit.
+_PUSHBACK_STATUSES = ("awaiting_classification", "classified", "applied")
+
+# A closed set, never a message: this column is written by the worker while it
+# holds the user's decrypted API key.
+_PUSHBACK_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+)
+
+# The three kinds, three consequences: `jfl_core.pushback` holds the Literal and
+# the rule, this holds what the table will accept, and the migration holds what
+# Postgres will accept. All three are compared by
+# `packages/core/tests/test_value_lists_agree.py` and its integration sibling.
+_PUSHBACK_CLASSIFICATIONS = ("preference", "capability", "factual")
+_PUSHBACK_DISPOSITIONS = ("accepted", "recorded_only", "pending_evidence")
+_CLASSIFICATION_SOURCES = ("none", "model", "user")
+_SCORE_AXES = ("want", "get")
+
+score_pushbacks = Table(
+    "score_pushbacks",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),  # random: one id per pushback
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    # The exact run they were arguing with. CASCADE: a pushback against a score
+    # that no longer exists has lost the stimulus that gives it meaning.
+    Column(
+        "score_id",
+        UUID(as_uuid=True),
+        ForeignKey("application_scores.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("axis", Text, nullable=False),
+    # What they were disagreeing about, from `jfl_core.pushback`'s allowlist.
+    # Free TEXT with no CHECK because the vocabulary is per-user -- a
+    # constraint kind, an objective rank, a capability key -- and the allowlist
+    # that matters is the one `decide()` enforces before anything is applied.
+    Column("dimension", Text, nullable=False),
+    # Where the displacement actually landed, once the classification was known
+    # (`jfl_core.pushback.target_dimension`). Empty until applied.
+    Column("target_dimension", Text, nullable=False, server_default=""),
+    # The stimulus, per the design: the exact number and sentence shown.
+    Column("shown_score", Integer),
+    Column("shown_explanation", Text, nullable=False, server_default=""),
+    # VERBATIM. A model may classify this; it may never rewrite it. Same rule
+    # as a gap answer (CLAUDE.md, 2026-09-01) and for the same reason: a user
+    # held to wording they did not choose, by a tool whose claim is that it
+    # measures distance from what they actually said.
+    Column("user_text", Text, nullable=False),
+    Column("asserted_direction", Text, nullable=False),
+    # How far out they say it is, 1-3. Not "what should the number be": people
+    # are far more reliable at relative judgements than absolute ones, and the
+    # cap means the exact figure barely matters anyway.
+    Column("asserted_points", Numeric(4, 2), nullable=False, server_default=text("1")),
+    Column("status", Text, nullable=False, server_default="awaiting_classification"),
+    Column("classification", Text),
+    # Who decided the classification. `user` means they corrected the model, or
+    # classified it themselves when the call failed -- worth being able to
+    # count, because a model that is corrected often is a model to replace.
+    Column("classification_source", Text, nullable=False, server_default="none"),
+    Column("classification_note", Text, nullable=False, server_default=""),
+    # Whether this carried a fact the record did not already have. Nullable
+    # until classified. False makes it a restatement, which contributes no
+    # delta -- and an exact textual restatement is forced False in code
+    # whatever this says.
+    Column("new_information", Boolean),
+    Column("error_code", Text),
+    Column("trace_id", UUID(as_uuid=True)),
+    # What it did. NULL until applied; 0 is a real, common and honest answer.
+    Column("applied_delta", Numeric(6, 3)),
+    Column("prior_observations", Integer),
+    Column("disposition", Text),
+    # The receipt, whole: `jfl_core.pushback.PushbackEffect` as JSONB. Read back
+    # and rendered, never queried structurally -- same convention as
+    # `runs.attributes`.
+    Column("effect", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # For a capability claim the tool will not take on trust: the exact fact
+    # that would move the number. The user's answer goes into the corpus
+    # verbatim by the one existing write path, and `resulting_span_id` records
+    # which span it became.
+    Column("evidence_question", Text, nullable=False, server_default=""),
+    # No FK cascade: spans are retired, never deleted, same as
+    # `gap_questions.resulting_span_id`.
+    Column("resulting_span_id", UUID(as_uuid=True), ForeignKey("spans.id")),
+    # `clock_timestamp()`, not `now()`: this is an append-only log read in
+    # order, and two rows written in one transaction would otherwise tie.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    _ts("applied_at"),
+    CheckConstraint("axis in ('" + "','".join(_SCORE_AXES) + "')", name="axis"),
+    CheckConstraint("asserted_direction in ('up','down')", name="asserted_direction"),
+    CheckConstraint("status in ('" + "','".join(_PUSHBACK_STATUSES) + "')", name="status"),
+    CheckConstraint(
+        "classification is null or classification in ('"
+        + "','".join(_PUSHBACK_CLASSIFICATIONS)
+        + "')",
+        name="classification",
+    ),
+    CheckConstraint(
+        "classification_source in ('" + "','".join(_CLASSIFICATION_SOURCES) + "')",
+        name="classification_source",
+    ),
+    CheckConstraint(
+        "disposition is null or disposition in ('" + "','".join(_PUSHBACK_DISPOSITIONS) + "')",
+        name="disposition",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('" + "','".join(_PUSHBACK_ERROR_CODES) + "')",
+        name="error_code",
+    ),
+    CheckConstraint("asserted_points > 0 and asserted_points <= 3", name="asserted_points"),
+    # **The asymmetric bar, in the database.** A capability claim that the
+    # number should go UP may never carry a non-zero delta. The rule is in
+    # `jfl_core.pushback._capability`, which returns before any arithmetic; this
+    # is the same rule written where no future caller can get past it, because
+    # "a claim that increases what you assert needs grounding" is the one
+    # guarantee this whole feature exists to provide.
+    CheckConstraint(
+        "not (classification = 'capability' and asserted_direction = 'up' "
+        "and applied_delta is not null and applied_delta <> 0)",
+        name="capability_up_never_moves",
+    ),
+    # A pushback that has not been applied has moved nothing, and one that has
+    # been applied says what it did. Neither state is expressible halfway.
+    CheckConstraint(
+        "(status = 'applied') = (applied_delta is not null)",
+        name="applied_iff_delta",
+    ),
+    Index(
+        "ix_score_pushbacks_user_id_created_at",
+        "user_id",
+        text("created_at DESC"),
+    ),
+    Index("ix_score_pushbacks_user_id_target_dimension", "user_id", "target_dimension"),
+    Index("ix_score_pushbacks_user_id_application_id", "user_id", "application_id"),
+)
+
+
+# A local override of a displayed number. Deliberately NOT a pushback: it is the
+# escape hatch offered when the tool has said its piece and the user still
+# disagrees, and it is honest about being one. It is scoped to one application,
+# labelled as an override everywhere it appears, feeds no dimension's
+# displacement, reaches no other job's score, and changes nothing about what the
+# claim gate will say about a CV bullet. People will use an imperfect tool if
+# they are allowed to modify it, even slightly; an unbounded lever destroys the
+# product, and a lever that is real, bounded and labelled is the resolution.
+score_overrides = Table(
+    "score_overrides",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("axis", Text, nullable=False),
+    # NULL clears the override. Append-only, latest row per (application, axis)
+    # wins, so "I took the override off" stays in the record.
+    Column("value", Integer),
+    Column("note", Text, nullable=False, server_default=""),
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    CheckConstraint("axis in ('" + "','".join(_SCORE_AXES) + "')", name="axis"),
+    CheckConstraint("value is null or (value between 1 and 10)", name="value"),
+    Index(
+        "ix_score_overrides_user_id_application_id_created_at",
+        "user_id",
+        "application_id",
+        text("created_at DESC"),
+    ),
+)

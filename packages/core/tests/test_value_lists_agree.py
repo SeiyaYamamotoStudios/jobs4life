@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import get_args
 
 import pytest
-from jfl_core import models
+from jfl_core import models, pushback
 from jfl_core.db import tables
 
 # (Literal in models, tuple in tables). Add a row whenever a new closed set gets a
@@ -49,6 +49,15 @@ VALUE_SETS = [
     (models.CvExtractionStatus, tables._CV_EXTRACTION_STATUSES),
     (models.CvExtractionErrorCode, tables._CV_EXTRACTION_ERROR_CODES),
     (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
+    (models.PushbackStatus, tables._PUSHBACK_STATUSES),
+    (models.PushbackErrorCode, tables._PUSHBACK_ERROR_CODES),
+    (models.ClassificationSource, tables._CLASSIFICATION_SOURCES),
+    # These three live beside the rule they belong to rather than in `models`:
+    # `jfl_core.pushback` is what decides what a classification means, so the
+    # closed set is declared where it is enforced.
+    (pushback.PushbackKind, tables._PUSHBACK_CLASSIFICATIONS),
+    (pushback.Disposition, tables._PUSHBACK_DISPOSITIONS),
+    (pushback.Axis, tables._SCORE_AXES),
 ]
 
 

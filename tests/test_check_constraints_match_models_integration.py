@@ -51,6 +51,13 @@ CONSTRAINED_COLUMNS = [
     ("cv_extractions", "status", tables._CV_EXTRACTION_STATUSES),
     ("cv_extractions", "error_code", tables._CV_EXTRACTION_ERROR_CODES),
     ("candidate_facts", "state", tables._CANDIDATE_FACT_STATES),
+    ("score_pushbacks", "status", tables._PUSHBACK_STATUSES),
+    ("score_pushbacks", "error_code", tables._PUSHBACK_ERROR_CODES),
+    ("score_pushbacks", "classification", tables._PUSHBACK_CLASSIFICATIONS),
+    ("score_pushbacks", "classification_source", tables._CLASSIFICATION_SOURCES),
+    ("score_pushbacks", "disposition", tables._PUSHBACK_DISPOSITIONS),
+    ("score_pushbacks", "axis", tables._SCORE_AXES),
+    ("score_overrides", "axis", tables._SCORE_AXES),
 ]
 
 

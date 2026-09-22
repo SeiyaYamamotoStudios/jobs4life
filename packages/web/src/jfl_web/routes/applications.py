@@ -59,6 +59,8 @@ from jfl_web.deps import (
     ApplicationQuestionRepoDep,
     ApplicationRepoDep,
     CsrfDep,
+    PushbackRepoDep,
+    ScoreOverrideRepoDep,
     ScoreRepoDep,
     SessionDep,
     TaskRepoDep,
@@ -69,6 +71,41 @@ from jfl_web.jobads import (
     normalise_url,
     provisional_title,
 )
+from jfl_web.pushbacks import (
+    ADJUSTED_NOTE,
+    ASSERTED_POINTS_CHOICES,
+    ASSERTED_POINTS_LABEL,
+    CLASSIFY_FAILED,
+    CLASSIFY_HEADING,
+    CLASSIFY_INTRO,
+    COMPARISON_HEADING,
+    COMPARISON_INTRO,
+    DIRECTION_CHOICES,
+    DIRECTION_LABEL,
+    DRIFT_METER_HEADING,
+    DRIFT_METER_NOTE,
+    EVIDENCE_HEADING,
+    EVIDENCE_NOTE,
+    EVIDENCE_RECORDED,
+    KIND_CONSEQUENCE,
+    KIND_WORDING,
+    NEVER_CHANGED,
+    NEVER_CHANGED_HEADING,
+    NEW_INFORMATION_LABEL,
+    NEW_INFORMATION_NOTE,
+    OVERRIDE_HEADING,
+    OVERRIDE_LABEL,
+    OVERRIDE_NOTE,
+    PUSHBACK_HEADING,
+    PUSHBACK_INTRO,
+    RECEIPT_CHANGED,
+    RECEIPT_UNCHANGED,
+    RECEIPT_WOULD,
+    SENT_NOTE,
+    axis_displays,
+    drift_meter_sentence,
+)
+from jfl_web.routes.pushbacks import pushback_context
 from jfl_web.scores import (
     COST_NOTE,
     COULD_GET_LABEL,
@@ -294,6 +331,8 @@ def _detail_context(
     detail: ApplicationDetail,
     *,
     questions: ApplicationQuestionRepoDep,
+    pushbacks: PushbackRepoDep,
+    overrides: ScoreOverrideRepoDep,
     **extra: object,
 ) -> dict[str, object]:
     """Everything the detail page needs, in one place -- shared with
@@ -314,7 +353,12 @@ def _detail_context(
         # side -- see jfl_web.applicationanswers and jfl_web.routes.application_questions.
         "question_views": question_views(questions, application_id),
         **_extraction_context(extraction),
-        **_score_context(scores.latest(application_id)),
+        **_score_context(
+            scores.latest(application_id),
+            detail=detail,
+            pushbacks=pushbacks,
+            overrides=overrides,
+        ),
         **extra,
     }
 
@@ -327,6 +371,8 @@ def application_detail(
     applications: ApplicationRepoDep,
     scores: ScoreRepoDep,
     questions: ApplicationQuestionRepoDep,
+    pushbacks: PushbackRepoDep,
+    overrides: ScoreOverrideRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -335,7 +381,16 @@ def application_detail(
     return render(
         request,
         "application_detail.html",
-        _detail_context(session, applications, scores, application_id, detail, questions=questions),
+        _detail_context(
+            session,
+            applications,
+            scores,
+            application_id,
+            detail,
+            questions=questions,
+            pushbacks=pushbacks,
+            overrides=overrides,
+        ),
     )
 
 
@@ -397,6 +452,8 @@ def attach_ad(
     applications: ApplicationRepoDep,
     scores: ScoreRepoDep,
     questions: ApplicationQuestionRepoDep,
+    pushbacks: PushbackRepoDep,
+    overrides: ScoreOverrideRepoDep,
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
@@ -434,6 +491,8 @@ def attach_ad(
                 application_id,
                 detail,
                 questions=questions,
+                pushbacks=pushbacks,
+                overrides=overrides,
                 ad_error=message,
                 ad_value=job_ad,
             ),
@@ -452,6 +511,8 @@ def score_panel(
     session: SessionDep,
     applications: ApplicationRepoDep,
     scores: ScoreRepoDep,
+    pushbacks: PushbackRepoDep,
+    overrides: ScoreOverrideRepoDep,
 ) -> Response:
     """The scoring panel on its own, for htmx to poll while a run is pending.
 
@@ -463,7 +524,8 @@ def score_panel(
     The application is looked up first so an id belonging to someone else is a
     404 here exactly as it is on the page, rather than an empty panel.
     """
-    if applications.get_application(application_id) is None:
+    detail = applications.get_application(application_id)
+    if detail is None:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
     return render(
@@ -472,7 +534,12 @@ def score_panel(
         {
             "session": session,
             "application_id": application_id,
-            **_score_context(scores.latest(application_id)),
+            **_score_context(
+                scores.latest(application_id),
+                detail=detail,
+                pushbacks=pushbacks,
+                overrides=overrides,
+            ),
         },
     )
 
@@ -520,16 +587,71 @@ def score_application(
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
 
 
-def _score_context(score: ApplicationScore | None) -> dict[str, object]:
+def _score_context(
+    score: ApplicationScore | None,
+    *,
+    detail: ApplicationDetail,
+    pushbacks: PushbackRepoDep,
+    overrides: ScoreOverrideRepoDep,
+) -> dict[str, object]:
     """One shape for both the full page and the polled fragment, so the panel
     cannot render differently depending on which route produced it.
 
     The two axes are handed over as two separate values with two separate
     labels, and nothing here derives a third from them.
+
+    A **third** value goes with each of them, and also never merges into it:
+    what the user's own corrections have moved that number to. The stored run
+    keeps the number the pipeline produced -- corrections are a labelled layer
+    over it, read from the append-only pushback log, so the panel can always
+    say both what the tool said and what you moved it to.
     """
     failed = score is not None and score.status == "failed"
     failure = score_failure(score.error_code) if score is not None and failed else None
+    live_overrides = overrides.current(detail.application.id)
+    panel = pushback_context(detail, score, pushbacks)
+    displays = axis_displays(
+        score,
+        pushbacks.displacements(),
+        live_overrides,
+        sent=bool(panel["sent"]),
+    )
     return {
+        **panel,
+        "want_display": displays.get("want"),
+        "could_get_display": displays.get("get"),
+        "overrides": live_overrides,
+        "drift_meter_heading": DRIFT_METER_HEADING,
+        "drift_meter_note": DRIFT_METER_NOTE,
+        "drift_meter_sentence": drift_meter_sentence(panel["drift_meter"]),  # type: ignore[arg-type]
+        "pushback_heading": PUSHBACK_HEADING,
+        "pushback_intro": PUSHBACK_INTRO,
+        "asserted_points_label": ASSERTED_POINTS_LABEL,
+        "asserted_points_choices": ASSERTED_POINTS_CHOICES,
+        "direction_label": DIRECTION_LABEL,
+        "direction_choices": DIRECTION_CHOICES,
+        "classify_heading": CLASSIFY_HEADING,
+        "classify_intro": CLASSIFY_INTRO,
+        "classify_failed": CLASSIFY_FAILED,
+        "kind_wording": KIND_WORDING,
+        "kind_consequence": KIND_CONSEQUENCE,
+        "new_information_label": NEW_INFORMATION_LABEL,
+        "new_information_note": NEW_INFORMATION_NOTE,
+        "receipt_changed": RECEIPT_CHANGED,
+        "receipt_unchanged": RECEIPT_UNCHANGED,
+        "receipt_would": RECEIPT_WOULD,
+        "never_changed": NEVER_CHANGED,
+        "never_changed_heading": NEVER_CHANGED_HEADING,
+        "comparison_heading": COMPARISON_HEADING,
+        "comparison_intro": COMPARISON_INTRO,
+        "override_heading": OVERRIDE_HEADING,
+        "override_note": OVERRIDE_NOTE,
+        "override_label": OVERRIDE_LABEL,
+        "evidence_heading": EVIDENCE_HEADING,
+        "evidence_note": EVIDENCE_NOTE,
+        "evidence_recorded": EVIDENCE_RECORDED,
+        "adjusted_note": ADJUSTED_NOTE,
+        "sent_note": SENT_NOTE,
         "score": score,
         "score_failure": failure,
         "score_unmeasured": UNMEASURED,

@@ -48,6 +48,8 @@ from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
 from jfl_worker.handlers.extraction import build_extract_job_ad
 from jfl_worker.handlers.feed_marks import KIND as PURGE_STALE_FEED_MARKS
 from jfl_worker.handlers.feed_marks import purge_stale_feed_marks
+from jfl_worker.handlers.pushback import KIND as CLASSIFY_PUSHBACK
+from jfl_worker.handlers.pushback import build_classify_pushback
 from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION
 from jfl_worker.handlers.scoring import build_score_application
 from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
@@ -60,6 +62,7 @@ from jfl_worker.settings import WorkerSettings
 __all__ = [
     "CHECK_APPLICATION_ANSWER",
     "CHECK_BOARD",
+    "CLASSIFY_PUSHBACK",
     "CLUSTER_CAPABILITIES",
     "DRAFT_APPLICATION_ANSWER",
     "EXTRACT_CV_FACTS",
@@ -74,6 +77,7 @@ __all__ = [
     "SUGGEST_TITLES",
     "build_check_application_answer",
     "build_check_board",
+    "build_classify_pushback",
     "build_cluster_capabilities",
     "build_draft_application_answer",
     "build_extract_cv_facts",
@@ -204,6 +208,16 @@ def build_registry(
         build_generate_cv_draft(master_key=settings.master_key, model=settings.model),
         # True: two Anthropic calls on the user's own key -- the draft, then
         # the automatic claim-gate pass (see jfl_generate.draft).
+        calls_model=True,
+    )
+    registry.register(
+        CLASSIFY_PUSHBACK,
+        # No `model=` -- `jfl_generate.pushback.classify_pushback` always
+        # calls claude-haiku-4-5, never the deployment's configured model.
+        build_classify_pushback(master_key=settings.master_key),
+        # True: one Anthropic call on the user's own key, same as title
+        # suggestion -- a cheap classification call, still spent on the
+        # user's own credential and still held by the kill switch.
         calls_model=True,
     )
     return registry
