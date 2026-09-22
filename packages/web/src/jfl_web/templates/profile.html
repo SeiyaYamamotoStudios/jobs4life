@@ -24,6 +24,13 @@
   Every save is kept — <a href="/profile/history">see what you have said before</a>.
 </p>
 
+{# One cheap model call, on the user's own key, that reads the plain settings a
+   CV already states -- disciplines, where you have worked, the level it
+   describes. It sits above the sections it fills in. Proposals only: the
+   profile changes when the user accepts one, never before, and anything they
+   have already stated wins. #}
+{% include "_profile_suggestions.html" %}
+
 {# -- 1. constraints ------------------------------------------------------ #}
 <section id="constraints">
   <h2>What you will and will not take</h2>

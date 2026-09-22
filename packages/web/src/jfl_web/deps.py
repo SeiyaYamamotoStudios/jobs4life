@@ -33,6 +33,7 @@ from jfl_core.storage.postgres import (
     PostgresRunRepository,
 )
 from jfl_core.storage.profile import PostgresProfileRepository
+from jfl_core.storage.profile_suggestions import PostgresProfileSuggestionRepository
 from jfl_core.storage.pushbacks import (
     PostgresPushbackRepository,
     PostgresScoreOverrideRepository,
@@ -256,6 +257,18 @@ def capability_cluster_repo(
 
 CapabilityClusterRepoDep = Annotated[
     PostgresCapabilityClusterRepository, Depends(capability_cluster_repo)
+]
+
+
+def profile_suggestion_repo(
+    session: SessionDep, conn: ConnDep
+) -> PostgresProfileSuggestionRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresProfileSuggestionRepository(conn, session.user.id)
+
+
+ProfileSuggestionRepoDep = Annotated[
+    PostgresProfileSuggestionRepository, Depends(profile_suggestion_repo)
 ]
 
 

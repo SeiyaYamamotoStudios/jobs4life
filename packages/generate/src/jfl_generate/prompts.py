@@ -568,6 +568,96 @@ def build_capability_cluster_prompt(*, max_capabilities: int, now: datetime) -> 
     )
 
 
+########################################################################
+# Profile suggestions from uploaded CVs. Same shape as the two calls
+# above: short, cheap, standalone, no corpus and no system/message split
+# to cache. The CVs are volatile and go in the user message; only the
+# instructions are constant.
+#
+# A CV states claims about the world -- those become candidate facts and
+# are confirmed one at a time. It also states plain *settings*, and this
+# is the call that reads those off.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.ProfileSuggestionsOutput.
+PROFILE_SUGGESTIONS_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "suggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    # An open string rather than a JSON enum: an unknown kind is
+                    # dropped by `jfl_generate.profile_suggestions.to_proposals`
+                    # against a whitelist, which is a guarantee in code rather
+                    # than a constraint the wire format might or might not hold.
+                    "kind": {"type": "string"},
+                    "value": {"type": "string"},
+                    # The CV's own words. Never `reason` and never a rationale
+                    # -- see CLAUDE.md's 2026-09-02 decision. This is a quote,
+                    # and a quote that is not in the CV gets the whole
+                    # suggestion dropped.
+                    "source_line": {"type": "string"},
+                },
+                "required": ["kind", "value", "source_line"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["suggestions"],
+    "additionalProperties": False,
+}
+
+_PROFILE_SUGGESTIONS_INSTRUCTIONS = """\
+You are reading one person's own CVs for jobs4life, a tool that measures how well \
+someone's record evidences a role's requirements. They uploaded these CVs themselves. \
+Read off the plain settings the CVs state, so they can confirm each one with a click \
+instead of typing it out again.
+
+Return a list of suggestions. Each carries a kind, a value, and the line or phrase from \
+the CV it came from -- copied out exactly, so the person can see what made you say it.
+
+The four kinds, and nothing else:
+
+- discipline: something this person practises, in the CV's own vocabulary -- \
+"engineering management", "platform engineering". What they actually do, as distinct \
+from what an employer called them. One suggestion per discipline.
+- not_discipline: a discipline the CV says in words they do not practise, or have \
+stopped practising. Only where it is written down. Never because something is missing \
+from the CV: silence is not a statement.
+- location: somewhere this person has actually worked, named in the CV. One suggestion \
+per place, most recent first.
+- level: the seniority the CVs describe, written as an observation about what they have \
+been doing -- "has been operating at engineering-manager level". At most one, and never \
+phrased as a requirement, a floor or a minimum. What they will accept next is their \
+choice, not something a CV states.
+
+Rules:
+
+- Use only those four kinds. Anything else is discarded unread.
+- Do not suggest pay, contract type, right to work, notice period, a remote or hybrid \
+preference, or anything they would refuse. A CV records what someone has done; it does \
+not state what they now require, and a guess would put a requirement on their profile \
+that they never made.
+- source_line must be copied from the CV exactly as written. If you cannot point at a \
+line, leave the suggestion out.
+- Do not repeat a suggestion. Prefer the person's own wording over a tidier phrase.
+- Return at most {max_suggestions} suggestions.
+
+The current date and time is {now}.
+"""
+
+
+def build_profile_suggestions_prompt(*, max_suggestions: int, now: datetime) -> str:
+    """Constant but for the ceiling and the clock: the CVs are volatile and
+    belong in the user message, assembled by `jfl_generate.profile_suggestions`.
+    """
+    return _PROFILE_SUGGESTIONS_INSTRUCTIONS.format(
+        max_suggestions=max_suggestions, now=now.isoformat()
+    )
+
+
 def _split_system_blocks(
     template: str, corpus_text: str, *, cache: Literal["instructions", "corpus"]
 ) -> list[TextBlockParam]:

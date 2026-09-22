@@ -21,6 +21,7 @@ from jfl_worker.handlers import (
     PURGE_STALE_FEED_MARKS,
     SCHEDULE_BOARD_CHECKS,
     SCORE_APPLICATION,
+    SUGGEST_PROFILE_SETTINGS,
     SUGGEST_TITLES,
     build_registry,
 )
@@ -90,6 +91,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
                 SCORE_APPLICATION,
+                SUGGEST_PROFILE_SETTINGS,
                 SUGGEST_TITLES,
                 FETCH_JOB_DESCRIPTION,
             )
@@ -127,6 +129,13 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # `pending` rather than being claimed and charged.
     cluster = registry.get(CLUSTER_CAPABILITIES)
     assert cluster is not None and cluster.calls_model is True
+
+    # Reading a user's uploaded CVs for the plain settings they state: one
+    # Anthropic call on the user's own key, held by the kill switch like the
+    # rest -- and that is what makes the button safe under an incident, since
+    # the run stays `pending` rather than being claimed and charged.
+    settings_run = registry.get(SUGGEST_PROFILE_SETTINGS)
+    assert settings_run is not None and settings_run.calls_model is True
 
     # Slice B4's two scores: one Anthropic call on the user's own key, and two
     # when the job has no corpus coverage recorded yet and the handler has to

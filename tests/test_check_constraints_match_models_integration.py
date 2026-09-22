@@ -36,6 +36,8 @@ CONSTRAINED_COLUMNS = [
     ("title_suggestions", "status", tables._TITLE_SUGGESTION_STATUSES),
     ("capability_clusters", "status", tables._CAPABILITY_CLUSTER_STATUSES),
     ("capability_clusters", "error_code", tables._CAPABILITY_CLUSTER_ERROR_CODES),
+    ("profile_suggestions", "status", tables._PROFILE_SUGGESTION_STATUSES),
+    ("profile_suggestions", "error_code", tables._PROFILE_SUGGESTION_ERROR_CODES),
     ("title_suggestions", "error_code", tables._TITLE_SUGGESTION_ERROR_CODES),
     ("candidate_facts", "state", tables._CANDIDATE_FACT_STATES),
     ("application_scores", "status", tables._SCORE_STATUSES),

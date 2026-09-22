@@ -122,6 +122,26 @@ class CapabilityClusterOutput(BaseModel):
     capabilities: list[ClusteredCapabilityItem]
 
 
+class ProposedSettingItem(BaseModel):
+    """The wire shape one proposed profile setting comes back as.
+
+    `kind` is an open string here and is checked against a **whitelist** in
+    `jfl_generate.profile_suggestions.to_proposals`, which is what keeps comp,
+    contract type, right to work, notice and a categorical no off the profile
+    however the model answers. `source_line` is the CV's own words -- never a
+    rationale, and never a property named `reason` (CLAUDE.md, 2026-09-02) --
+    and a line that is not in the CVs we sent gets the suggestion dropped.
+    """
+
+    kind: str
+    value: str
+    source_line: str
+
+
+class ProfileSuggestionsOutput(BaseModel):
+    suggestions: list[ProposedSettingItem]
+
+
 # -- slice B4: two scores for one application --------------------------------
 #
 # Field-for-field with SCORE_OUTPUT_SCHEMA in prompts.py. There is deliberately
