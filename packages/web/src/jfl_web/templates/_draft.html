@@ -32,7 +32,20 @@
         <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
         {{ sentence.text }}
         {% if sentence.cited_span_ids %}
-        <div class="note">based on your facts: {{ sentence.cited_span_ids | join(", ") }}</div>
+        {#- The fact's own words, never its id: a UUID tells the reader nothing
+            about whether the sentence is actually supported. A fact that has
+            since been changed or removed is named as that, not guessed at. -#}
+        <ul class="draft-citations">
+          {% for span_id in sentence.cited_span_ids %}
+          <li class="note">
+            {% if cited_facts.get(span_id | string) %}
+            based on: “{{ cited_facts[span_id | string] }}”
+            {% else %}
+            based on a fact you have since changed
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
         {% endif %}
         {% if sentence.evidence_note %}
         <div class="note">{{ sentence.evidence_note }}</div>

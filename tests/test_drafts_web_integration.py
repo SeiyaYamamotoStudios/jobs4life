@@ -24,6 +24,7 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
+from jfl_core.db.tables import spans as spans_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.ids import requirement_id
@@ -33,7 +34,7 @@ from jfl_core.storage.postgres import PostgresJobRepository, PostgresRunReposito
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity
 from jfl_web.settings import WebSettings
-from sqlalchemy import create_engine, delete, select, update
+from sqlalchemy import create_engine, delete, insert, select, update
 from sqlalchemy.engine import Engine
 
 pytestmark = pytest.mark.integration
@@ -193,6 +194,35 @@ def enqueued_tasks(engine: Engine, user_id: uuid.UUID, kind: str) -> list[object
                     tasks_table.c.user_id == user_id, tasks_table.c.kind == kind
                 )
             ).all()
+        )
+
+
+CITED_SPAN_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+CITED_FACT_TEXT = "Led the platform team at Acme: eight engineers, hiring and on-call."
+
+
+def add_cited_fact(engine: Engine, user_id: uuid.UUID) -> None:
+    """The span the fake gate result cites, so the page can show its words.
+
+    Without it the citation resolves to nothing, which is the *other* case the
+    screen has to handle -- a fact the user has since changed.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            insert(spans_table).values(
+                id=CITED_SPAN_ID,
+                user_id=user_id,
+                document_id=None,
+                provenance="adjudicated",
+                kind="paragraph",
+                section_path=None,
+                ordinal=0,
+                text=CITED_FACT_TEXT,
+                content_hash="0" * 64,
+                char_start=None,
+                char_end=None,
+                retired_at=None,
+            )
         )
 
 
@@ -444,6 +474,7 @@ def test_the_poll_panel_shows_progress_then_the_draft_with_verdicts_citations_an
     job_id = get_job_id(engine, user_id, app_id)
     requirements = add_requirements(engine, user_id, job_id, ["5+ years of Python"])
     add_coverage(engine, user_id, requirements)
+    add_cited_fact(engine, user_id)
 
     response = client.post(
         f"/applications/{app_id}/drafts",
@@ -480,8 +511,10 @@ def test_the_poll_panel_shows_progress_then_the_draft_with_verdicts_citations_an
     assert "Led the platform team at Acme." in settled.text
     assert "Motivated by a desire to build lasting systems." in settled.text
 
-    # Citations are shown for the cited sentence.
-    assert "11111111-1111-1111-1111-111111111111" in settled.text
+    # A citation shows the fact's own words, never its id: a UUID tells the
+    # reader nothing about whether the sentence is actually supported.
+    assert CITED_FACT_TEXT in settled.text
+    assert str(CITED_SPAN_ID) not in settled.text
 
     # The per-run cost.
     assert "$0.4123" in settled.text

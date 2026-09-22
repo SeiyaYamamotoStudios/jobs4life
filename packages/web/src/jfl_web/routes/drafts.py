@@ -45,18 +45,24 @@ Screens:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Annotated, Any, get_args
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.models import DraftKind
 from jfl_core.storage.accounts import AuthenticatedSession
-from jfl_core.storage.postgres import PostgresJobRepository, PostgresRunRepository
+from jfl_core.storage.postgres import (
+    PostgresGroundingRepository,
+    PostgresJobRepository,
+    PostgresRunRepository,
+)
 from jfl_core.storage.tasks import PostgresTaskRepository
 
 from jfl_web.deps import (
     ApplicationRepoDep,
     CsrfDep,
+    GroundingRepoDep,
     JobRepoDep,
     RunRepoDep,
     SessionDep,
@@ -96,6 +102,49 @@ def _draft_entries(
     ]
 
 
+# A cited fact is shown at this length and then trimmed on a word boundary.
+# Long enough to recognise which fact it is, short enough that a sentence with
+# four citations does not bury the draft it belongs to.
+_CITED_FACT_CHARS = 160
+
+
+def _cited_facts(
+    grounding: PostgresGroundingRepository,
+    session: AuthenticatedSession,
+    entries: Sequence[dict[str, Any]],
+) -> dict[str, str]:
+    """`{span id: the fact's own words}` for every span the drafts on this page
+    cite, so the screen can say what a sentence rests on rather than printing a
+    UUID at someone.
+
+    A missing id is left out rather than guessed at: a span the user has since
+    retired is exactly the case where inventing a plausible sentence would be
+    worst, so the template says the fact has changed instead.
+    """
+    # `gate_result` is the stored JSON, not the model: sentences are plain
+    # dicts and their ids are strings, which is also how the template indexes
+    # `cited_facts`.
+    wanted: set[str] = set()
+    for entry in entries:
+        gate_result = entry["draft"].gate_result or {}
+        for sentence in gate_result.get("sentences", []):
+            wanted.update(str(span_id) for span_id in sentence.get("cited_span_ids", []))
+    facts: dict[str, str] = {}
+    for raw_id in wanted:
+        try:
+            span_id = uuid.UUID(raw_id)
+        except ValueError:
+            continue
+        span = grounding.get_span(session.user.id, span_id)
+        if span is None:
+            continue
+        text = " ".join(span.text.split())
+        if len(text) > _CITED_FACT_CHARS:
+            text = text[:_CITED_FACT_CHARS].rsplit(" ", 1)[0] + "..."
+        facts[raw_id] = text
+    return facts
+
+
 def _task_context(tasks: PostgresTaskRepository, task_id: str | None) -> dict[str, Any] | None:
     """None means "nothing to show" -- no `?task=` at all. A task id that does
     not parse or does not belong to this user is folded into that same "show
@@ -119,6 +168,7 @@ def _page_context(
     session: AuthenticatedSession,
     jobs: PostgresJobRepository,
     run_repo: PostgresRunRepository,
+    grounding: PostgresGroundingRepository,
     tasks: PostgresTaskRepository,
     application_id: uuid.UUID,
     job_id: uuid.UUID | None,
@@ -167,6 +217,8 @@ def _page_context(
             # the same page.
             context["drafts"] = [e for e in draft_entries if e is not task["draft"]]
     context["task"] = task
+    shown = draft_entries if task is None or task.get("draft") is None else [*draft_entries]
+    context["cited_facts"] = _cited_facts(grounding, session, shown)
     return context
 
 
@@ -179,6 +231,7 @@ def drafting_screen(
     jobs: JobRepoDep,
     tasks: TaskRepoDep,
     run_repo: RunRepoDep,
+    grounding: GroundingRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -189,6 +242,7 @@ def drafting_screen(
         session,
         jobs,
         run_repo,
+        grounding,
         tasks,
         application_id,
         detail.application.job_id,
@@ -207,6 +261,7 @@ def drafting_task(
     jobs: JobRepoDep,
     tasks: TaskRepoDep,
     run_repo: RunRepoDep,
+    grounding: GroundingRepoDep,
 ) -> Response:
     """The polling fragment on its own -- what `_draft_task.html` polls while
     a task is still pending or running.
@@ -222,14 +277,22 @@ def drafting_task(
         return render(request, "error.html", context, status_code=404)
 
     job_id = detail.application.job_id
+    cited_facts: dict[str, str] = {}
     if task["kind"] == GENERATE_CV_DRAFT_KIND and job_id is not None:
         entries = _draft_entries(jobs, run_repo, session, job_id)
         task["draft"] = next((e for e in entries if e["draft"].trace_id == task["id"]), None)
+        if task["draft"] is not None:
+            cited_facts = _cited_facts(grounding, session, [task["draft"]])
 
     return render(
         request,
         "_draft_task.html",
-        {"session": session, "application_id": application_id, "task": task},
+        {
+            "session": session,
+            "application_id": application_id,
+            "task": task,
+            "cited_facts": cited_facts,
+        },
     )
 
 

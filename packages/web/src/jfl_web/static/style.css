@@ -817,3 +817,7 @@ ul.cv-roles li .note { display: block; }
 .cluster-run { margin-top: 0.75rem; }
 .cluster-unplaced { margin-top: 0.75rem; }
 .cluster-unplaced summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+
+/* -- draft citations -- */
+ul.draft-citations { list-style: none; margin: 0.25rem 0 0; padding: 0; }
+ul.draft-citations li { margin: 0.15rem 0; }
