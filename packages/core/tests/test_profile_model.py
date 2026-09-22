@@ -49,6 +49,7 @@ from jfl_core.profile import (
     Stance,
     capability_key,
     comp_value,
+    facts_to_cluster,
     location_value,
     propose_capabilities,
     self_assessment_corpus_lines,
@@ -410,6 +411,48 @@ class TestSelfAssessmentCorpusLines:
         }
 
 
+# -- what one clustering call is given -----------------------------------------
+
+
+class TestFactsToCluster:
+    """The bound on the model call, and the promise that comes with it: what
+    does not fit is **returned**, never dropped.
+    """
+
+    def test_only_confirmed_facts_with_a_span_are_eligible(self) -> None:
+        confirmed = _fact(text="One")
+        sending, omitted = facts_to_cluster(
+            [confirmed, _fact(text="Two", state="proposed", span_id=None)]
+        )
+        assert sending == [confirmed]
+        assert omitted == []
+
+    def test_what_does_not_fit_comes_back_rather_than_disappearing(self) -> None:
+        facts = [_fact(text=f"Fact {i}") for i in range(5)]
+        sending, omitted = facts_to_cluster(facts, limit=3)
+        assert sending == facts[:3]
+        assert omitted == facts[3:]
+        assert len(sending) + len(omitted) == len(facts), "nothing is lost between the two"
+
+    def test_a_fact_a_saved_capability_already_cites_is_not_sent_again(self) -> None:
+        """What makes running this twice cover new ground rather than repeat
+        itself: accepting a proposal makes its facts evidenced, and an
+        evidenced fact is not sent again.
+        """
+        span = uuid.uuid4()
+        existing = [Capability(label="FX pricing platforms", evidence=[span])]
+        answered = _fact(text="One", span_id=span)
+        loose = _fact(text="Two")
+        sending, omitted = facts_to_cluster([answered, loose], existing=existing)
+        assert sending == [loose]
+        assert omitted == []
+
+    def test_the_callers_order_is_preserved(self) -> None:
+        facts = [_fact(text=f"Fact {i}") for i in range(4)]
+        sending, _ = facts_to_cluster(facts)
+        assert sending == facts
+
+
 # -- seeding capabilities from confirmed facts ---------------------------------
 
 
@@ -475,6 +518,27 @@ class TestProposeCapabilities:
         span = uuid.uuid4()
         facts = [_fact(text="One", span_id=span), _fact(text="Two", span_id=span)]
         assert propose_capabilities(facts)[0].evidence == [span]
+
+    def test_a_fact_already_cited_by_a_saved_capability_is_not_seeded_again(self) -> None:
+        """A role is not a capability, so the grouping that matters comes from
+        `jfl_generate.capabilities`. Once a fact's span is somebody's evidence,
+        proposing it again under its employer's name would put the same
+        material on the page twice.
+        """
+        span = uuid.uuid4()
+        existing = [Capability(label="FX pricing platforms", evidence=[span])]
+        facts = [_fact(role="Acme Ltd", role_key_value="acme", span_id=span)]
+        assert propose_capabilities(facts, existing=existing) == []
+
+    def test_a_role_still_seeds_from_the_facts_nothing_accounts_for(self) -> None:
+        cited, loose = uuid.uuid4(), uuid.uuid4()
+        existing = [Capability(label="FX pricing platforms", evidence=[cited])]
+        facts = [
+            _fact(role="Acme Ltd", role_key_value="acme", text="One", span_id=cited),
+            _fact(role="Acme Ltd", role_key_value="acme", text="Two", span_id=loose),
+        ]
+        proposed = propose_capabilities(facts, existing=existing)
+        assert [c.evidence for c in proposed] == [[loose]]
 
     def test_proposed_rows_validate_as_part_of_a_profile(self) -> None:
         """Seeding is only useful if what it returns can be saved."""

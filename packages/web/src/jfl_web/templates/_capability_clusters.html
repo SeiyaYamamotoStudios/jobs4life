@@ -1,0 +1,143 @@
+{# The capability-clustering panel, rendered both inside /profile and on its own
+   by GET /profile/capabilities/cluster/{id}.
+
+   The polling trigger lives on this element and only while the run is
+   `pending`, so a finished run stops the poll by virtue of what came back:
+   there is no timer to cancel and no client-side state to get out of step with
+   the row. `hx-swap="outerHTML"` because the element replaces itself. Same
+   trick as `_extraction.html`.
+
+   `cluster` is a `jfl_web.capabilityclusters.ClusterView`, or None when the
+   page did not look one up (an error re-render) -- in which case only the
+   button shows, because "no run yet" is a claim this template cannot make.
+
+   Nothing here is applied silently: every proposal carries accept, rename and
+   reject, and the profile changes only when one of them is pressed. #}
+<section id="capability-clusters" class="capability-clusters"
+         {% if cluster and cluster.cluster and cluster.cluster.status == "pending" %}
+         hx-get="/profile/capabilities/cluster/{{ cluster.cluster.id }}"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML"
+         {% endif %}>
+
+  <h3>Group my confirmed facts into capabilities</h3>
+  <p class="note">
+    A capability spans several facts and usually several jobs — “FX pricing
+    platforms”, not “Acme Ltd”. This asks the model to group the facts you have
+    already confirmed and propose names for the groups. It is one cheap call,
+    billed to your own API key, and <strong>nothing is recorded until you accept
+    it</strong>.
+  </p>
+
+  {% if cluster_status == "no_facts" %}
+  <p class="note" role="status">
+    You have not confirmed any facts yet, so there is nothing to group.
+    Facts come from your CVs — confirm some on
+    <a href="/corpus/facts">your CV facts</a> and then come back.
+  </p>
+  {% elif cluster_status == "needs_key" %}
+  <p class="note" role="alert">
+    This needs your own Anthropic API key — grouping your facts is a model call,
+    billed to you rather than to this app.
+    <a href="/settings">Add an API key</a>.
+  </p>
+  {% elif cluster_status == "already_running" %}
+  <p class="note" role="status">A grouping is already running. One press, one call.</p>
+  {% elif cluster_status == "nothing_new" %}
+  <p class="note" role="status">
+    Every confirmed fact is already accounted for by a capability on your
+    profile. Confirm more facts and this will have something to do.
+  </p>
+  {% endif %}
+
+  {% if cluster and cluster.cluster %}
+  {% set run = cluster.cluster %}
+
+  {% if run.status == "pending" %}
+  <p class="note" role="status">Grouping your confirmed facts… this takes a few seconds.</p>
+
+  {% elif run.status == "failed" %}
+  <p class="error" role="alert">
+    {{ cluster.failure.message }}
+    {% if cluster.failure.fix_url %}<a href="{{ cluster.failure.fix_url }}">{{ cluster.failure.fix_label }}</a>.{% endif %}
+  </p>
+
+  {% elif run.status == "done" %}
+  <p class="note">
+    Grouped {{ run.fact_count }} confirmed fact{{ '' if run.fact_count == 1 else 's' }}
+    — this run cost {{ cluster.cost | usd }} on your own key.
+  </p>
+
+  {% if cluster.proposals %}
+  <ul class="cluster-proposals">
+    {% for proposal in cluster.proposals %}
+    <li class="cluster-proposal" id="proposal-{{ proposal.key }}">
+      <h4>{{ proposal.label }}</h4>
+      {% if proposal.evidence %}
+      <details class="capability-evidence">
+        <summary>{{ proposal.evidence | length }} confirmed fact{{ '' if proposal.evidence | length == 1 else 's' }} behind it</summary>
+        <ul class="fact-list">
+          {% for text in proposal.evidence %}
+          <li><q>{{ text }}</q></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      <form method="post"
+            action="/profile/capabilities/cluster/{{ run.id }}/{{ proposal.key }}/accept"
+            class="cluster-accept">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <label for="rename-{{ proposal.key }}">Call it something else (optional)</label>
+        <input type="text" id="rename-{{ proposal.key }}" name="label"
+               maxlength="{{ max_cluster_label }}"
+               placeholder="{{ proposal.label }}">
+        <p class="note">Your wording is kept exactly as you type it, and nothing renames it later.</p>
+        <button type="submit">Add it to my profile</button>
+      </form>
+
+      <form method="post"
+            action="/profile/capabilities/cluster/{{ run.id }}/{{ proposal.key }}/reject"
+            class="cluster-reject">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="link">Not a capability of mine</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">
+    Nothing left to answer here — every proposal from this run has been accepted
+    or rejected.
+  </p>
+  {% endif %}
+
+  {% if cluster.unplaced %}
+  {# Never silently dropped: a fact the model placed in nothing, or one that did
+     not fit in a single bounded call, is still a confirmed fact and is still
+     shown. Running this again picks them up. #}
+  <details class="cluster-unplaced">
+    <summary>{{ cluster.unplaced | length }} confirmed fact{{ '' if cluster.unplaced | length == 1 else 's' }} this run did not place</summary>
+    <p class="note">
+      Still yours, still confirmed, and still grounding anything that cites them.
+      They were either not part of a group worth naming, or more than one call
+      takes at a time — running this again after accepting some proposals will
+      come back to them.
+    </p>
+    <ul class="fact-list">
+      {% for text in cluster.unplaced %}
+      <li><q>{{ text }}</q></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+
+  {% if not (cluster and cluster.cluster and cluster.cluster.status == "pending") %}
+  <form method="post" action="/profile/capabilities/cluster" class="cluster-run">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="secondary">Suggest capabilities from my confirmed facts</button>
+  </form>
+  {% endif %}
+</section>

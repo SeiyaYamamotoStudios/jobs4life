@@ -23,6 +23,7 @@ from jfl_core.storage.application_questions import PostgresApplicationQuestionRe
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
+from jfl_core.storage.capability_clusters import PostgresCapabilityClusterRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
@@ -212,6 +213,18 @@ def title_suggestion_repo(session: SessionDep, conn: ConnDep) -> PostgresTitleSu
 
 TitleSuggestionRepoDep = Annotated[
     PostgresTitleSuggestionRepository, Depends(title_suggestion_repo)
+]
+
+
+def capability_cluster_repo(
+    session: SessionDep, conn: ConnDep
+) -> PostgresCapabilityClusterRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresCapabilityClusterRepository(conn, session.user.id)
+
+
+CapabilityClusterRepoDep = Annotated[
+    PostgresCapabilityClusterRepository, Depends(capability_cluster_repo)
 ]
 
 

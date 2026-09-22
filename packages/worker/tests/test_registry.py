@@ -9,6 +9,7 @@ from jfl_core.crypto.envelope import MasterKey
 from jfl_worker.handlers import (
     CHECK_APPLICATION_ANSWER,
     CHECK_BOARD,
+    CLUSTER_CAPABILITIES,
     DRAFT_APPLICATION_ANSWER,
     EXTRACT_CV_FACTS,
     EXTRACT_JOB_AD,
@@ -77,6 +78,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
             (
                 CHECK_APPLICATION_ANSWER,
                 CHECK_BOARD,
+                CLUSTER_CAPABILITIES,
                 DRAFT_APPLICATION_ANSWER,
                 EXTRACT_CV_FACTS,
                 EXTRACT_JOB_AD,
@@ -111,6 +113,13 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # key, same as extraction -- the kill switch must stop it too.
     suggest = registry.get(SUGGEST_TITLES)
     assert suggest is not None and suggest.calls_model is True
+
+    # Grouping confirmed facts into capabilities: one Anthropic call on the
+    # user's own key. Held by the kill switch like every other one -- and that
+    # is also what makes the button safe under an incident, since the run stays
+    # `pending` rather than being claimed and charged.
+    cluster = registry.get(CLUSTER_CAPABILITIES)
+    assert cluster is not None and cluster.calls_model is True
 
     # Slice B4's two scores: one Anthropic call on the user's own key, and two
     # when the job has no corpus coverage recorded yet and the handler has to

@@ -34,6 +34,8 @@ from jfl_worker.handlers.boards import (
     build_check_board,
     build_schedule_board_checks,
 )
+from jfl_worker.handlers.capability_clusters import KIND as CLUSTER_CAPABILITIES
+from jfl_worker.handlers.capability_clusters import build_cluster_capabilities
 from jfl_worker.handlers.coverage_generation import KIND as GENERATE_COVERAGE
 from jfl_worker.handlers.coverage_generation import build_generate_coverage
 from jfl_worker.handlers.cv_facts import KIND as EXTRACT_CV_FACTS
@@ -58,6 +60,7 @@ from jfl_worker.settings import WorkerSettings
 __all__ = [
     "CHECK_APPLICATION_ANSWER",
     "CHECK_BOARD",
+    "CLUSTER_CAPABILITIES",
     "DRAFT_APPLICATION_ANSWER",
     "EXTRACT_CV_FACTS",
     "EXTRACT_JOB_AD",
@@ -71,6 +74,7 @@ __all__ = [
     "SUGGEST_TITLES",
     "build_check_application_answer",
     "build_check_board",
+    "build_cluster_capabilities",
     "build_draft_application_answer",
     "build_extract_cv_facts",
     "build_extract_job_ad",
@@ -149,6 +153,16 @@ def build_registry(
         # claude-haiku-4-5, never the deployment's configured model.
         build_suggest_titles(master_key=settings.master_key),
         # True: one Anthropic call on the user's own key, same as extraction.
+        calls_model=True,
+    )
+    registry.register(
+        CLUSTER_CAPABILITIES,
+        # No `model=` -- `jfl_generate.capabilities.cluster_capabilities` always
+        # calls claude-haiku-4-5, never the deployment's configured model.
+        build_cluster_capabilities(master_key=settings.master_key),
+        # True: one Anthropic call on the user's own key. The kill switch holds
+        # it, which is also what makes "press it again" safe under an incident
+        # -- the run sits `pending` rather than being claimed and charged.
         calls_model=True,
     )
     registry.register(

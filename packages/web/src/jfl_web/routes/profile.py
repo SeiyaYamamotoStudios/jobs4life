@@ -35,13 +35,25 @@ reads as two pieces of evidence. The page says so in plain words, because a tool
 that quietly turned "I want more scope" into evidence about what you have done
 would be doing the exact thing this project exists to oppose.
 
-No model call anywhere in this module.
+**One model call is reachable from this page, and it is not made here.**
+"Suggest capabilities from my confirmed facts" enqueues a background task
+(`jfl_worker.handlers.capability_clusters`) that groups confirmed facts into
+capability labels on the user's own key -- because a role is not a capability
+and one fact is not one either. What comes back is **proposals**: accept,
+rename or reject, never applied silently, and a rename is the user's word from
+then on. Nothing in this module calls a model itself; a two-minute call never
+runs inside a request.
 
 Screens:
 
   GET  /profile                            -- the whole page, five sections
   POST /profile/constraints                -- section 1, all eight kinds at once
   POST /profile/capabilities               -- section 2, add a row by name
+  POST /profile/capabilities/cluster       -- section 2, ask the model to group
+                                              confirmed facts into capabilities
+  GET  /profile/capabilities/cluster/{id}  -- section 2, the panel, for polling
+  POST .../cluster/{id}/{key}/accept       -- section 2, accept (and rename) one
+  POST .../cluster/{id}/{key}/reject       -- section 2, reject one
   POST /profile/capabilities/{key}         -- section 2, tier one row
   POST /profile/capabilities/{key}/remove  -- section 2, drop a row
   POST /profile/disciplines                -- section 3
@@ -52,18 +64,38 @@ Screens:
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.profile import Capability, Profile, capability_key, propose_capabilities
+from jfl_core.profile import (
+    Capability,
+    Profile,
+    capability_key,
+    facts_to_cluster,
+    propose_capabilities,
+)
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_core.storage.profile import save_profile
 
+from jfl_web.capabilityclusters import (
+    MAX_LABEL as MAX_CLUSTER_LABEL,
+)
+from jfl_web.capabilityclusters import (
+    ClusterView,
+    accepted_capabilities,
+    cluster_view,
+)
 from jfl_web.deps import (
     CandidateFactRepoDep,
+    CapabilityClusterRepoDep,
+    CredentialRepoDep,
     CsrfDep,
     ProfileRepoDep,
+    RunRepoDep,
     SessionDep,
+    TaskRepoDep,
     UserCorpusRepoDep,
 )
 from jfl_web.profile import (
@@ -139,6 +171,16 @@ def _visible_capabilities(
     return profile, merge_capabilities(profile.capabilities, proposed), evidence
 
 
+def _fact_texts(facts: CandidateFactRepoDep) -> dict[str, str]:
+    """Candidate fact id -> the words the user actually confirmed.
+
+    Keyed by the fact rather than by its span, because a clustering proposal
+    names facts: the panel has to be able to show what a proposal would carry
+    as evidence, and what it left unplaced, in the user's own wording.
+    """
+    return {str(f.id): f.corpus_text for f in facts.list_facts(state="confirmed")}
+
+
 def _context(
     session: SessionDep,
     store: ProfileRepoDep,
@@ -173,6 +215,11 @@ def _context(
         "max_items": MAX_ITEMS,
         "max_objective_text": MAX_OBJECTIVE_TEXT,
         "max_self_assessment": MAX_SELF_ASSESSMENT,
+        "max_cluster_label": MAX_CLUSTER_LABEL,
+        # Set by the routes that actually looked one up. None means "not looked
+        # up", which the panel renders as the button alone -- never as "no run
+        # yet", which would be a claim this context cannot make.
+        "cluster": None,
     }
     ctx.update(extra)
     return ctx
@@ -201,17 +248,50 @@ def _saved(anchor: str) -> RedirectResponse:
     return RedirectResponse(f"/profile?saved=1#{anchor}", status_code=303)
 
 
+def _cluster_view(
+    session: SessionDep,
+    clusters: CapabilityClusterRepoDep,
+    facts: CandidateFactRepoDep,
+    run_repo: RunRepoDep,
+    cluster_id: uuid.UUID | None = None,
+) -> ClusterView | None:
+    """The clustering panel's state, priced.
+
+    Cost comes from `runs` by the run's own trace, the same way the drafting
+    screen prices a draft -- this table stores no money, and the one place that
+    does is the one built for querying it.
+    """
+    cluster = clusters.get(cluster_id) if cluster_id is not None else clusters.latest()
+    if cluster_id is not None and cluster is None:
+        return None
+    cost = (
+        run_repo.cost_for_trace(session.user.id, cluster.trace_id)
+        if cluster is not None and cluster.status != "pending"
+        else None
+    )
+    return cluster_view(cluster, _fact_texts(facts), cost=cost)
+
+
 @router.get("/profile")
 def profile_page(
     request: Request,
     session: SessionDep,
     store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
+    clusters: CapabilityClusterRepoDep,
+    run_repo: RunRepoDep,
 ) -> Response:
     return render(
         request,
         "profile.html",
-        _context(session, store, facts, saved="saved" in request.query_params),
+        _context(
+            session,
+            store,
+            facts,
+            saved="saved" in request.query_params,
+            cluster=_cluster_view(session, clusters, facts, run_repo),
+            cluster_status=request.query_params.get("cluster"),
+        ),
     )
 
 
@@ -266,6 +346,158 @@ def add_capability(
             )
         )
     return _saved("capabilities")
+
+
+# -- capability clustering ---------------------------------------------------
+#
+# Declared BEFORE `/profile/capabilities/{key}`: FastAPI matches in declaration
+# order, and `cluster` is a perfectly good capability key as far as the path
+# converter is concerned.
+
+CLUSTER_CAPABILITIES_KIND = "cluster_capabilities"
+
+_NO_SUCH_CLUSTER = "No such suggestion -- it may belong to another account."
+
+
+def _cluster_redirect(flag: str | None = None) -> RedirectResponse:
+    """POST/redirect/GET, and the flag is a short literal -- never a message,
+    which would be text from a query string rendered into a page.
+
+    Deliberately not `_saved`: enqueueing a run, or being told there is nothing
+    to group, saved nothing, and a "saved" banner over either would be the page
+    claiming something it did not do.
+    """
+    suffix = f"?cluster={flag}" if flag else ""
+    return RedirectResponse(f"/profile{suffix}#capabilities", status_code=303)
+
+
+@router.post("/profile/capabilities/cluster")
+def start_capability_cluster(
+    request: Request,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    clusters: CapabilityClusterRepoDep,
+    credentials: CredentialRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Ask the model to group this user's confirmed facts into capabilities.
+
+    One call, on the user's own key, through the queue -- a model call never
+    runs inside a request. Three refusals before anything is enqueued, each of
+    which says so on the page rather than spending the user's money to find
+    out:
+
+      * **no confirmed facts.** There is nothing to group, and the panel points
+        at where facts come from;
+      * **no API key stored.** Same rule as the title suggestions: nothing is
+        enqueued and the panel says to add one;
+      * **a run already in flight.** Pressing the button twice buys one call.
+    """
+    profile = store.current()
+    confirmed = facts.list_facts(state="confirmed")
+    if not any(f.span_id is not None for f in confirmed):
+        return _cluster_redirect("no_facts")
+    if credentials.summary(ANTHROPIC_API_KEY) is None:
+        return _cluster_redirect("needs_key")
+    if clusters.pending() is not None:
+        return _cluster_redirect("already_running")
+    # Nothing unaccounted for is not a failure and not worth a call -- say so
+    # rather than charging for an empty answer.
+    sending, _omitted = facts_to_cluster(confirmed, existing=profile.capabilities)
+    if not sending:
+        return _cluster_redirect("nothing_new")
+
+    # The trace is minted here so the run is priceable whatever happens to it.
+    row = clusters.create_pending(trace_id=uuid.uuid4())
+    tasks.enqueue(kind=CLUSTER_CAPABILITIES_KIND, payload={"cluster_id": str(row.id)})
+    return _cluster_redirect()
+
+
+@router.get("/profile/capabilities/cluster/{cluster_id}")
+def capability_cluster_panel(
+    request: Request,
+    cluster_id: uuid.UUID,
+    session: SessionDep,
+    clusters: CapabilityClusterRepoDep,
+    facts: CandidateFactRepoDep,
+    run_repo: RunRepoDep,
+) -> Response:
+    """The panel, standalone -- what a pending run polls. Same view-building
+    function the inline panel uses, so the two can never render one run's state
+    differently.
+    """
+    view = _cluster_view(session, clusters, facts, run_repo, cluster_id)
+    if view is None:
+        return render(
+            request,
+            "error.html",
+            {"session": session, "user": session.user, "message": _NO_SUCH_CLUSTER},
+            status_code=404,
+        )
+    return render(
+        request,
+        "_capability_clusters.html",
+        {"session": session, "cluster": view, "max_cluster_label": MAX_CLUSTER_LABEL},
+    )
+
+
+@router.post("/profile/capabilities/cluster/{cluster_id}/{key}/accept")
+def accept_capability_proposal(
+    request: Request,
+    cluster_id: uuid.UUID,
+    key: str,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    clusters: CapabilityClusterRepoDep,
+    _csrf: CsrfDep,
+    label: Annotated[str, Form()] = "",
+) -> Response:
+    """Put one proposal on the profile, under the user's own name for it.
+
+    `label` is the rename box: blank keeps the model's wording, anything else
+    is the user's and is stored verbatim on both the proposal and the
+    capability. `evidence` comes from the stored proposal's span ids and never
+    from the form -- a span id arriving from a browser is a claim about
+    grounding the browser does not get to make.
+
+    A capability the user has already tiered or edited is **not** overwritten:
+    the merge keeps their row and adds only the evidence it was missing.
+    """
+    try:
+        renamed = checked_text(label, MAX_CLUSTER_LABEL)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    proposal = clusters.set_proposal_state(cluster_id, key, "accepted", label=renamed or None)
+    if proposal is None:
+        return _error(request, session, store, facts, _NO_SUCH_CLUSTER, 404)
+    profile = store.current()
+    store.save(
+        profile.model_copy(update={"capabilities": accepted_capabilities(profile, proposal)})
+    )
+    return _cluster_redirect()
+
+
+@router.post("/profile/capabilities/cluster/{cluster_id}/{key}/reject")
+def reject_capability_proposal(
+    request: Request,
+    cluster_id: uuid.UUID,
+    key: str,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    clusters: CapabilityClusterRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """Say no to one grouping. Nothing is written to the profile, and the facts
+    it named stay confirmed facts -- a rejected grouping is a rejected *label*,
+    never a retracted fact.
+    """
+    if clusters.set_proposal_state(cluster_id, key, "rejected") is None:
+        return _error(request, session, store, facts, _NO_SUCH_CLUSTER, 404)
+    return _cluster_redirect()
 
 
 @router.post("/profile/capabilities/{key}")

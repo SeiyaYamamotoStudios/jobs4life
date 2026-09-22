@@ -34,6 +34,8 @@ CONSTRAINED_COLUMNS = [
     ("job_filters", "workplace_mode", tables._WORKPLACE_MODES),
     ("job_feed_marks", "kind", tables._BOARD_JOB_EVENT_KINDS),
     ("title_suggestions", "status", tables._TITLE_SUGGESTION_STATUSES),
+    ("capability_clusters", "status", tables._CAPABILITY_CLUSTER_STATUSES),
+    ("capability_clusters", "error_code", tables._CAPABILITY_CLUSTER_ERROR_CODES),
     ("title_suggestions", "error_code", tables._TITLE_SUGGESTION_ERROR_CODES),
     ("candidate_facts", "state", tables._CANDIDATE_FACT_STATES),
     ("application_scores", "status", tables._SCORE_STATUSES),

@@ -739,6 +739,90 @@ class TitleSuggestion(BaseModel):
     updated_at: dt.datetime
 
 
+# -- capability clustering ---------------------------------------------------
+#
+# One cheap model call that groups a user's **confirmed** facts into capability
+# labels. A role is not a capability ("FX pricing platforms" spans several
+# roles) and neither is a single fact (thirty-three overlapping CVs produce
+# dozens of near-duplicates), so the grouping is the one thing here worth a
+# model.
+#
+# Nothing in this table is a profile row. A proposal becomes a
+# `jfl_core.profile.Capability` only when the user accepts it, and their own
+# label wins permanently if they rename it -- see
+# `jfl_web.routes.profile.accept_capability_proposal`.
+
+CapabilityClusterStatus = Literal["pending", "done", "failed"]
+
+# The same subset `TitleSuggestionErrorCode` takes, and for the same reason:
+# there is no document here to be missing or too long, so the only failures are
+# about the credential, the model, or the call.
+CapabilityClusterErrorCode = Literal[
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+]
+
+# Inside JSONB, so no CHECK constraint holds it -- the Pydantic model below is
+# the only write path, the same trade the profile itself makes.
+CapabilityProposalState = Literal["open", "accepted", "rejected"]
+
+
+class ProposedCapability(BaseModel):
+    """One capability the model proposed, and the confirmed facts it covers.
+
+    `label` is the model's words until the user renames it, at which point it
+    is theirs and is never regenerated over. `span_ids` are corpus spans and
+    become the accepted `Capability`'s `evidence`, which is what makes the row
+    citable rather than merely asserted; `fact_ids` name the candidate facts
+    those spans came from, so the screen can say which facts a proposal would
+    account for and which are still unplaced.
+
+    No property named `reason` here or in the schema that produces it -- see
+    CLAUDE.md's 2026-09-02 decision.
+    """
+
+    label: str
+    fact_ids: list[uuid.UUID] = Field(default_factory=list)
+    span_ids: list[uuid.UUID] = Field(default_factory=list)
+    state: CapabilityProposalState = "open"
+
+
+class CapabilityCluster(BaseModel):
+    """One clustering run: what was sent, what came back, and what it left over.
+
+    `unclustered_fact_ids` are facts the model was given and placed in no
+    capability; `omitted_fact_ids` are facts that did not fit in one bounded
+    call at all. Both are kept and both are shown -- a fact is never silently
+    dropped, and the next run picks up whatever this one did not place.
+
+    `trace_id` is how the screen prices the run (`RunRepository.cost_for_trace`)
+    without this table ever holding a cost of its own.
+    """
+
+    id: uuid.UUID
+    status: CapabilityClusterStatus
+    trace_id: uuid.UUID
+    proposals: list[ProposedCapability] = Field(default_factory=list)
+    fact_count: int = 0
+    unclustered_fact_ids: list[uuid.UUID] = Field(default_factory=list)
+    omitted_fact_ids: list[uuid.UUID] = Field(default_factory=list)
+    error_code: CapabilityClusterErrorCode | None = None
+    dismissed_at: dt.datetime | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @property
+    def open_proposals(self) -> list[ProposedCapability]:
+        """The ones still awaiting an answer. Accepted and rejected rows stay in
+        the row so that re-running is a decision about new material rather than
+        a chance to be asked the same question twice.
+        """
+        return [p for p in self.proposals if p.state == "open"]
+
+
 class DueBoard(BaseModel):
     """A board the scheduler found due, and whose it is. Ids only, by design --
     see `jfl_core.storage.boards.PostgresBoardScheduler`.
