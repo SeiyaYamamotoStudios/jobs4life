@@ -58,6 +58,7 @@ from jfl_core.storage.postgres import (
     PostgresRunRepository,
 )
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_core.storage.ui_sections import PostgresUiSectionRepository, SectionState
 
 from jfl_web.deps import (
     ApplicationRepoDep,
@@ -65,8 +66,15 @@ from jfl_web.deps import (
     GroundingRepoDep,
     JobRepoDep,
     RunRepoDep,
+    SectionRepoDep,
     SessionDep,
     TaskRepoDep,
+)
+from jfl_web.sections import (
+    draft_history_section,
+    draft_section,
+    generate_section,
+    requirements_section,
 )
 from jfl_web.templating import render
 
@@ -90,16 +98,24 @@ def _draft_entries(
     run_repo: PostgresRunRepository,
     session: AuthenticatedSession,
     job_id: uuid.UUID,
+    states: dict[str, SectionState],
 ) -> list[dict[str, Any]]:
     """Every stored draft for this job, most recent first, each paired with
     what it cost (`RunRepository.cost_for_trace`, summing the draft call and
     its automatic claim-gate pass under one `trace_id`) -- because the user is
     paying for it on their own key.
+
+    Each also carries its own section. The newest draft is open and the rest
+    fold behind their date and sentence count: "most recent first" only helps
+    if the most recent one is the one you can see.
     """
-    return [
+    entries: list[dict[str, Any]] = [
         {"draft": d, "cost": run_repo.cost_for_trace(session.user.id, d.trace_id)}
         for d in jobs.list_drafts(session.user.id, job_id)
     ]
+    for index, entry in enumerate(entries):
+        entry["section"] = draft_section(states, entry, newest=index == 0)
+    return entries
 
 
 # A cited fact is shown at this length and then trimmed on a word boundary.
@@ -170,6 +186,7 @@ def _page_context(
     run_repo: PostgresRunRepository,
     grounding: PostgresGroundingRepository,
     tasks: PostgresTaskRepository,
+    ui_sections: PostgresUiSectionRepository,
     application_id: uuid.UUID,
     job_id: uuid.UUID | None,
     task_id: str | None,
@@ -181,6 +198,7 @@ def _page_context(
     passes `session.user.id` explicitly, standing in for the structural
     tenancy the rest of this app enforces at construction.
     """
+    states = ui_sections.states()
     context: dict[str, Any] = {
         "session": session,
         "user": session.user,
@@ -191,6 +209,7 @@ def _page_context(
         "coverage": [],
         "drafts": [],
         "draft_kinds": _DRAFT_KINDS,
+        "generate_section": generate_section(states),
     }
     draft_entries: list[dict[str, Any]] = []
     if job_id is not None:
@@ -200,7 +219,7 @@ def _page_context(
             context["job"] = job
             context["requirements"] = requirements
             context["coverage"] = jobs.latest_coverage(session.user.id, job_id)
-            draft_entries = _draft_entries(jobs, run_repo, session, job_id)
+            draft_entries = _draft_entries(jobs, run_repo, session, job_id, states)
             context["drafts"] = draft_entries
 
     task = _task_context(tasks, task_id)
@@ -219,6 +238,11 @@ def _page_context(
     context["task"] = task
     shown = draft_entries if task is None or task.get("draft") is None else [*draft_entries]
     context["cited_facts"] = _cited_facts(grounding, session, shown)
+    # Built after the lists above, because both summaries count what is in them.
+    context["requirements_section"] = requirements_section(
+        states, context["requirements"], context["coverage"]
+    )
+    context["draft_history_section"] = draft_history_section(states, context["drafts"])
     return context
 
 
@@ -232,6 +256,7 @@ def drafting_screen(
     tasks: TaskRepoDep,
     run_repo: RunRepoDep,
     grounding: GroundingRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -244,6 +269,7 @@ def drafting_screen(
         run_repo,
         grounding,
         tasks,
+        ui_sections,
         application_id,
         detail.application.job_id,
         request.query_params.get("task"),
@@ -262,6 +288,7 @@ def drafting_task(
     tasks: TaskRepoDep,
     run_repo: RunRepoDep,
     grounding: GroundingRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     """The polling fragment on its own -- what `_draft_task.html` polls while
     a task is still pending or running.
@@ -279,7 +306,7 @@ def drafting_task(
     job_id = detail.application.job_id
     cited_facts: dict[str, str] = {}
     if task["kind"] == GENERATE_CV_DRAFT_KIND and job_id is not None:
-        entries = _draft_entries(jobs, run_repo, session, job_id)
+        entries = _draft_entries(jobs, run_repo, session, job_id, ui_sections.states())
         task["draft"] = next((e for e in entries if e["draft"].trace_id == task["id"]), None)
         if task["draft"] is not None:
             cited_facts = _cited_facts(grounding, session, [task["draft"]])

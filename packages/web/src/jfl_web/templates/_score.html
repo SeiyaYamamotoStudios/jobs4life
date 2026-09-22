@@ -1,3 +1,4 @@
+{% import "_sections.html" as sections %}
 {# The scoring panel (PLAN.md B4), rendered both inside the detail page and on
    its own by GET /applications/{id}/score.
 
@@ -15,7 +16,7 @@
          hx-trigger="every 5s"
          hx-swap="outerHTML"
          {% endif %}>
-  <h2>Score</h2>
+{% call sections.section(score_section) %}
 
   <p class="note unmeasured" role="note">{{ score_unmeasured }}</p>
 
@@ -163,7 +164,7 @@
   {# The silences are the product. Every constraint the user recorded is listed,
      including -- especially -- the ones the ad says nothing about. #}
   {% if score.constraint_verdicts %}
-  <h3>What the ad says about what you asked for</h3>
+  {% call sections.section(score_sections.constraints) %}
   <p class="note">{{ silence_note }}</p>
   <ul class="score-constraints">
     {% for verdict in score.constraint_verdicts %}
@@ -175,10 +176,11 @@
     </li>
     {% endfor %}
   </ul>
+  {% endcall %}
   {% endif %}
 
   {% if score.objective_verdicts %}
-  <h3>Your objectives, each judged on its own</h3>
+  {% call sections.section(score_sections.objectives) %}
   <ul class="score-objectives">
     {% for verdict in score.objective_verdicts %}
     <li class="score-verdict-{{ verdict.verdict }}">
@@ -188,6 +190,7 @@
     </li>
     {% endfor %}
   </ul>
+  {% endcall %}
   {% endif %}
 
   {# Levers: claims nothing confirmed stands behind -- an unconfirmed CV fact,
@@ -195,7 +198,7 @@
      evidence and did not raise the first number; this is what confirming one
      would be worth. #}
   {% if score.levers %}
-  <h3>What confirming a claim would change</h3>
+  {% call sections.section(score_sections.levers) %}
   <p class="note">You claim these and nothing confirmed stands behind them, so they
     are not evidence yet and did not count towards “{{ could_get_label }}”.</p>
   <ul class="score-levers">
@@ -214,10 +217,11 @@
     </li>
     {% endfor %}
   </ul>
+  {% endcall %}
   {% endif %}
 
   {% if score.not_stated %}
-  <h3>Not stated</h3>
+  {% call sections.section(score_sections.not_stated) %}
   <p class="note">You have not filled these in, so nothing above assumed what they
     would say. <a href="/profile">Fill them in</a> and the next score can use them.</p>
   <ul class="score-not-stated">
@@ -225,6 +229,7 @@
     <li>{{ item.wording }}</li>
     {% endfor %}
   </ul>
+  {% endcall %}
   {% endif %}
 
   <dl class="facts">
@@ -251,4 +256,5 @@
      the score panel rather than elsewhere on the page, because the drift meter
      belongs where a person is when they are about to push back. #}
   {% include "_pushbacks.html" %}
+{% endcall %}
 </section>

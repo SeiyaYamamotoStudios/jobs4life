@@ -1,0 +1,50 @@
+{# The one collapsible section component. Every panel on every screen uses it.
+
+   `<details>`/`<summary>` and nothing else: native, keyboard-accessible, found
+   by the browser's own in-page search, and **fully working with JavaScript
+   switched off**. With no JS the sections open and close exactly as they do
+   with it; the only thing lost is that the choice is not remembered between
+   visits. That is the whole of the progressive enhancement here.
+
+   `sec` is a `jfl_web.sections.Section`. Everything it carries was decided in
+   Python -- whether the section starts open, what its count summary says, and
+   whether it has changed since the user last looked -- so this file contains no
+   rules, only markup. See `docs/ui-sections.md` for the contract and
+   `jfl_web.sections` for the defaults.
+
+   `data-section` and `data-default-open` are what `static/sections.js` posts
+   back on toggle. `data-default-open` is what this page would have rendered had
+   the user never touched this section, which is what makes "they went against
+   the default" measurable later.
+
+   Usage:  {% import "_sections.html" as sections %}
+           {% call sections.section(timeline_section) %} ... {% endcall %}
+#}
+{% macro section(sec) %}
+<details class="section" id="section-{{ sec.key | replace('.', '-') }}"
+         data-section="{{ sec.key }}"
+         data-default-open="{{ 'true' if sec.default_open else 'false' }}"
+         {% if sec.open %}open{% endif %}>
+  <summary class="section-summary">
+    {#- A heading inside <summary> is valid HTML and is what keeps the page's
+        outline intact for a screen reader: folding a panel must not cost it its
+        heading. The level comes from the caller, so a panel nested inside
+        another one does not claim to be a sibling of it. -#}
+    {% if sec.level == 3 %}
+    <h3 class="section-title">{{ sec.title }}</h3>
+    {% else %}
+    <h2 class="section-title">{{ sec.title }}</h2>
+    {% endif %}
+    {#- What is inside, said while it is folded away. Without this a collapsed
+        section is a closed door with nothing written on it. -#}
+    {% if sec.summary %}<span class="section-count">{{ sec.summary }}</span>{% endif %}
+    {#- The change marker: a dot and a short count, the same convention the
+        changes feed uses. It only ever appears on a collapsed section, and it
+        clears the next time the section is opened. -#}
+    {% if sec.marker %}<span class="section-marker">● {{ sec.marker }}</span>{% endif %}
+  </summary>
+  <div class="section-body">
+    {{ caller() }}
+  </div>
+</details>
+{% endmacro %}

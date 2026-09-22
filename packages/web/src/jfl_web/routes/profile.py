@@ -94,6 +94,7 @@ from jfl_web.deps import (
     CsrfDep,
     ProfileRepoDep,
     RunRepoDep,
+    SectionRepoDep,
     SessionDep,
     TaskRepoDep,
     UserCorpusRepoDep,
@@ -127,6 +128,7 @@ from jfl_web.profile import (
     parse_disciplines,
     parse_objectives,
 )
+from jfl_web.sections import profile_sections
 from jfl_web.templating import render
 
 router = APIRouter()
@@ -185,10 +187,12 @@ def _context(
     session: SessionDep,
     store: ProfileRepoDep,
     facts: CandidateFactRepoDep,
+    ui_sections: SectionRepoDep | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     profile, capabilities, evidence_texts = _visible_capabilities(store, facts)
     saved_keys = {c.key for c in profile.capabilities}
+    states = ui_sections.states() if ui_sections is not None else {}
     # `history(limit=1)` rather than a second repository method: the current
     # version *is* the newest row, and one read of it answers "last saved when".
     latest = store.history(limit=1)
@@ -222,6 +226,22 @@ def _context(
         "cluster": None,
     }
     ctx.update(extra)
+    # Built last, because three of the five summaries count things the context
+    # above assembled, and the capabilities section has to know whether a
+    # clustering run is in flight. A section a save has just redirected to is
+    # forced open whatever is stored -- landing on a folded panel after pressing
+    # Save would read as the save having been lost.
+    cluster = ctx.get("cluster")
+    row = getattr(cluster, "cluster", None)
+    ctx["profile_sections"] = profile_sections(
+        states,
+        profile=profile,
+        capabilities=capabilities,
+        saved_capability_keys=saved_keys,
+        cluster_created_at=getattr(row, "created_at", None),
+        cluster_pending=getattr(row, "status", None) == "pending",
+        force_open=ctx.get("open_section"),
+    )
     return ctx
 
 
@@ -244,8 +264,14 @@ def _error(
 def _saved(anchor: str) -> RedirectResponse:
     """POST/redirect/GET, and the flag is a bare `saved=1` -- never the message
     itself, which would be text from a query string rendered into a page.
+
+    The anchor is carried twice, as a fragment and as `open=`. A fragment never
+    reaches the server, and the section being saved is exactly the one that has
+    just stopped being empty and would therefore fold itself away: landing on a
+    folded panel after pressing Save reads as the save having been lost. `open=`
+    is matched against a fixed set of section names, never rendered.
     """
-    return RedirectResponse(f"/profile?saved=1#{anchor}", status_code=303)
+    return RedirectResponse(f"/profile?saved=1&open={anchor}#{anchor}", status_code=303)
 
 
 def _cluster_view(
@@ -280,6 +306,7 @@ def profile_page(
     facts: CandidateFactRepoDep,
     clusters: CapabilityClusterRepoDep,
     run_repo: RunRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     return render(
         request,
@@ -288,9 +315,13 @@ def profile_page(
             session,
             store,
             facts,
+            ui_sections,
             saved="saved" in request.query_params,
             cluster=_cluster_view(session, clusters, facts, run_repo),
             cluster_status=request.query_params.get("cluster"),
+            # Never rendered, only matched: anything that is not one of the five
+            # section names simply forces nothing open.
+            open_section=request.query_params.get("open"),
         ),
     )
 

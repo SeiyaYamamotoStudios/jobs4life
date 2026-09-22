@@ -1,8 +1,14 @@
+{% import "_sections.html" as sections %}
 {# Application questions -- NEXT.md's task 4. `question_views` is built by
    `jfl_web.applicationanswers.question_views`, one per question added under
-   this application, oldest first. #}
+   this application, oldest first.
+
+   The panel folds once every question has an answer and nothing is in flight.
+   A question with no answer, a check still running, or a failed run keeps it
+   open whatever has been chosen before: an unanswered question is the whole
+   reason this panel is on the page. #}
 <section id="application-questions">
-  <h2>Application questions</h2>
+{% call sections.section(questions_section) %}
 
   {% if question_views %}
   <div class="application-question-list">
@@ -24,4 +30,5 @@
       <button type="submit">Add question</button>
     </form>
   </details>
+{% endcall %}
 </section>

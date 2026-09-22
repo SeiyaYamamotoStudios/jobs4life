@@ -49,6 +49,7 @@ from jfl_web.routes import (
     pushbacks,
     title_suggestions,
     tracking,
+    ui_sections,
 )
 from jfl_web.settings import WebSettings
 from jfl_web.templating import STATIC_DIR, render
@@ -116,6 +117,7 @@ def create_app(
     app.include_router(candidate_facts.router)
     app.include_router(corpus.router)
     app.include_router(pushbacks.router)
+    app.include_router(ui_sections.router)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     _install_error_handlers(app)

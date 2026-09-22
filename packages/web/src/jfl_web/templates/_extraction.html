@@ -1,3 +1,4 @@
+{% import "_sections.html" as sections %}
 {# The extraction panel, rendered both inside the detail page and on its own by
    GET /applications/{id}/extraction.
 
@@ -11,7 +12,7 @@
          hx-trigger="every 3s"
          hx-swap="outerHTML"
          {% endif %}>
-  <h2>The ad</h2>
+{% call sections.section(ad_section) %}
 
   {% if extraction and extraction.status == "pending" and not extraction.has_job_ad %}
   {# Slice C7: "Track as application" fetches a description before there is
@@ -93,4 +94,5 @@
     <button type="submit" class="secondary">Read the job ad</button>
   </form>
   {% endif %}
+{% endcall %}
 </section>

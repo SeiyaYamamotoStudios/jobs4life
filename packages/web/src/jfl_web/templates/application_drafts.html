@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sections.html" as sections %}
 {% block title %}Drafts{% if job and job.title %} — {{ job.title }}{% endif %} — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -19,8 +20,11 @@
 </p>
 
 {% else %}
-<section>
-  <h2>Requirements</h2>
+{# The list the owner's complaint named: every essential and desirable, at the
+   top of the page, pushing everything actionable below the fold. It folds
+   behind its counts once coverage has been checked, and stays open until then
+   because an unchecked list is a prompt rather than a result. #}
+{% call sections.section(requirements_section) %}
   <ul class="requirements">
     {% for requirement in requirements %}
     {% set row = coverage | selectattr("requirement_id", "equalto", requirement.id) | list | first %}
@@ -55,11 +59,10 @@
     </form>
   </details>
   {% endif %}
-</section>
+{% endcall %}
 
 {% if coverage %}
-<section>
-  <h2>Generate</h2>
+{% call sections.section(generate_section) %}
   <p class="note">
     Each draft is a model call, billed to your own API key, and every sentence
     in it is checked against your confirmed facts automatically. A draft with
@@ -75,7 +78,7 @@
     </form>
     {% endfor %}
   </div>
-</section>
+{% endcall %}
 {% endif %}
 {% endif %}
 
@@ -84,12 +87,11 @@
 {% endif %}
 
 {% if drafts %}
-<section>
-  <h2>Draft history</h2>
+{% call sections.section(draft_history_section) %}
   <p class="note">Most recent first. Generating again never overwrites one -- every draft stays.</p>
   {% for entry in drafts %}
   {% include "_draft.html" %}
   {% endfor %}
-</section>
+{% endcall %}
 {% endif %}
 {% endblock %}

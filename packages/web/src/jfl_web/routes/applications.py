@@ -53,6 +53,7 @@ from jfl_core.models import (
 )
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
+from jfl_core.storage.ui_sections import SectionState
 
 from jfl_web.applicationanswers import question_views
 from jfl_web.deps import (
@@ -62,6 +63,7 @@ from jfl_web.deps import (
     PushbackRepoDep,
     ScoreOverrideRepoDep,
     ScoreRepoDep,
+    SectionRepoDep,
     SessionDep,
     TaskRepoDep,
 )
@@ -118,6 +120,15 @@ from jfl_web.scores import (
     WANT_IT_SUBTITLE,
     score_failure,
     want_it_summary,
+)
+from jfl_web.sections import (
+    ad_section,
+    notes_section,
+    questions_section,
+    score_detail_sections,
+    score_section,
+    status_section,
+    timeline_section,
 )
 from jfl_web.templating import render
 
@@ -333,13 +344,21 @@ def _detail_context(
     questions: ApplicationQuestionRepoDep,
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
+    ui_sections: SectionRepoDep,
     **extra: object,
 ) -> dict[str, object]:
     """Everything the detail page needs, in one place -- shared with
     `attach_ad`, which re-renders this same page on a validation error rather
     than duplicating its context by hand.
+
+    `ui_sections.states()` is one query for the whole page: which panels this
+    user has folded away, read once and looked up per section. Nothing is
+    written here -- a render never writes -- so this stays a read the page was
+    going to make anyway.
     """
     extraction = applications.get_extraction(application_id)
+    states = ui_sections.states()
+    views = question_views(questions, application_id)
     return {
         "session": session,
         "user": session.user,
@@ -351,13 +370,21 @@ def _detail_context(
         "application_id": application_id,
         # NEXT.md's task 4: "check my answer" / "draft one for me", side by
         # side -- see jfl_web.applicationanswers and jfl_web.routes.application_questions.
-        "question_views": question_views(questions, application_id),
-        **_extraction_context(extraction),
+        "question_views": views,
+        # The collapsible sections this page owns directly. The ad, the score
+        # and the corrections panel build their own, inside the context helpers
+        # they share with their polling routes -- see `docs/ui-sections.md`.
+        "questions_section": questions_section(states, views),
+        "status_section": status_section(states),
+        "notes_section": notes_section(states, detail.application.notes),
+        "timeline_section": timeline_section(states, detail.events),
+        **_extraction_context(extraction, states),
         **_score_context(
             scores.latest(application_id),
             detail=detail,
             pushbacks=pushbacks,
             overrides=overrides,
+            states=states,
         ),
         **extra,
     }
@@ -373,6 +400,7 @@ def application_detail(
     questions: ApplicationQuestionRepoDep,
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -390,6 +418,7 @@ def application_detail(
             questions=questions,
             pushbacks=pushbacks,
             overrides=overrides,
+            ui_sections=ui_sections,
         ),
     )
 
@@ -400,6 +429,7 @@ def extraction_panel(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     """The extraction panel on its own, for htmx to poll while it is pending.
 
@@ -415,7 +445,11 @@ def extraction_panel(
     return render(
         request,
         "_extraction.html",
-        {"session": session, "application_id": application_id, **_extraction_context(extraction)},
+        {
+            "session": session,
+            "application_id": application_id,
+            **_extraction_context(extraction, ui_sections.states()),
+        },
     )
 
 
@@ -454,6 +488,7 @@ def attach_ad(
     questions: ApplicationQuestionRepoDep,
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
+    ui_sections: SectionRepoDep,
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
@@ -493,6 +528,7 @@ def attach_ad(
                 questions=questions,
                 pushbacks=pushbacks,
                 overrides=overrides,
+                ui_sections=ui_sections,
                 ad_error=message,
                 ad_value=job_ad,
             ),
@@ -513,6 +549,7 @@ def score_panel(
     scores: ScoreRepoDep,
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     """The scoring panel on its own, for htmx to poll while a run is pending.
 
@@ -539,6 +576,7 @@ def score_panel(
                 detail=detail,
                 pushbacks=pushbacks,
                 overrides=overrides,
+                states=ui_sections.states(),
             ),
         },
     )
@@ -593,6 +631,7 @@ def _score_context(
     detail: ApplicationDetail,
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
+    states: dict[str, SectionState],
 ) -> dict[str, object]:
     """One shape for both the full page and the polled fragment, so the panel
     cannot render differently depending on which route produced it.
@@ -609,7 +648,7 @@ def _score_context(
     failed = score is not None and score.status == "failed"
     failure = score_failure(score.error_code) if score is not None and failed else None
     live_overrides = overrides.current(detail.application.id)
-    panel = pushback_context(detail, score, pushbacks)
+    panel = pushback_context(detail, score, pushbacks, states)
     displays = axis_displays(
         score,
         pushbacks.displacements(),
@@ -618,6 +657,11 @@ def _score_context(
     )
     return {
         **panel,
+        # The panel itself, and the four long lists inside it. The verdicts stay
+        # open by default: the silences are the product, and folding them away
+        # would hide what the panel is for.
+        "score_section": score_section(states, score),
+        "score_sections": score_detail_sections(states, score),
         "want_display": displays.get("want"),
         "could_get_display": displays.get("get"),
         "overrides": live_overrides,
@@ -669,14 +713,19 @@ def _score_context(
     }
 
 
-def _extraction_context(extraction: ApplicationExtraction | None) -> dict[str, object]:
+def _extraction_context(
+    extraction: ApplicationExtraction | None, states: dict[str, SectionState]
+) -> dict[str, object]:
     """One shape for both the full page and the polled fragment, so the panel
-    cannot render differently depending on which route produced it.
+    cannot render differently depending on which route produced it -- including
+    whether it is folded, which is why the section is built here rather than
+    once on the page and once again in the poll.
     """
+    section = ad_section(states, extraction)
     if extraction is None:
-        return {"extraction": None, "failure": None}
+        return {"extraction": None, "failure": None, "ad_section": section}
     failure = extraction_failure(extraction.error_code) if extraction.status == "failed" else None
-    return {"extraction": extraction, "failure": failure}
+    return {"extraction": extraction, "failure": failure, "ad_section": section}
 
 
 @router.post("/applications/{application_id}/status")

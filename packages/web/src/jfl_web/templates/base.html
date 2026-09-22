@@ -6,8 +6,14 @@
   <title>{% block title %}jobs4life{% endblock %}</title>
   <link rel="stylesheet" href="{{ asset_url('style.css') }}">
   <script src="{{ asset_url('htmx.min.js') }}"></script>
+  {#- Remembers which sections you left open. Enhancement only: with this
+      blocked every <details> still folds and unfolds, it is just not
+      remembered. See static/sections.js. -#}
+  <script src="{{ asset_url('sections.js') }}" defer></script>
 </head>
-<body>
+{#- One CSRF token for the page, where the section toggles can reach it.
+    Forms carry their own; this is for the one request that is not a form. -#}
+<body{% if session and session.csrf_token %} data-csrf="{{ session.csrf_token }}"{% endif %}>
   <header>
     <a class="wordmark" href="/">jobs4life</a>
     {% if user %}

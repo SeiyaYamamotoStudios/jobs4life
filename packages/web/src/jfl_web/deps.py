@@ -41,6 +41,7 @@ from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
+from jfl_core.storage.ui_sections import PostgresUiSectionRepository
 from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
 from sqlalchemy.engine import Connection
 
@@ -290,6 +291,20 @@ def user_corpus_repo(session: SessionDep, conn: ConnDep) -> PostgresUserCorpusRe
 
 
 UserCorpusRepoDep = Annotated[PostgresUserCorpusRepository, Depends(user_corpus_repo)]
+
+
+def section_repo(session: SessionDep, conn: ConnDep) -> PostgresUiSectionRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    Which panels this person leaves folded. It holds no content of any kind, so
+    a leak here would expose only that someone once collapsed "Requirements" --
+    which is exactly why it still gets the same structural scoping as everything
+    else: the discipline is the point, not the sensitivity of one table.
+    """
+    return PostgresUiSectionRepository(conn, session.user.id)
+
+
+SectionRepoDep = Annotated[PostgresUiSectionRepository, Depends(section_repo)]
 
 
 def job_repo(conn: ConnDep) -> PostgresJobRepository:

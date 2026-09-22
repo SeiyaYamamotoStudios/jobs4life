@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sections.html" as sections %}
 {% block title %}{{ application.title }} — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -35,17 +36,10 @@
   <dd title="{{ application.updated_at.isoformat() }}">{{ application.updated_at | humanize_dt }}</dd>
 </dl>
 
-{% include "_extraction.html" %}
-
-{% include "_score.html" %}
-{% include "_application_questions.html" %}
-{% if application.job_id %}
-<p class="note"><a href="/applications/{{ application.id }}/drafts">Generate a CV or cover letter for this application →</a></p>
-{% endif %}
-
-<section>
-  <h2>Status</h2>
-
+{# Status sits above the ad, not below the score. It is the control this page
+   exists for, and the owner's complaint was that reaching it meant scrolling
+   past every essential and desirable the ad listed. #}
+{% call sections.section(status_section) %}
   {# One click for the common case. Almost every change is a step along the
      pipeline; the full picker below stays for jumps, reversals and corrections.
      Hidden while archived -- archiving is meant to take the application out of
@@ -84,19 +78,25 @@
       <button type="submit">Update status</button>
     </form>
   </details>
-</section>
+{% endcall %}
 
-<section>
-  <h2>Notes</h2>
+{% include "_extraction.html" %}
+
+{% include "_score.html" %}
+{% include "_application_questions.html" %}
+{% if application.job_id %}
+<p class="note"><a href="/applications/{{ application.id }}/drafts">Generate a CV or cover letter for this application →</a></p>
+{% endif %}
+
+{% call sections.section(notes_section) %}
   <form method="post" action="/applications/{{ application.id }}/notes">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <textarea name="notes" rows="4">{{ application.notes or "" }}</textarea>
     <button type="submit">Save notes</button>
   </form>
-</section>
+{% endcall %}
 
-<section>
-  <h2>Timeline</h2>
+{% call sections.section(timeline_section) %}
   {% if events %}
   <ul class="timeline">
     {% for event in events %}
@@ -112,7 +112,7 @@
   {% else %}
   <p class="note">No events yet.</p>
   {% endif %}
-</section>
+{% endcall %}
 
 {% if not application.archived_at %}
 <details class="confirm-remove">

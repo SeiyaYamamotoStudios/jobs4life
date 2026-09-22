@@ -919,3 +919,150 @@ ul.draft-citations li { margin: 0.15rem 0; }
 /* Short, honest, and on the screen rather than only in the code. */
 .pushback-limits { margin-top: 1rem; }
 .pushback-never { margin: 0.4rem 0 0 1.2rem; }
+
+/* --------------------------------------------------------------------
+   Collapsible sections, and the spacing scale they impose
+   --------------------------------------------------------------------
+   One component, `_sections.html`, used by every panel on every screen. The
+   markup is `<details>`/`<summary>` and nothing else: it folds with JavaScript
+   switched off, the keyboard reaches it for free, and the browser's own in-page
+   find opens it.
+
+   Contract, rules and defaults: docs/ui-sections.md. -------------------- */
+
+:root {
+  /* One spacing scale, so panels built by different hands sit on the same
+     rhythm. Before this, three screens each had their own idea of the gap
+     between a heading and what it introduces, and the seams showed on any page
+     that mixed them. */
+  --space-1: 0.35rem;
+  --space-2: 0.6rem;
+  --space-3: 1rem;
+  --space-4: 1.6rem;
+  --space-5: 2.4rem;
+}
+
+details.section { margin: var(--space-5) 0 0; }
+details.section + details.section { margin-top: var(--space-4); }
+/* A section nested inside another one is a smaller move, not a new chapter. */
+.section-body details.section { margin-top: var(--space-4); }
+
+/* A `<section>` that exists only to carry an htmx polling target must not add
+   its own margin on top of the section inside it -- that is what produced the
+   uneven gaps between the ad, the score and the questions panels. */
+section:has(> details.section) { margin: 0; }
+
+.section-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  /* `list-style: none` removes the disclosure triangle everywhere except
+     Safari, which needs the vendor pseudo-element below. Both are here because
+     the triangle is redrawn as `::before`, aligned with the text baseline. */
+  list-style: none;
+}
+.section-summary::-webkit-details-marker { display: none; }
+.section-summary::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 0.8em;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+details.section[open] > .section-summary::before { transform: rotate(90deg); }
+.section-summary:hover .section-title { color: var(--accent); }
+
+/* The heading keeps its level inside the summary, so folding a panel never
+   costs the page its outline. Its own margin goes, because the summary owns
+   the spacing now. */
+.section-title { margin: 0; font-size: 1.05rem; letter-spacing: -0.01em; font-weight: 650; }
+h3.section-title { font-size: 0.98rem; }
+
+/* What is inside, said while it is folded away. */
+.section-count { color: var(--muted); font-size: 0.9rem; }
+
+/* The change marker: a dot and a short count, the same convention the changes
+   feed uses for a job that appeared or came back. It is the accent colour
+   rather than a warning colour -- something new is not something wrong. */
+.section-marker {
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.section-body { padding-top: var(--space-2); }
+/* Panels each brought their own top margin. Inside a section, the section owns
+   it, so the first thing in the body sits where every other one does. */
+.section-body > :first-child { margin-top: 0; }
+.section-body > h3:first-child { margin-top: 0; }
+
+/* --------------------------------------------------------------------
+   Overflow and alignment -- fixed once here rather than per screen
+   -------------------------------------------------------------------- */
+
+/* Long unbroken strings -- an ATS URL, a span id, a German employer name --
+   used to push their cell sideways and take the whole table with them. */
+body { overflow-wrap: break-word; }
+td, th, dd, dt, li, blockquote, .note, .answer-text, .pushback-words {
+  overflow-wrap: anywhere;
+}
+/* These three are where the unbreakable strings actually live. */
+a, code, .draft-citations li { overflow-wrap: anywhere; }
+
+/* Every table scrolls inside its own wrapper rather than widening the page,
+   and keeps a floor under its width so narrow screens scroll it instead of
+   crushing six columns into two words each. `table.cvs` was never given the
+   shared table rules at all, which is why its rows sat unaligned next to every
+   other list in the app. */
+.table-wrap { overflow-x: auto; }
+.table-wrap > table { min-width: 34rem; }
+table.cvs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+table.cvs th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+table.cvs td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+
+/* A flex item's default `min-width: auto` refuses to shrink below its longest
+   word, which is how a single long employer name pushed a two-column panel
+   wider than the page. Named rather than applied to every flex child, so a
+   deliberate `white-space: nowrap` elsewhere is not quietly overridden. */
+.score-axes > .score-axis,
+.capability-head > *,
+.page-header > *,
+.answer-forms > form,
+.section-summary > * { min-width: 0; }
+
+/* Rows of buttons and badges wrap as rows, not as a ragged column. */
+.quick-actions { flex-wrap: wrap; }
+.status-badge { white-space: nowrap; }
+.draft-meta { color: var(--muted); font-size: 0.85rem; margin: 0 0 var(--space-2); }
+
+/* A read-only draft and a wide textarea both used to overflow their panel on a
+   narrow window, because `rows`/`cols` set a width the box model then refused
+   to give back. */
+textarea, input[type="text"], input[type="url"], input[type="password"], select {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.draft-text { width: 100%; }

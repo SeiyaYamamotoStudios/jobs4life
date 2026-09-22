@@ -1,22 +1,26 @@
+{% import "_sections.html" as sections %}
 {# One stored draft, in full: kind, timestamp, per-run cost, its claim-gate
    verdicts, and a copyable text box. Expects `entry` = {"draft": Draft,
-   "cost": Decimal|None} in context.
+   "cost": Decimal|None, "section": Section} in context.
+
+   The newest draft is open and the ones behind it are folded, each behind its
+   own date and sentence count -- `jfl_web.sections.draft_section` decides that,
+   and a draft the user has opened or closed themselves keeps whatever they
+   chose.
 
    Framing and the document title render as NOT CHECKED, never as supported --
    see jfl_web.drafts.sentence_label, which is the one place that rule is
    expressed for this screen. A flagged draft is still shown here in full: the
    claim gate informs, it never blocks (CLAUDE.md). #}
 <article class="draft">
-  <header class="draft-header">
-    <h3>{{ entry.draft.kind | kind_label | capitalize }}</h3>
-    <span class="draft-meta">
-      {% if entry.draft.created_at %}
-      <time title="{{ entry.draft.created_at.isoformat() }}">{{ entry.draft.created_at | humanize_dt }}</time>
-      &middot;
-      {% endif %}
-      cost {{ entry.cost | usd }}
-    </span>
-  </header>
+{% call sections.section(entry.section) %}
+  <p class="draft-meta">
+    {% if entry.draft.created_at %}
+    <time title="{{ entry.draft.created_at.isoformat() }}">{{ entry.draft.created_at | humanize_dt }}</time>
+    &middot;
+    {% endif %}
+    cost {{ entry.cost | usd }}
+  </p>
 
   <details class="draft-verdicts">
     <summary>Sentence-by-sentence check ({{ entry.draft.gate_result.sentences | length }} sentences)</summary>
@@ -57,4 +61,5 @@
 
   <label>Copy the text</label>
   <textarea class="draft-text" readonly rows="12">{{ entry.draft.text }}</textarea>
+{% endcall %}
 </article>

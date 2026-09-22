@@ -48,6 +48,7 @@ from jfl_core.pushback import (
     valid_dimension,
 )
 from jfl_core.storage.accounts import AuthenticatedSession
+from jfl_core.storage.ui_sections import SectionState
 
 from jfl_web.deps import (
     ApplicationRepoDep,
@@ -55,6 +56,7 @@ from jfl_web.deps import (
     PushbackRepoDep,
     ScoreOverrideRepoDep,
     ScoreRepoDep,
+    SectionRepoDep,
     SessionDep,
     TaskRepoDep,
     UserCorpusRepoDep,
@@ -66,6 +68,7 @@ from jfl_web.pushbacks import (
     evidence_question,
     was_sent,
 )
+from jfl_web.sections import pushbacks_section as build_pushbacks_section
 from jfl_web.templating import render
 
 # The worker's kind for "classify this pushback". A string on both sides, for
@@ -380,6 +383,7 @@ def pushback_panel(
     applications: ApplicationRepoDep,
     scores: ScoreRepoDep,
     pushbacks: PushbackRepoDep,
+    ui_sections: SectionRepoDep,
 ) -> Response:
     """The pushback panel on its own, for htmx to poll while a classification
     is in flight.
@@ -398,7 +402,7 @@ def pushback_panel(
         {
             "session": session,
             "application_id": application_id,
-            **pushback_context(detail, score, pushbacks),
+            **pushback_context(detail, score, pushbacks, ui_sections.states()),
         },
     )
 
@@ -407,6 +411,7 @@ def pushback_context(
     detail: object,
     score: ApplicationScore | None,
     pushbacks: PushbackRepoDep,
+    states: dict[str, SectionState] | None = None,
 ) -> dict[str, object]:
     """One shape for both the detail page and the polled fragment, so the panel
     cannot render differently depending on which route produced it.
@@ -442,6 +447,10 @@ def pushback_context(
         "get_dimensions": axis_options["get"],
         "drift_meter": pushbacks.drift_meter(),
         "sent": was_sent(detail),  # type: ignore[arg-type]
+        # The corrections list folds behind its count once every one of them
+        # has been applied or set aside. The drift meter above it never folds:
+        # it is the one number no other measure in this product can catch.
+        "pushbacks_section": build_pushbacks_section(states or {}, views),
     }
 
 

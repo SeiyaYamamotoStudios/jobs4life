@@ -1,3 +1,4 @@
+{% import "_sections.html" as sections %}
 {# Every disagreement with this application's score, and exactly what each one
    did -- including, most of the time, nothing.
 
@@ -40,7 +41,12 @@
   {% endif %}
 
   {% if pushbacks %}
-  <h3>What you have said about this score</h3>
+  {# Folded behind its count once every correction has been applied or set
+     aside, and forced open while one is still waiting on the user to say what
+     kind of statement it was: a pushback nobody has applied has done nothing
+     yet, and a loop that quietly ignores people is the failure this whole
+     feature exists to avoid. #}
+  {% call sections.section(pushbacks_section) %}
   <ul class="pushback-list">
     {% for item in pushbacks %}
     {% set p = item.pushback %}
@@ -125,6 +131,7 @@
     </li>
     {% endfor %}
   </ul>
+  {% endcall %}
   {% endif %}
 
   <details class="pushback-limits">

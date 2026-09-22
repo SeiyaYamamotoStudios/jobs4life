@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sections.html" as sections %}
 {% block title %}Profile — jobs4life{% endblock %}
 {% block content %}
 <h1>Profile</h1>
@@ -26,7 +27,7 @@
 
 {# -- 1. constraints ------------------------------------------------------ #}
 <section id="constraints">
-  <h2>What you will and will not take</h2>
+{% call sections.section(profile_sections.constraints) %}
   <p class="note">
     Each one is a <strong>must</strong>, a <strong>nice to have</strong> or a
     <strong>never</strong>. A "never" carries the same weight as a "must" here:
@@ -98,11 +99,12 @@
     {% endfor %}
     <button type="submit">Save what you will and will not take</button>
   </form>
+{% endcall %}
 </section>
 
 {# -- 2. capabilities ----------------------------------------------------- #}
 <section id="capabilities">
-  <h2>What you can actually do</h2>
+{% call sections.section(profile_sections.capabilities) %}
   <p class="note">
     Rows come from the CV facts you have already confirmed. Each one asks two or
     three questions about what you <em>did</em>, not how good you feel you are —
@@ -210,11 +212,12 @@
       <button type="submit">Add it</button>
     </form>
   </details>
+{% endcall %}
 </section>
 
 {# -- 3. disciplines ------------------------------------------------------ #}
 <section id="disciplines">
-  <h2>What you practise</h2>
+{% call sections.section(profile_sections.disciplines) %}
   <p class="note">
     What you actually do, as distinct from what employers called you. Ranked:
     the first line is what you practise most. The "not this" list matters as
@@ -231,11 +234,12 @@
     <p class="note">Up to {{ max_items }} entries each. Stored exactly as you write them.</p>
     <button type="submit">Save what you practise</button>
   </form>
+{% endcall %}
 </section>
 
 {# -- 4. objectives ------------------------------------------------------- #}
 <section id="objectives">
-  <h2>What this move is for</h2>
+{% call sections.section(profile_sections.objectives) %}
   <p class="note">
     Up to four, <strong>ranked and never weighted</strong>. Rank 1 is not "worth
     40%" — the objectives are reported separately against a job and never blended
@@ -259,11 +263,12 @@
     <p class="note">Clearing a slot leaves the others where they are.</p>
     <button type="submit">Save what this move is for</button>
   </form>
+{% endcall %}
 </section>
 
 {# -- 5. self-assessment: the one section that reaches the corpus --------- #}
 <section id="self-assessment">
-  <h2>How you would put your own depth</h2>
+{% call sections.section(profile_sections.self_assessment) %}
   <p class="note">
     <strong>These two are not preferences, and they do not stay on this page.</strong>
     Everything above records what you want; these record what is true about you,
@@ -283,5 +288,6 @@
     <p class="note">No model reads or rewrites this. It is stored exactly as typed.</p>
     <button type="submit">Save and put these on the record</button>
   </form>
+{% endcall %}
 </section>
 {% endblock %}

@@ -1912,3 +1912,53 @@ score_overrides = Table(
         text("created_at DESC"),
     ),
 )
+
+
+# --------------------------------------------------------------------------
+# Which sections of a screen this user leaves open (docs/ui-sections.md).
+#
+# Two things at once, and the second is why the table exists rather than a
+# cookie. `is_open` is the preference: a choice made here wins over the default
+# on the next visit, on every device. `default_open`, `toggles` and
+# `against_default` are the *record of disagreement* -- the owner's own reason
+# for asking ("we will have to track if people go against this") -- so a default
+# that everybody immediately undoes is visible in a query instead of being
+# something someone eventually notices.
+#
+# Deliberately NOT part of `profiles`. That row is append-only and is read back
+# as "what you believed about yourself in March"; a save per collapsed panel
+# would bury real decisions under UI noise. This is the other shape: one row per
+# (user, section), upserted, never versioned.
+#
+# `section_key` carries no CHECK. The set is open by construction -- a per-draft
+# section is keyed by the draft's own id -- so a closed list would have to be
+# migrated every time a screen grows a panel. The route validates the shape
+# instead (`jfl_web.routes.ui_sections`).
+# --------------------------------------------------------------------------
+
+ui_section_states = Table(
+    "ui_section_states",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("section_key", Text, nullable=False),
+    # The user's own choice, as of the last toggle.
+    Column("is_open", Boolean, nullable=False),
+    # What the screen would have shown had this row not existed, as reported by
+    # the page that was on screen at the time. Kept so `against_default` means
+    # something a year from now, when the default itself may have changed.
+    Column("default_open", Boolean, nullable=False),
+    Column("toggles", Integer, nullable=False, server_default=text("0")),
+    Column("against_default", Integer, nullable=False, server_default=text("0")),
+    # When this section was last open in front of the user. It is what "new
+    # since you last looked" is measured from, and it is NULL until the first
+    # toggle -- a section nobody has ever opened or closed has no watermark, and
+    # inventing one would announce old items as new. Same rule as a newly
+    # watched board's first check: a baseline, not news.
+    _ts("last_opened_at"),
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=text("now()")),
+    UniqueConstraint("user_id", "section_key"),
+)
