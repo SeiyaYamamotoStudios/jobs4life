@@ -32,6 +32,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
+from jfl_core.corpus_source import append_confirmed_fact as _append_confirmed_fact
 from jfl_core.corpus_source import replace_section as _replace_section
 from jfl_core.storage.tenancy import TenantScopedRepository
 
@@ -51,6 +52,23 @@ class PostgresUserCorpusRepository(TenantScopedRepository):
         them.
         """
         return _replace_section(self._conn, self._user_id, texts, section=section)
+
+    def add_statement(self, section: str, text: str) -> uuid.UUID:
+        """Append one statement in the user's own words and return its span.
+
+        The same call `PostgresCandidateFactRepository.confirm` makes, exposed
+        here for the other place a person answers a question about themselves in
+        their own words: the evidence question a capability pushback opens.
+        Deliberately the existing path and not a second one -- two mechanisms
+        for one kind of fact is how one sentence ends up with two span ids that
+        the claim gate reads as two pieces of evidence.
+
+        Appending rather than replacing, unlike `replace_section`: these
+        answers accumulate, and an earlier answer to an earlier question is not
+        superseded by a later answer to a different one. Idempotent on the text,
+        so answering twice with the same words yields one span.
+        """
+        return _append_confirmed_fact(self._conn, self._user_id, text, section=section)
 
 
 __all__ = ["PostgresUserCorpusRepository"]

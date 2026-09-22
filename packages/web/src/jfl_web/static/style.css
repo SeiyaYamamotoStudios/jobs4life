@@ -831,3 +831,91 @@ ul.draft-citations li { margin: 0.15rem 0; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* -- pushback -- */
+
+/* The drift meter is deliberately the loudest thing in the score panel after
+   the two numbers themselves. The failure it watches for is invisible to every
+   other measure here, so it does not get to be subtle. */
+.drift-meter {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0 1.5rem;
+  background: var(--panel);
+}
+.drift-meter h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+.drift-meter-page h2 { margin: 0 0 0.4rem; }
+.drift-figure { margin: 0 0 0.4rem; font-size: 1.1rem; }
+.drift-dimensions { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.drift-dimensions li { display: flex; gap: 0.75rem; margin: 0.15rem 0; }
+.drift-dimension { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
+.drift-value { font-variant-numeric: tabular-nums; }
+
+/* A corrected or overridden number says so directly under itself. The two
+   labels read differently on purpose: one is the tool's number moved by your
+   corrections, the other is your number instead of the tool's. */
+.score-adjusted, .score-override-label { margin: 0.1rem 0 0.4rem; }
+.score-override-label { font-weight: 600; }
+.score-sent { margin-top: 0.4rem; }
+
+.pushback-list { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+.pushback {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.75rem;
+}
+/* Verbatim, and it looks verbatim. The user's own words are the one thing on
+   this panel nothing may rewrite. */
+.pushback-words {
+  margin: 0 0 0.4rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--rule);
+  font-style: italic;
+}
+/* The receipt's three headings carry equal weight, because "nothing changed"
+   is a first-class outcome here and must not read as the small print. */
+.pushback-receipt { margin: 0.6rem 0 0; }
+.pushback-receipt dt { font-weight: 600; margin-top: 0.4rem; }
+.pushback-receipt dd { margin: 0.1rem 0 0; }
+
+.pushback-classify { margin-top: 0.6rem; }
+.pushback-classify h4 { margin: 0 0 0.3rem; font-size: 0.98rem; }
+.pushback-kind { display: block; margin: 0.4rem 0; }
+.pushback-kind-label { font-weight: 600; }
+.pushback-kind .note { display: block; margin: 0.1rem 0 0 1.5rem; }
+.pushback-new-info { display: block; margin: 0.6rem 0 0.2rem; }
+
+.pushback-evidence, .pushback-comparison {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--rule);
+}
+.pushback-evidence h4, .pushback-comparison h4 { margin: 0 0 0.3rem; font-size: 0.98rem; }
+.pushback-evidence textarea { width: 100%; }
+.pushback-evidence-done { margin-top: 0.6rem; }
+.pushback-pending { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.pushback-pending li { margin: 0 0 0.9rem; }
+
+.pushback-form, .score-override { margin-top: 1rem; }
+.pushback-form summary, .score-override summary, .pushback-limits summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+.pushback-form form, .score-override form {
+  margin: 0.75rem 0 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+.pushback-form h4 { margin: 0 0 0.4rem; font-size: 0.98rem; }
+.pushback-form textarea { width: 100%; }
+.pushback-form fieldset { border: 0; padding: 0; margin: 0.5rem 0; }
+.pushback-form legend { padding: 0; font-size: 0.92rem; }
+.pushback-form fieldset label { margin-right: 1rem; }
+
+/* Short, honest, and on the screen rather than only in the code. */
+.pushback-limits { margin-top: 1rem; }
+.pushback-never { margin: 0.4rem 0 0 1.2rem; }

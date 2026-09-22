@@ -49,16 +49,39 @@
      from the per-constraint and per-objective verdicts listed further down, so
      it can never say something those verdicts do not. The tally under it is
      recomputed from the same verdicts for the same reason. #}
+  {# A number the user has corrected is shown as a number the user has
+     corrected. The stored run keeps what the pipeline produced -- a correction
+     is a labelled layer over it, read from the append-only pushback log -- so
+     this panel can always say both what the tool said and what you moved it
+     to, and never quietly present the second as the first. #}
   <div class="score-axes">
     <div class="score-axis">
       <h3>{{ could_get_label }}</h3>
+      {% if could_get_display and could_get_display.effective is not none %}
+      <p class="score-number"><strong>{{ could_get_display.effective }}</strong><span class="score-of">/10</span></p>
+      {% if could_get_display.override is not none %}
+      <p class="note score-override-label">Your override. The tool said {{ could_get_display.stored }}.</p>
+      {% elif could_get_display.adjusted %}
+      <p class="note score-adjusted">{{ adjusted_note }} ({{ "%+.2f" | format(could_get_display.adjustment) }}). The tool said {{ could_get_display.stored }}.</p>
+      {% endif %}
+      {% else %}
       <p class="score-number"><strong>{{ score.could_get_score }}</strong><span class="score-of">/10</span></p>
+      {% endif %}
       <p>{{ score.could_get_assessment }}</p>
+      {% if sent %}<p class="note score-sent">{{ sent_note }}</p>{% endif %}
     </div>
     <div class="score-axis">
       <h3>{{ want_it_label }}</h3>
-      {% if score.want_it_score is not none %}
-      <p class="score-number"><strong>{{ score.want_it_score }}</strong><span class="score-of">/10</span></p>
+      {% if want_display and want_display.effective is not none %}
+      <p class="score-number"><strong>{{ want_display.effective }}</strong><span class="score-of">/10</span></p>
+      {% if want_display.override is not none %}
+      <p class="note score-override-label">Your override. The tool said {{ want_display.stored }}.</p>
+      {% elif want_display.adjusted %}
+      <p class="note score-adjusted">{{ adjusted_note }} ({{ "%+.2f" | format(want_display.adjustment) }}). The tool said {{ want_display.stored }}.</p>
+      {% endif %}
+      {% if want_display.capped_by_breach %}
+      <p class="note">A must-have or a never is broken, which holds this down whatever your corrections say.</p>
+      {% endif %}
       {% else %}
       <p class="score-number"><strong>—</strong></p>
       {% endif %}
@@ -67,6 +90,63 @@
       <p class="note">{{ want_it_summary }}</p>
     </div>
   </div>
+
+  {# Pushing back. One form per axis, offering only that axis's own dimensions
+     -- the user's constraints, objectives and unevidenced claims -- so there is
+     no way to name a claim-gate verdict, a span or a coverage status, because
+     none of them is on the list. #}
+  <details class="pushback-form">
+    <summary>{{ pushback_heading }}</summary>
+    <p class="note">{{ pushback_intro }}</p>
+    {% for axis, label, dimensions in [("get", could_get_label, get_dimensions), ("want", want_it_label, want_dimensions)] %}
+    <form method="post" action="/applications/{{ application_id }}/pushback">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="axis" value="{{ axis }}">
+      <h4>{{ label }}</h4>
+      <label for="dimension-{{ axis }}">What is wrong</label>
+      <select id="dimension-{{ axis }}" name="dimension">
+        {% for key, words in dimensions %}
+        <option value="{{ key }}">{{ words }}</option>
+        {% endfor %}
+      </select>
+      <fieldset>
+        <legend>{{ direction_label }}</legend>
+        {% for value, words in direction_choices %}
+        <label><input type="radio" name="direction" value="{{ value }}" {% if loop.first %}checked{% endif %}> {{ words }}</label>
+        {% endfor %}
+      </fieldset>
+      <fieldset>
+        <legend>{{ asserted_points_label }}</legend>
+        {% for value, words in asserted_points_choices %}
+        <label><input type="radio" name="points" value="{{ value }}" {% if loop.first %}checked{% endif %}> {{ words }}</label>
+        {% endfor %}
+      </fieldset>
+      <label for="text-{{ axis }}">In your own words</label>
+      <textarea id="text-{{ axis }}" name="user_text" rows="3" required></textarea>
+      <button type="submit">Record this</button>
+    </form>
+    {% endfor %}
+  </details>
+
+  {# The escape hatch, offered honestly and labelled wherever it appears. It
+     informs, it never blocks -- and the number it moves is the advisory one,
+     never the one that measures the distance between what is true and what is
+     being claimed. #}
+  <details class="score-override">
+    <summary>{{ override_heading }}</summary>
+    <p class="note">{{ override_note }}</p>
+    {% for axis, label in [("get", could_get_label), ("want", want_it_label)] %}
+    <form method="post" action="/applications/{{ application_id }}/override">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="axis" value="{{ axis }}">
+      <label for="override-{{ axis }}">{{ label }} — {{ override_label }}</label>
+      <input id="override-{{ axis }}" name="value" type="number" min="1" max="10"
+             value="{{ overrides[axis].value if overrides and axis in overrides else "" }}">
+      <button type="submit" class="secondary">Set it</button>
+      <span class="note">Leave it empty and press Set it to take the override off.</span>
+    </form>
+    {% endfor %}
+  </details>
 
   {# A hard gate the ad breaks is stated in plain words, never folded silently
      into the number above it. Derived from the constraint verdicts, so this
@@ -166,4 +246,9 @@
     </form>
   </details>
   {% endif %}
+
+  {# Every disagreement with this score, and exactly what each one did. Inside
+     the score panel rather than elsewhere on the page, because the drift meter
+     belongs where a person is when they are about to push back. #}
+  {% include "_pushbacks.html" %}
 </section>

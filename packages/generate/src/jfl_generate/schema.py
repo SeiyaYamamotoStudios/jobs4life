@@ -195,3 +195,16 @@ class CvFactItem(BaseModel):
 
 class CvFactsOutput(BaseModel):
     facts: list[CvFactItem]
+
+
+class PushbackClassificationOutput(BaseModel):
+    """The wire shape one classified pushback comes back as. Sanitised into
+    `jfl_generate.pushback.PushbackClassification` before anything downstream
+    sees it -- and unlike every other model here, that sanitising step can
+    fall back the `kind` itself, not just tidy the text, because a value
+    outside `jfl_core.pushback.PUSHBACK_KINDS` must never reach the caller.
+    """
+
+    kind: str
+    new_information: bool
+    classification_note: str
