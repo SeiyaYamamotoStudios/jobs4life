@@ -34,9 +34,9 @@
 
   {% if not coverage %}
   <p class="note">
-    Corpus coverage has not been checked for this job yet. Checking it is a
-    model call, billed to your own API key -- and drafting needs it first, so
-    it never runs silently on the way to a draft.
+    This job has not been checked against your confirmed facts yet. That check
+    is a model call, billed to your own API key -- and drafting needs it first,
+    so it never runs silently on the way to a draft.
   </p>
   <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -46,8 +46,8 @@
   <details class="status-more">
     <summary>Check coverage again</summary>
     <p class="note">
-      Worth it after answering a gap question or editing the corpus -- this
-      calls the model again and is billed to your own API key.
+      Worth it after you have confirmed more facts -- this calls the model
+      again and is billed to your own API key.
     </p>
     <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -61,9 +61,10 @@
 <section>
   <h2>Generate</h2>
   <p class="note">
-    Each generation is a model call, billed to your own API key, and runs the
-    claim gate on the result automatically. A flagged draft is still shown in
-    full -- the gate informs, it never blocks.
+    Each draft is a model call, billed to your own API key, and every sentence
+    in it is checked against your confirmed facts automatically. A draft with
+    flagged sentences is still shown in full: the check tells you where you are
+    claiming more than you can evidence, it never stops you.
   </p>
   <div class="quick-actions">
     {% for kind in draft_kinds %}

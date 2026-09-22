@@ -377,7 +377,9 @@ def test_a_breached_hard_gate_is_shown_in_plain_words(
     finish_score(engine, user_id, application_id)
 
     page = client.get(f"/applications/{application_id}").text
-    assert "Hard gates this ad breaks" in page
+    # "Must-haves", not "hard gates": the screens say what the user typed on
+    # /profile, and "gate" is this codebase's word, not theirs.
+    assert "Your must-haves this ad breaks" in page
     assert "On site five days a week in Manchester." in page
 
 

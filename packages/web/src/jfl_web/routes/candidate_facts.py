@@ -26,13 +26,17 @@ Rejected facts are never deleted. They collapse into a per-role "not true as
 written" list and can be brought back, because "I cannot find or undo the thing
 this tool recorded about me" is disqualifying in a truthfulness tool.
 
+The word "corpus" stays in the code and off the screen: to the user this is
+**Confirm what's true**, under Background.
+
 Screens:
 
-  GET  /corpus/facts                             -- every role, its facts, progress
-  POST /corpus/facts/{fact_id}/confirm           -- one fact, the user's words
-  POST /corpus/facts/{fact_id}/reject            -- one fact, kept and visible
-  POST /corpus/facts/{fact_id}/restore           -- bring a rejected fact back
-  POST /corpus/facts/roles/{role_key}/confirm    -- one role's on-screen facts
+  GET  /background/facts                          -- every role, its facts, progress
+  POST /background/facts/{fact_id}/confirm        -- one fact, the user's words
+  POST /background/facts/{fact_id}/reject         -- one fact, kept and visible
+  POST /background/facts/{fact_id}/restore        -- bring a rejected fact back
+  POST /background/facts/roles/{role_key}/confirm -- one role's on-screen facts
+  GET  /corpus/facts                              -- permanent redirect, for bookmarks
 """
 
 from __future__ import annotations
@@ -50,9 +54,10 @@ from jfl_web.templating import render
 
 router = APIRouter()
 
-# Where a user with no facts yet is sent. The CV upload screen is built
-# alongside this one; this constant is the only place the path is written down.
-UPLOAD_PATH = "/corpus/cvs"
+# Where a user with no facts yet is sent: the CV upload screen, which is
+# `jfl_web.routes.corpus`'s GET /background. This constant is the only place
+# the path is written down.
+UPLOAD_PATH = "/background"
 
 # Generous, and a rejection rather than a truncation -- the same rule the
 # profile page follows. A shortened statement is not what the user wrote.
@@ -142,7 +147,7 @@ def _error(
     )
 
 
-@router.get("/corpus/facts")
+@router.get("/background/facts")
 def facts_page(request: Request, session: SessionDep, facts: CandidateFactRepoDep) -> Response:
     return render(
         request,
@@ -151,7 +156,7 @@ def facts_page(request: Request, session: SessionDep, facts: CandidateFactRepoDe
     )
 
 
-@router.post("/corpus/facts/{fact_id}/confirm")
+@router.post("/background/facts/{fact_id}/confirm")
 def confirm_fact(
     request: Request,
     fact_id: uuid.UUID,
@@ -173,10 +178,12 @@ def confirm_fact(
         return _error(request, session, facts, _PROBE_UNANSWERED, 400)
     if confirmed is None:
         return _error(request, session, facts, _NOT_FOUND, 404)
-    return RedirectResponse(f"/corpus/facts?saved=1{_anchor(confirmed.role_key)}", status_code=303)
+    return RedirectResponse(
+        f"/background/facts?saved=1{_anchor(confirmed.role_key)}", status_code=303
+    )
 
 
-@router.post("/corpus/facts/{fact_id}/reject")
+@router.post("/background/facts/{fact_id}/reject")
 def reject_fact(
     request: Request,
     fact_id: uuid.UUID,
@@ -187,10 +194,12 @@ def reject_fact(
     rejected = facts.reject(fact_id)
     if rejected is None:
         return _error(request, session, facts, _NOT_FOUND, 404)
-    return RedirectResponse(f"/corpus/facts?saved=1{_anchor(rejected.role_key)}", status_code=303)
+    return RedirectResponse(
+        f"/background/facts?saved=1{_anchor(rejected.role_key)}", status_code=303
+    )
 
 
-@router.post("/corpus/facts/{fact_id}/restore")
+@router.post("/background/facts/{fact_id}/restore")
 def restore_fact(
     request: Request,
     fact_id: uuid.UUID,
@@ -204,10 +213,12 @@ def restore_fact(
     restored = facts.restore(fact_id)
     if restored is None:
         return _error(request, session, facts, _NOT_FOUND, 404)
-    return RedirectResponse(f"/corpus/facts?saved=1{_anchor(restored.role_key)}", status_code=303)
+    return RedirectResponse(
+        f"/background/facts?saved=1{_anchor(restored.role_key)}", status_code=303
+    )
 
 
-@router.post("/corpus/facts/roles/{role_key}/confirm")
+@router.post("/background/facts/roles/{role_key}/confirm")
 def confirm_role(
     request: Request,
     role_key: str,
@@ -238,4 +249,10 @@ def confirm_role(
         if fact.state != "proposed" or fact.needs_probe_answer:
             continue
         facts.confirm(one)
-    return RedirectResponse(f"/corpus/facts?saved=1{_anchor(role_key)}", status_code=303)
+    return RedirectResponse(f"/background/facts?saved=1{_anchor(role_key)}", status_code=303)
+
+
+@router.get("/corpus/facts", include_in_schema=False)
+def legacy_facts_path() -> Response:
+    """The old path. A redirect, not a page -- see `jfl_web.routes.corpus`."""
+    return RedirectResponse("/background/facts", status_code=301)

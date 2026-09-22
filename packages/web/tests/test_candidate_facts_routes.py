@@ -49,7 +49,10 @@ def _every_declared_route() -> list[APIRoute]:
 
 @pytest.fixture
 def fact_routes() -> list[APIRoute]:
-    return [r for r in _every_declared_route() if r.path.startswith("/corpus/facts")]
+    # Both the live prefix and the one the screens used to live at: a
+    # bulk-confirm route brought back under the old path would be just as bad.
+    prefixes = ("/background/facts", "/corpus/facts")
+    return [r for r in _every_declared_route() if r.path.startswith(prefixes)]
 
 
 def test_discovery_actually_found_the_routes(fact_routes: list[APIRoute]) -> None:
@@ -83,13 +86,14 @@ def test_every_confirming_route_is_scoped_to_one_fact_or_one_role(
 def test_no_state_changing_fact_route_is_a_bare_collection(
     fact_routes: list[APIRoute],
 ) -> None:
-    """A POST to `/corpus/facts` itself would be a collection-wide write, which
-    is the shape a global accept-all would take.
+    """A POST to `/background/facts` itself would be a collection-wide write,
+    which is the shape a global accept-all would take.
     """
     collection_writes = [
         route.path
         for route in fact_routes
-        if route.path.rstrip("/") == "/corpus/facts" and (route.methods or set()) - {"GET", "HEAD"}
+        if route.path.rstrip("/") in ("/background/facts", "/corpus/facts")
+        and (route.methods or set()) - {"GET", "HEAD"}
     ]
     assert not collection_writes
 

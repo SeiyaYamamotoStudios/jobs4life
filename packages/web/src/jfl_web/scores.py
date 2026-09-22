@@ -99,8 +99,8 @@ def want_it_summary(score: ApplicationScore) -> str:
 # may spend it twice.
 COST_NOTE = (
     "Scoring calls the model on your own API key. If this job's requirements "
-    "have not been checked against your corpus yet, that check runs first -- "
-    "two calls rather than one."
+    "have not been checked against your confirmed facts yet, that check runs "
+    "first -- two calls rather than one."
 )
 
 

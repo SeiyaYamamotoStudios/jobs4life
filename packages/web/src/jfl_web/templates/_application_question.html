@@ -47,7 +47,7 @@
 
   {% if view.latest.gate_result and view.latest.gate_result.sentences %}
   <div class="gate-verdicts">
-    <h4>Grounding</h4>
+    <h4>What this is based on</h4>
     {# Framing renders as NOT CHECKED, never as SUPPORTED -- the same rule the
        CLI and the demo page obey (CLAUDE.md, "Known to be wrong": framing is
        the one path nothing ever compares to the corpus). `kind="title"` never

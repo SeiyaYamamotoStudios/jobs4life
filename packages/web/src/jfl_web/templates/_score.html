@@ -29,7 +29,7 @@
 
   {% elif score.status == "pending" %}
   <p class="note" role="status">Scoring… this takes a minute or two, and longer
-    if your corpus has not been checked against this job yet.</p>
+    if your confirmed facts have not been checked against this job yet.</p>
 
   {% elif score.status == "failed" %}
   <p class="error" role="alert">
@@ -72,7 +72,7 @@
      into the number above it. Derived from the constraint verdicts, so this
      can never list a breach the verdicts below do not carry. #}
   {% if score.hard_gate_breaches %}
-  <h3>Hard gates this ad breaks</h3>
+  <h3>Your must-haves this ad breaks</h3>
   <ul class="score-breaches">
     {% for breach in score.hard_gate_breaches %}
     <li><strong>{{ breach.gate }}</strong> — {{ breach.breach }}</li>

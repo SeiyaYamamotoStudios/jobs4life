@@ -19,12 +19,12 @@
   </header>
 
   <details class="draft-verdicts">
-    <summary>Claim-gate verdicts ({{ entry.draft.gate_result.sentences | length }} sentences)</summary>
+    <summary>Sentence-by-sentence check ({{ entry.draft.gate_result.sentences | length }} sentences)</summary>
     <p class="note">
-      SUPPORTED traces cleanly to the corpus. REVIEW and UNSUPPORTED do not,
-      partly or at all. NOT CHECKED is framing or a document title -- neither
-      is ever compared against the corpus, so neither is ever shown as
-      supported.
+      SUPPORTED traces cleanly to facts you have confirmed. REVIEW and
+      UNSUPPORTED do not, partly or at all. NOT CHECKED is framing or a document
+      title -- neither is ever compared against your facts, so neither is ever
+      shown as supported.
     </p>
     <ul class="draft-sentences">
       {% for sentence in entry.draft.gate_result.sentences %}
@@ -32,7 +32,7 @@
         <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
         {{ sentence.text }}
         {% if sentence.cited_span_ids %}
-        <div class="note">cites: {{ sentence.cited_span_ids | join(", ") }}</div>
+        <div class="note">based on your facts: {{ sentence.cited_span_ids | join(", ") }}</div>
         {% endif %}
         {% if sentence.evidence_note %}
         <div class="note">{{ sentence.evidence_note }}</div>
