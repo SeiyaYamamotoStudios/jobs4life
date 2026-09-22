@@ -55,72 +55,57 @@ that mattered was found that way and none by review.
 
 ## Next
 
-### Resume here — end of session, 2026-09-20
+### Resume here — end of session, 2026-09-22
 
-**Everything from the 2026-09-18 list is built and deployed** (commit `48c177a`,
-migration `c4d9a1f6e207`), by five parallel agents plus one reconciliation pass.
+Everything below is **deployed and pushed** (`95dedfd`, migration `e9c4a71d5b28`).
 
-- **CV onboarding (B6, redesigned).** `/corpus` takes `.md`/`.txt` CVs (PDF/Word refused
-  deliberately: a mis-extracted line quoted back as "your own words" is the one thing this
-  must not do), stores them in the sent-document store, and one Haiku-priced model call per
-  CV proposes candidate facts, each tied to its CV line, de-duplicated across CVs.
-  `/corpus/facts` confirms them **role by role, never globally**; a fact asserting a number
-  or ownership carries a probe that must be answered first, and the answer joins the fact
-  in the one corpus line (`PROBE_JOIN`). Confirmed facts reach the corpus as **hosted
-  markdown** re-parsed into spans — `jfl_core.corpus_source` is the **one** write path, and
-  profile questions 15/16 go through it too.
-- **B4 scoring.** Two axes 1–10, each with a paragraph, objectives judged separately,
-  breached hard gates stated plainly, unconfirmed CV facts named as levers ("confirm X and
-  this moves to 7"), labelled unmeasured on screen. Runs coverage first when none exists,
-  and says so before spending.
-- **B5 drafting.** "Generate a CV" per application behind the queue, per-sentence verdicts
-  with citations, framing as NOT CHECKED, per-run cost, drafts kept as history.
-- **Application questions.** "Check my answer" and "draft one" side by side, both gated;
-  the page advises answering first and does not enforce it.
+**Shipped since 2026-09-20**
+- **The profile, redesigned and rebuilt** — one denormalised `profiles` row per save,
+  append-only. Constraints with must/nice/never, ordered locations, guaranteed vs headline
+  comp; capabilities on four depth tiers set by three behavioural questions (never a
+  self-rating, and a missing answer stays "not stated" rather than rounding down);
+  disciplines; ranked objectives. Design and the research behind it: `docs/profile-schema.md`.
+- **"Do I want this" no longer predicts satisfaction.** Each constraint and objective is
+  reported evidenced / partial / **silent** / contradicted, and the number is computed from
+  those verdicts, so it can never claim more than they support. Silences are printed as the
+  questions to ask at interview.
+- **A draft may not claim above the tier you confirmed** — the capability ceiling reaches
+  the drafting prompt; the claim gate remains the backstop.
+- **Capability clustering** — one Haiku call groups confirmed facts into capabilities in the
+  user's own vocabulary, as proposals to accept, rename or reject. 120 facts per call;
+  whatever it cannot place is shown, never dropped. A user's edit is never overwritten.
+- **"Check all boards now"**, staggered 30s so fifty boards cannot crowd the queue.
+- **"Corpus" is gone from every screen** (it stays in the code, where it is the right word).
+  Nav is **Background**; `/background` = "Your CVs", `/background/facts` = "Confirm what's
+  true"; old URLs 301. A jargon sweep test keeps it that way — it caught a regression the
+  same day it landed.
+- **Fixes:** four CSS rules a merge had truncated (panels were losing their background and
+  swallowing later rules); an empty state pointing at a route that never existed; a home
+  page claiming drafting was "a later slice"; draft citations that printed span UUIDs at the
+  reader instead of the fact's own words.
 
-**Do next, in this order.**
-1. **Use it on real material** — the whole point, and nothing below is trustworthy until
-   it happens. Upload the real CVs, confirm a role's facts, then score a live application.
-   Expect the first defects to be in the extraction prompt's role labels and probes; they
-   have never seen a real CV.
-2. **Measure what it costs.** `runs` now carries `extract_cv_facts`, `score_application`,
-   `generate_coverage`, `generate_cv_draft`, `check_application_answer`,
-   `draft_application_answer`. The per-CV and per-score estimates are guesses until then.
-3. **The ~$2.07 eval re-run** against the 2026-09-05 baseline (find the baseline `.eval`
-   logs first). Still owed before drafting reaches anyone but the owner.
-4. Smaller: the dev database holds orphaned spans under the retired
-   `upload:corpus/confirmed.md` document from the superseded write path (nothing deployed
-   was affected); the old `git stash`; and the demo page's missing dated line.
+**Next, and it is the same first item as it was two sessions ago: use it on real material.**
+Nothing here has met a real CV. Upload yours at `/background`, confirm a role's facts, run
+the clustering, fill the profile, then score a live application. Expect the first defects in
+the CV extraction prompt's role labels and probes, and in the cluster labels.
 
-### Earlier — end of session, 2026-09-15
+**Then:**
+1. **Measure the new calls** from `runs`: `extract_cv_facts`, `cluster_capabilities`,
+   `score_application`, `generate_coverage`, `generate_cv_draft`, `check_application_answer`,
+   `draft_application_answer`. Every per-call cost quoted so far is an estimate.
+2. **The ~$2.07 eval re-run** against the 2026-09-05 baseline (find the baseline `.eval` logs
+   first). Still owed before drafting reaches anyone but the owner.
+3. **The pushback loop** — the design is researched and agreed but unbuilt: pushback on a
+   preference is accepted and shrunk, pushback claiming more capability opens a gap question
+   instead of moving the number, and a drift meter makes flattery visible. Details in
+   `~/jobs4life-profile-research/feedback-loops.md`.
+4. **Board suggestions** — researched (`~/jobs4life-profile-research/board-suggestions.md`),
+   not built, and it needs one decision first: shared reference tables (crawled ATS tenants,
+   public fact registers) carry no `user_id`, which CLAUDE.md forbids without a carve-out.
 
-Slice C7 and C7a shipped this session, built by five parallel agents and merged here.
-
-- **Workplace presets.** `/jobs` has three modes: **remote only** (the employer's
-  structured field says remote; see the 2026-09-16 ruling below), **remote friendly**
-  (remote plus hybrid, hybrid badged "— days not stated"), and **custom** (the old
-  checkboxes, unchanged). Anthropic's 38 On-Site jobs whose location reads
-  "Remote-Friendly" appear under remote friendly with the conflict shown on the row, per
-  the owner's ruling. A board can be marked "hybrid here is too heavy", which drops its
-  hybrid jobs from remote friendly. **Ruled 2026-09-16:** a job the board's own field
-  calls Remote stays in remote only when its text says Remote-Friendly, badged "The
-  posting says Remote-Friendly" — before that ruling it was dropped, which hid both of
-  Anthropic's remote jobs. Words alone never bring in a job whose field is not remote.
-- **The changes feed** at `/changes`: new / gone / returned / reposted since the user
-  last looked, each staying 24 hours after they first see it or until dismissed, through
-  the same saved filter. First visit looks back 7 days. Dead marks (dismissed, or past 24 hours)
-  are purged hourly by the worker (`purge_stale_feed_marks`, 2026-09-16); a purged mark's
-  event cannot resurface, because `last_looked_at` already passed it.
-- **Track as application** from `/jobs`, a board's page or the feed: fetches that one
-  posting's description (`jfl_intake.descriptions`, 11 of 12 platforms; **Breezy has no
-  public description source**, so it asks for a paste), then runs the existing B3
-  extraction. Nothing is fetched or read for jobs merely browsed.
-- **Suggested title expansions** (C7a): saving a new title phrase enqueues one Haiku call
-  on the user's own key, and each suggestion is offered with a tickbox. Context is the
-  user's other includes, their excludes and their live application titles.
-- **Not built: B4 scoring.** "Track as application" reads the ad; it does not score it.
-- **Watch for:** `runs` rows now include `stage='suggest_titles'` on `claude-haiku-4-5`;
-  the first real uses are what confirm the ~$0.001-per-phrase estimate.
+**Smaller:** an old `git stash` from 2026-09-01 on a branch that no longer exists; the demo
+page's missing dated line; `docs/` does not yet carry the CV-source catalogue
+(`~/jobs4life-cv-sources/`).
 
 **Sequencing lives in PLAN.md.** Slice A is done and deployed; B1 (queue) and B2 (status
 quick-actions) shipped 2026-09-08. In flight: **B3 — paste an ad, get an application**,
