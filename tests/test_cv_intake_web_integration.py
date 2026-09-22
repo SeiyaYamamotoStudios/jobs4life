@@ -1,4 +1,4 @@
-"""The /corpus upload page through the real routes against a live Postgres.
+"""The /background upload page through the real routes against a live Postgres.
 
 Marked `integration`; needs `docker compose up -d` and `alembic upgrade head`.
 Same stub Google provider, sign-in helper and CSRF scraping as
@@ -109,7 +109,7 @@ def sign_in(client: TestClient, google: StubGoogle, subs: list[str], engine: Eng
         ).scalar_one()
 
 
-def csrf(client: TestClient, path: str = "/corpus") -> str:
+def csrf(client: TestClient, path: str = "/background") -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', client.get(path).text)
     assert match is not None, f"no CSRF token on {path}"
     return match.group(1)
@@ -121,7 +121,7 @@ def text_of(html: str) -> str:
 
 def upload(client: TestClient, *files: tuple[str, str]) -> Response:
     return client.post(
-        "/corpus/upload",
+        "/background/upload",
         data={"csrf_token": csrf(client)},
         files=[(("files"), (name, body.encode("utf-8"), "text/markdown")) for name, body in files],
         follow_redirects=False,
@@ -145,13 +145,13 @@ def test_the_page_says_plainly_that_pdfs_are_not_read_yet(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     sign_in(client, google, subs, engine)
-    body = text_of(client.get("/corpus").text)
+    body = text_of(client.get("/background").text)
     assert "PDF" in body
     assert ".md" in body and ".txt" in body
 
 
 def test_signed_out_users_get_the_login_page(client: TestClient) -> None:
-    response = client.get("/corpus", follow_redirects=False)
+    response = client.get("/background", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -167,7 +167,7 @@ def test_several_cvs_upload_at_once_and_each_queues_one_read(
     response = upload(client, ("cv-2024.md", CV_ONE), ("cv-2022.txt", CV_TWO))
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/corpus?added=2&already=0"
+    assert response.headers["location"] == "/background?added=2&already=0"
     assert len(cvs_of(engine, user_id)) == 2
     assert len(tasks_of(engine, user_id)) == 2
 
@@ -194,7 +194,7 @@ def test_re_uploading_the_same_cv_queues_nothing_new(
     again = upload(client, ("cv.md", CV_ONE))
 
     assert again.status_code == 303
-    assert again.headers["location"] == "/corpus?added=0&already=1"
+    assert again.headers["location"] == "/background?added=0&already=1"
     assert len(cvs_of(engine, user_id)) == 1
     assert len(tasks_of(engine, user_id)) == 1
 
@@ -243,7 +243,7 @@ def test_uploading_nothing_says_so(
 ) -> None:
     sign_in(client, google, subs, engine)
     response = client.post(
-        "/corpus/upload", data={"csrf_token": csrf(client)}, follow_redirects=False
+        "/background/upload", data={"csrf_token": csrf(client)}, follow_redirects=False
     )
     assert response.status_code == 400
     assert "Choose at least one file" in text_of(response.text)
@@ -254,7 +254,7 @@ def test_an_upload_without_a_csrf_token_is_refused(
 ) -> None:
     user_id = sign_in(client, google, subs, engine)
     response = client.post(
-        "/corpus/upload",
+        "/background/upload",
         files=[("files", ("cv.md", CV_ONE.encode("utf-8"), "text/markdown"))],
         follow_redirects=False,
     )
@@ -271,7 +271,7 @@ def test_a_pasted_cv_is_stored_and_queued(
     user_id = sign_in(client, google, subs, engine)
 
     response = client.post(
-        "/corpus/paste",
+        "/background/paste",
         data={"csrf_token": csrf(client), "name": "2024 CV", "cv_text": CV_ONE},
         follow_redirects=False,
     )
@@ -287,7 +287,7 @@ def test_an_empty_paste_is_refused(
 ) -> None:
     user_id = sign_in(client, google, subs, engine)
     response = client.post(
-        "/corpus/paste",
+        "/background/paste",
         data={"csrf_token": csrf(client), "name": "", "cv_text": "   "},
         follow_redirects=False,
     )
@@ -303,12 +303,12 @@ def test_another_users_cv_is_not_on_this_users_page(
 ) -> None:
     alice = sign_in(client, google, subs, engine)
     upload(client, ("alice-cv.md", CV_ONE))
-    assert "alice-cv.md" in client.get("/corpus").text
+    assert "alice-cv.md" in client.get("/background").text
 
     bob = sign_in(client, google, subs, engine)  # a second sign-in replaces the cookie
     assert bob != alice
 
-    page = client.get("/corpus").text
+    page = client.get("/background").text
     assert "alice-cv.md" not in page
     assert cvs_of(engine, bob) == []
     assert len(cvs_of(engine, alice)) == 1
@@ -327,7 +327,7 @@ def test_a_failed_read_is_explained_on_the_page(
         repo = PostgresSentDocumentRepository(conn, user_id)
         repo.fail_extraction(repo.list_cvs()[0].id, "no_api_key")
 
-    body = text_of(client.get("/corpus").text)
+    body = text_of(client.get("/background").text)
     assert "Failed" in body
     assert "your own Anthropic API key" in body
     assert "Add an API key" in body
@@ -342,6 +342,6 @@ def test_a_finished_read_shows_its_fact_count(
         repo = PostgresSentDocumentRepository(conn, user_id)
         repo.finish_extraction(repo.list_cvs()[0].id, facts_proposed=7)
 
-    body = text_of(client.get("/corpus").text)
+    body = text_of(client.get("/background").text)
     assert "Read" in body
     assert "7" in body

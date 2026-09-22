@@ -128,7 +128,7 @@ _DRAFT_FAILURES: dict[str, GenerationFailure] = {
         "The ad has not been read yet, so there is nothing to draft against."
     ),
     "no_coverage": GenerationFailure(
-        "Corpus coverage has not been checked for this job yet -- run that first."
+        "This job has not been checked against your confirmed facts yet -- run that check first."
     ),
     "ad_too_long": GenerationFailure(
         "That came out too long for one call. This is a bug worth reporting, "

@@ -19,9 +19,9 @@
 
   {% if task.status in ("pending", "running") %}
     {% if task.kind == "generate_coverage" %}
-    <p class="note" role="status">Checking corpus coverage against this job's requirements… this takes about half a minute.</p>
+    <p class="note" role="status">Checking what you can evidence against this job's requirements… this takes about half a minute.</p>
     {% else %}
-    <p class="note" role="status">Generating a draft… this takes about a minute, and runs the claim gate automatically once it is done.</p>
+    <p class="note" role="status">Writing a draft… this takes about a minute, and every sentence is checked against your confirmed facts once it is done.</p>
     {% endif %}
 
   {% elif task.status == "failed" %}

@@ -7,11 +7,15 @@ proposes candidate facts. Nothing here puts anything in the corpus: only the
 user confirming a fact does that, one fact at a time, on the confirmation
 screen.
 
+The word "corpus" stays in the code and off the screens: these pages are
+**Background**, and they talk about CVs and about facts you have confirmed.
+
 Screens:
 
-  GET  /corpus         -- what has been uploaded, and how each CV's read went
-  POST /corpus/upload  -- one or more .md/.txt files
-  POST /corpus/paste   -- a CV pasted as text
+  GET  /background         -- what has been uploaded, and how each CV's read went
+  POST /background/upload  -- one or more .md/.txt files
+  POST /background/paste   -- a CV pasted as text
+  GET  /corpus             -- permanent redirect to /background, for bookmarks
 
 **Fast input, slow processing.** The POSTs store bytes and enqueue; the model
 call happens in the worker, on the user's own key. A request that called a
@@ -92,8 +96,8 @@ def _context(
     return ctx
 
 
-@router.get("/corpus")
-def corpus_page(
+@router.get("/background")
+def background_page(
     request: Request,
     session: SessionDep,
     cvs: SentDocumentRepoDep,
@@ -101,7 +105,7 @@ def corpus_page(
 ) -> Response:
     return render(
         request,
-        "corpus.html",
+        "background.html",
         _context(
             session,
             cvs,
@@ -121,7 +125,7 @@ def _error(
 ) -> Response:
     return render(
         request,
-        "corpus.html",
+        "background.html",
         _context(session, cvs, facts, error=message),
         status_code=400,
     )
@@ -150,7 +154,7 @@ def _store(
     return added, already
 
 
-@router.post("/corpus/upload")
+@router.post("/background/upload")
 async def upload_cvs(
     request: Request,
     session: SessionDep,
@@ -184,10 +188,10 @@ async def upload_cvs(
         return _error(request, session, cvs, facts, str(exc))
 
     added, already = _store(uploaded, cvs, tasks)
-    return RedirectResponse(f"/corpus?added={added}&already={already}", status_code=303)
+    return RedirectResponse(f"/background?added={added}&already={already}", status_code=303)
 
 
-@router.post("/corpus/paste")
+@router.post("/background/paste")
 def paste_cv(
     request: Request,
     session: SessionDep,
@@ -205,4 +209,17 @@ def paste_cv(
         return _error(request, session, cvs, facts, str(exc))
 
     added, already = _store([UploadedCv(filename=f"{label}.txt", text=text)], cvs, tasks)
-    return RedirectResponse(f"/corpus?added={added}&already={already}", status_code=303)
+    return RedirectResponse(f"/background?added={added}&already={already}", status_code=303)
+
+
+# -- the old paths -------------------------------------------------------------
+#
+# These screens lived under /corpus until the word came off the UI. A bookmark
+# is not a reason to keep a word nobody uses, and a 404 is a bad way to learn it
+# changed -- so the old paths answer 301 and nothing else. No session is
+# required: this is a path, not a page, and it renders nothing.
+
+
+@router.get("/corpus", include_in_schema=False)
+def legacy_corpus_path() -> Response:
+    return RedirectResponse("/background", status_code=301)

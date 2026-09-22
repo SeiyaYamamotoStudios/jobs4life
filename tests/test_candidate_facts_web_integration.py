@@ -126,7 +126,7 @@ def sign_in(client: TestClient, google: StubGoogle, subs: list[str], engine: Eng
     return user_id
 
 
-def csrf(client: TestClient, path: str = "/corpus/facts") -> str:
+def csrf(client: TestClient, path: str = "/background/facts") -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', client.get(path).text)
     assert match is not None, f"no CSRF token on {path}"
     return match.group(1)
@@ -230,7 +230,7 @@ def live_corpus_texts(engine: Engine, user_id: uuid.UUID) -> list[str]:
 
 
 def test_signed_out_is_sent_to_login(client: TestClient) -> None:
-    response = client.get("/corpus/facts", follow_redirects=False)
+    response = client.get("/background/facts", follow_redirects=False)
     assert response.status_code == 303 and response.headers["location"] == "/login"
 
 
@@ -238,9 +238,9 @@ def test_before_any_cv_the_page_points_at_the_upload(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     sign_in(client, google, subs, engine)
-    page = client.get("/corpus/facts").text
+    page = client.get("/background/facts").text
     assert "Nothing to check yet" in page
-    assert 'href="/corpus/cvs"' in page
+    assert 'href="/background"' in page
 
 
 def test_confirming_requires_csrf(
@@ -251,7 +251,7 @@ def test_confirming_requires_csrf(
     (fact_id,) = propose(engine, user_id, doc, fact(doc, "Northwind", "Ran the platform team"))
 
     response = client.post(
-        f"/corpus/facts/{fact_id}/confirm",
+        f"/background/facts/{fact_id}/confirm",
         data={"csrf_token": "wrong", "fact_text": "Ran the platform team"},
     )
     assert response.status_code == 403
@@ -273,7 +273,7 @@ def test_facts_are_grouped_by_role_with_the_cv_line_beside_them(
         fact(doc, "Northwind", "Ran the platform team", source="Platform lead, Northwind"),
         fact(doc, "Contoso", "Wrote the pricing service", source="Built pricing at Contoso"),
     )
-    page = client.get("/corpus/facts").text
+    page = client.get("/background/facts").text
     body = text_of(page)
 
     assert "Northwind" in body and "Contoso" in body
@@ -294,10 +294,12 @@ def test_confirming_as_written_records_the_proposal_verbatim(
     doc = a_cv(engine, user_id)
     (fact_id,) = propose(engine, user_id, doc, fact(doc, "Northwind", "Ran the platform team"))
 
-    response = post(client, f"/corpus/facts/{fact_id}/confirm", fact_text="Ran the platform team")
+    response = post(
+        client, f"/background/facts/{fact_id}/confirm", fact_text="Ran the platform team"
+    )
     assert response.status_code == 303
     assert live_corpus_texts(engine, user_id) == ["Ran the platform team"]
-    assert "1 confirmed" in text_of(client.get("/corpus/facts").text)
+    assert "1 confirmed" in text_of(client.get("/background/facts").text)
 
 
 def test_an_edit_stores_the_users_words_and_never_the_models(
@@ -312,12 +314,14 @@ def test_an_edit_stores_the_users_words_and_never_the_models(
     doc = a_cv(engine, user_id)
     (fact_id,) = propose(engine, user_id, doc, fact(doc, "Northwind", "Owned the pricing platform"))
 
-    post(client, f"/corpus/facts/{fact_id}/confirm", fact_text="Maintained the pricing platform")
+    post(
+        client, f"/background/facts/{fact_id}/confirm", fact_text="Maintained the pricing platform"
+    )
 
     texts = live_corpus_texts(engine, user_id)
     assert texts == ["Maintained the pricing platform"]
     assert not any("Owned" in t for t in texts)
-    assert "Maintained the pricing platform" in client.get("/corpus/facts").text
+    assert "Maintained the pricing platform" in client.get("/background/facts").text
 
 
 def test_a_probe_answer_is_stored_with_the_fact(
@@ -331,11 +335,11 @@ def test_a_probe_answer_is_stored_with_the_fact(
         doc,
         fact(doc, "Northwind", "Led the platform team", probe="Led how many people?"),
     )
-    assert "Led how many people?" in client.get("/corpus/facts").text
+    assert "Led how many people?" in client.get("/background/facts").text
 
     post(
         client,
-        f"/corpus/facts/{fact_id}/confirm",
+        f"/background/facts/{fact_id}/confirm",
         fact_text="Led the platform team",
         probe_answer="Nine engineers across two squads",
     )
@@ -355,7 +359,9 @@ def test_an_unanswered_probe_blocks_a_single_confirm(
         doc,
         fact(doc, "Northwind", "Led the platform team", probe="Led how many people?"),
     )
-    response = post(client, f"/corpus/facts/{fact_id}/confirm", fact_text="Led the platform team")
+    response = post(
+        client, f"/background/facts/{fact_id}/confirm", fact_text="Led the platform team"
+    )
     assert response.status_code == 400
     assert live_corpus_texts(engine, user_id) == []
 
@@ -377,7 +383,7 @@ def test_confirming_a_role_leaves_every_other_role_alone(
         fact(doc, "Contoso", "Wrote the pricing service"),
     )
     response = client.post(
-        "/corpus/facts/roles/northwind/confirm",
+        "/background/facts/roles/northwind/confirm",
         data={
             "csrf_token": csrf(client),
             "fact_id": [str(f.id) for f in _facts_of(engine, user_id) if f.role_key == "northwind"],
@@ -390,7 +396,7 @@ def test_confirming_a_role_leaves_every_other_role_alone(
     assert texts == ["Cut deploy time", "Ran the platform team"]
     assert "Wrote the pricing service" not in texts
 
-    body = text_of(client.get("/corpus/facts").text)
+    body = text_of(client.get("/background/facts").text)
     assert "2 confirmed" in body and "1 still to check" in body
 
 
@@ -406,14 +412,14 @@ def test_a_role_confirm_skips_a_fact_whose_probe_is_unanswered(
         fact(doc, "Northwind", "Cut deploy time"),
         fact(doc, "Northwind", "Led the platform team", probe="Led how many people?"),
     )
-    page = client.get("/corpus/facts").text
+    page = client.get("/background/facts").text
     # The page itself only offers the unblocked fact to the bulk control.
-    form = page[page.index('action="/corpus/facts/roles/northwind/confirm"') :]
+    form = page[page.index('action="/background/facts/roles/northwind/confirm"') :]
     submitted = re.findall(r'name="fact_id" value="([0-9a-f-]+)"', form)
     assert len(submitted) == 1
 
     response = client.post(
-        "/corpus/facts/roles/northwind/confirm",
+        "/background/facts/roles/northwind/confirm",
         data={"csrf_token": csrf(client), "fact_id": submitted},
         follow_redirects=False,
     )
@@ -438,7 +444,7 @@ def test_a_role_confirm_ignores_a_fact_id_from_another_role(
     )
     every_id = [str(f.id) for f in _facts_of(engine, user_id)]
     response = client.post(
-        "/corpus/facts/roles/northwind/confirm",
+        "/background/facts/roles/northwind/confirm",
         data={"csrf_token": csrf(client), "fact_id": every_id},
         follow_redirects=False,
     )
@@ -456,14 +462,14 @@ def test_a_rejected_fact_stays_visible_and_can_be_brought_back(
     doc = a_cv(engine, user_id)
     (fact_id,) = propose(engine, user_id, doc, fact(doc, "Northwind", "Ran the platform team"))
 
-    assert post(client, f"/corpus/facts/{fact_id}/reject").status_code == 303
-    body = text_of(client.get("/corpus/facts").text)
+    assert post(client, f"/background/facts/{fact_id}/reject").status_code == 303
+    body = text_of(client.get("/background/facts").text)
     assert "not true as written" in body
     assert "Ran the platform team" in body  # kept, never deleted
     assert live_corpus_texts(engine, user_id) == []
 
-    assert post(client, f"/corpus/facts/{fact_id}/restore").status_code == 303
-    assert "1 still to check" in text_of(client.get("/corpus/facts").text)
+    assert post(client, f"/background/facts/{fact_id}/restore").status_code == 303
+    assert "1 still to check" in text_of(client.get("/background/facts").text)
 
 
 def test_rejecting_a_confirmed_fact_retires_its_corpus_span(
@@ -476,10 +482,10 @@ def test_rejecting_a_confirmed_fact_retires_its_corpus_span(
     user_id = sign_in(client, google, subs, engine)
     doc = a_cv(engine, user_id)
     (fact_id,) = propose(engine, user_id, doc, fact(doc, "Northwind", "Ran the platform team"))
-    post(client, f"/corpus/facts/{fact_id}/confirm", fact_text="Ran the platform team")
+    post(client, f"/background/facts/{fact_id}/confirm", fact_text="Ran the platform team")
     assert live_corpus_texts(engine, user_id) == ["Ran the platform team"]
 
-    post(client, f"/corpus/facts/{fact_id}/reject")
+    post(client, f"/background/facts/{fact_id}/reject")
     assert live_corpus_texts(engine, user_id) == []
     with engine.begin() as conn:
         still_there = conn.execute(
@@ -503,10 +509,10 @@ def test_another_users_fact_is_a_404(
     other_id = sign_in(client, google, subs, engine)
     doc = a_cv(engine, other_id)
     (their_fact,) = propose(engine, other_id, doc, fact(doc, "Northwind", "Ran the platform team"))
-    client.post("/logout", data={"csrf_token": csrf(client, "/corpus/facts")})
+    client.post("/logout", data={"csrf_token": csrf(client, "/background/facts")})
 
     sign_in(client, google, subs, engine)
-    response = post(client, f"/corpus/facts/{their_fact}/confirm", fact_text="Mine now")
+    response = post(client, f"/background/facts/{their_fact}/confirm", fact_text="Mine now")
     assert response.status_code == 404
-    assert post(client, f"/corpus/facts/{their_fact}/reject").status_code == 404
+    assert post(client, f"/background/facts/{their_fact}/reject").status_code == 404
     assert live_corpus_texts(engine, other_id) == []

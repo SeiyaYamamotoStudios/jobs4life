@@ -1,19 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Confirm facts — jobs4life{% endblock %}
+{% block title %}Confirm what's true — jobs4life{% endblock %}
 {% block content %}
-<h1>What your CVs claim</h1>
+<div class="page-header">
+  <h1>Confirm what's true</h1>
+  <a href="/background">Back to your CVs</a>
+</div>
 <p class="lede">
-  A model read your CVs and proposed these facts. None of them counts as
-  evidence yet. Anything you confirm here becomes what your future claims are
-  measured against — in your words, stored exactly as you write them — so it is
-  worth being slower here than anywhere else in this tool.
+  A model read your CVs and proposed these facts. None of them counts for
+  anything yet. What you confirm here — in your words, stored exactly as you
+  type them — is what the tool will let you claim, and what it checks every
+  later draft against. It is worth going slower here than anywhere else.
 </p>
 <p class="note">
   There is no "accept everything" button, on purpose. A CV is written to
-  persuade, and confirming a whole stack of them in one click would quietly make
-  every stretch in them into evidence under your name — which is the one thing
-  this tool exists to stop. You can accept a single role's facts at a time, once
-  you have read them.
+  persuade, and confirming a whole stack of them in one click would quietly put
+  every stretch in them on the record under your name — which is the one thing
+  this tool exists to stop. You can accept one role's facts at a time, once you
+  have read them.
 </p>
 
 {% if saved %}<p class="ok" role="status">Saved.</p>{% endif %}
@@ -27,9 +30,9 @@
     them will appear here, grouped by role, for you to confirm one at a time.
   </p>
   <p class="note">
-    Your CVs are stored as documents you once sent. They influence form and
-    wording only; nothing in them grounds a claim until you confirm it on this
-    page.
+    Your CVs are kept as documents you once sent. They shape the wording and
+    shape of what you write next; nothing in them counts as true until you
+    confirm it on this page.
   </p>
   <p><a href="{{ upload_path }}">Upload your CVs</a></p>
 </section>
@@ -56,7 +59,7 @@
       <span class="fact-label">From your CV:</span>
       <q>{{ fact.source_line }}</q>
     </p>
-    <form method="post" action="/corpus/facts/{{ fact.id }}/confirm">
+    <form method="post" action="/background/facts/{{ fact.id }}/confirm">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
       <label for="fact-text-{{ fact.id }}">
         <span class="fact-label">Read as:</span> edit this if it is not how you
@@ -77,7 +80,7 @@
       {% endif %}
       <button type="submit">Confirm</button>
     </form>
-    <form method="post" action="/corpus/facts/{{ fact.id }}/reject" class="fact-reject">
+    <form method="post" action="/background/facts/{{ fact.id }}/reject" class="fact-reject">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
       <button type="submit" class="secondary">Not true as written</button>
     </form>
@@ -85,7 +88,7 @@
   {% endfor %}
 
   {% if role.confirmable %}
-  <form method="post" action="/corpus/facts/roles/{{ role.role_key }}/confirm"
+  <form method="post" action="/background/facts/roles/{{ role.role_key }}/confirm"
         class="confirm-role">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     {% for fact in role.confirmable %}
@@ -119,7 +122,7 @@
       <li>
         {{ fact.confirmed_text }}
         {% if fact.probe_answer %}<span class="gloss">— {{ fact.probe_answer }}</span>{% endif %}
-        <form method="post" action="/corpus/facts/{{ fact.id }}/reject" class="fact-reject">
+        <form method="post" action="/background/facts/{{ fact.id }}/reject" class="fact-reject">
           <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
           <button type="submit" class="link">Actually, not true as written</button>
         </form>
@@ -137,7 +140,7 @@
       {% for fact in role.rejected %}
       <li>
         {{ fact.confirmed_text or fact.fact_text }}
-        <form method="post" action="/corpus/facts/{{ fact.id }}/restore" class="fact-restore">
+        <form method="post" action="/background/facts/{{ fact.id }}/restore" class="fact-restore">
           <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
           <button type="submit" class="link">Put it back</button>
         </form>

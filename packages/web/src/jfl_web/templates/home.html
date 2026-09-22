@@ -3,6 +3,11 @@
 {% block content %}
 <h1>Signed in</h1>
 <p><a class="button" href="/applications">View your applications</a></p>
+<p class="note">
+  New here? Start with <a href="/background">your CVs</a>. A CV is what you have
+  claimed before; the facts you confirm from it are what this tool will let you
+  claim again.
+</p>
 <dl class="facts">
   <dt>Name</dt><dd>{{ user.display_name or "—" }}</dd>
   <dt>Email</dt><dd>{{ user.email }}</dd>
@@ -10,7 +15,8 @@
   <dt>Session expires</dt><dd>{{ session.expires_at.strftime("%a %d %b %Y, %H:%M UTC") }}</dd>
 </dl>
 <p class="note">
-  Drafting and the claim gate arrive in a later slice. Set your Anthropic API
-  key in <a href="/settings">Settings</a> now so it is ready when they do.
+  Reading a CV, scoring a job and writing a draft are all model calls, billed to
+  your own Anthropic API key. Set it in <a href="/settings">Settings</a> if you
+  have not.
 </p>
 {% endblock %}

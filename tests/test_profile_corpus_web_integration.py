@@ -176,14 +176,17 @@ def test_the_page_says_which_answers_become_corpus(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     """A user cannot consent to something the page does not tell them. The
-    corpus-bound section has to be marked as such in plain words, and the rest
-    of the page has to say that it is not.
+    section that becomes corpus text has to say so in plain words -- in the
+    user's words, which are "on the record" and "evidence", never "corpus" --
+    and the rest of the page has to say that it is not.
     """
     sign_in(client, google, subs, engine)
     page = client.get("/profile").text
     assert 'id="self-assessment"' in page
-    assert "corpus" in page.lower()
+    assert "on the record" in page.lower()
+    assert "cited as evidence" in page.lower()
     assert "not preferences" in page
+    assert "corpus" not in page.lower()
 
 
 def test_re_answering_supersedes_the_earlier_statement(

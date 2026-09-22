@@ -11,8 +11,9 @@
   Four of the five sections are <strong>preferences</strong>: they decide whether
   a role suits you and are never treated as evidence about your career. The
   fifth, <a href="#self-assessment">how you would put your own depth</a>, is a
-  claim about you — so it is recorded in your corpus, in your words, and can be
-  cited. That section says so again where you type it.
+  claim about you — so it goes on the record alongside the facts you have
+  confirmed, in your words, and can be cited as evidence. That section says so
+  again where you type it.
 </p>
 
 {% if saved %}<p class="ok" role="status">Saved.</p>{% endif %}
@@ -114,7 +115,8 @@
   {% if not capabilities %}
   <p class="note">
     Nothing here yet. Rows appear as you confirm facts on
-    <a href="/corpus/facts">your CV facts</a>, or you can name one yourself below.
+    <a href="/background/facts">Confirm what's true</a>, or you can name one
+    yourself below.
   </p>
   {% endif %}
 
@@ -260,10 +262,10 @@
   <p class="note">
     <strong>These two are not preferences, and they do not stay on this page.</strong>
     Everything above records what you want; these record what is true about you,
-    so they are written into your corpus in your own words and can be cited as
-    evidence — the same path a CV fact takes once you confirm it. Rewriting them
-    replaces what was there; emptying a box removes it, and it stops grounding
-    anything.
+    so they go on the record in your own words and can be cited as evidence —
+    the same path a fact from a CV takes once you confirm it. Rewriting them
+    replaces what was there; emptying a box removes it, and nothing rests on it
+    any more.
   </p>
   <form method="post" action="/profile/self-assessment">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -274,7 +276,7 @@
     <textarea id="recurring_gaps" name="recurring_gaps" rows="4"
               maxlength="{{ max_self_assessment }}">{{ profile.self_assessment.recurring_gaps }}</textarea>
     <p class="note">No model reads or rewrites this. It is stored exactly as typed.</p>
-    <button type="submit">Save and record in my corpus</button>
+    <button type="submit">Save and put these on the record</button>
   </form>
 </section>
 {% endblock %}
