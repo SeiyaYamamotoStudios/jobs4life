@@ -278,7 +278,7 @@ def test_no_confirmed_facts_says_so_and_points_at_where_facts_come_from(
 
     body = client.get("/profile?cluster=no_facts").text
     assert "nothing to group" in text_of(body)
-    assert "/corpus/facts" in body
+    assert "/background/facts" in body
 
 
 def test_no_api_key_enqueues_nothing_and_says_where_to_add_one(
