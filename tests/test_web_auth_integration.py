@@ -122,6 +122,22 @@ def client(
         conn.execute(delete(users_table).where(users_table.c.google_sub.in_(subs)))
 
 
+def test_every_page_names_the_account_you_are_signed_in_as(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    """With two Google accounts in one browser, "which one am I in?" is a real
+    question, and the answer belongs on the page rather than in the database.
+    """
+    identity = sign_in(client, google, subs, email="who-am-i@test.invalid")
+
+    settings = client.get("/settings").text
+    assert "who-am-i@test.invalid" in settings
+    assert identity.sub in settings  # the Google account, not just the address
+
+    # And in the header, so it is answerable from wherever you happen to be.
+    assert "who-am-i@test.invalid" in client.get("/applications").text
+
+
 def sign_in(
     client: TestClient,
     google: StubGoogle,

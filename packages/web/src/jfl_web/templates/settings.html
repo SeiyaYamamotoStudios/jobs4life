@@ -4,6 +4,20 @@
 <h1>Settings</h1>
 
 <section>
+  <h2>This account</h2>
+  <dl class="facts">
+    <dt>Signed in as</dt><dd>{{ user.email }}</dd>
+    {% if user.display_name %}<dt>Name</dt><dd>{{ user.display_name }}</dd>{% endif %}
+    <dt>Signed in with</dt><dd>Google{% if user.google_sub %} ({{ user.google_sub }}){% endif %}</dd>
+    <dt>Account id</dt><dd><code>{{ user.id }}</code></dd>
+  </dl>
+  <p class="note">
+    Everything this tool holds belongs to this account and no other. The account
+    id is what to quote if you ever need support with your own data.
+  </p>
+</section>
+
+<section>
   <h2>Anthropic API key</h2>
   <p class="lede">
     Model calls are billed to your own key. It is encrypted before it is stored

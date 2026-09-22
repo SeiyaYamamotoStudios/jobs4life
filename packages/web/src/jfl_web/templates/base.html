@@ -20,6 +20,9 @@
       <a href="/profile">Profile</a>
       <a href="/background">Background</a>
       <a href="/settings">Settings</a>
+      {#- Which account you are signed in as. Obvious once you have two Google
+          accounts and cannot tell which one the browser picked. -#}
+      <span class="signed-in-as" title="Signed in as {{ user.email }}">{{ user.email }}</span>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <button type="submit" class="link">Sign out</button>

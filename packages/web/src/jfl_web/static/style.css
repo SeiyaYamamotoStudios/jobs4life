@@ -821,3 +821,13 @@ ul.cv-roles li .note { display: block; }
 /* -- draft citations -- */
 ul.draft-citations { list-style: none; margin: 0.25rem 0 0; padding: 0; }
 ul.draft-citations li { margin: 0.15rem 0; }
+
+/* -- signed-in identity -- */
+.signed-in-as {
+  color: var(--muted);
+  font-size: 0.85rem;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
