@@ -786,3 +786,34 @@ ul.cv-roles li .note { display: block; }
 .profile-version-when { margin: 0 0 0.4rem; }
 .profile-version-summary { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.9rem; }
 .profile-version details summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+
+/* -- capability clustering -- */
+/* The proposals panel sits inside the capabilities section and has to read as
+   something being *offered*, not as rows that are already on the profile. So it
+   is boxed and set back from the saved rows around it, and each proposal is
+   boxed again inside it. */
+.capability-clusters {
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  padding: 0.9rem 1.25rem;
+  margin: 1rem 0 1.5rem;
+}
+.capability-clusters h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.cluster-proposals { list-style: none; margin: 1rem 0 0; padding: 0; }
+.cluster-proposal {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.cluster-proposal h4 { margin: 0 0 0.4rem; font-size: 0.98rem; }
+.cluster-proposal .capability-evidence summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
+.cluster-accept { margin-top: 0.6rem; }
+.cluster-accept .note { margin: 0.2rem 0 0.5rem; }
+/* Reject is a link, not a button: rejecting a label throws nothing away, and it
+   must not compete visually with the action that actually records something. */
+.cluster-reject { margin-top: 0.3rem; }
+.cluster-run { margin-top: 0.75rem; }
+.cluster-unplaced { margin-top: 0.75rem; }
+.cluster-unplaced summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }

@@ -1344,6 +1344,69 @@ title_suggestions = Table(
 )
 
 # --------------------------------------------------------------------------
+# Capability clustering: one cheap model call that groups a user's CONFIRMED
+# candidate facts into capability labels.
+#
+# One row per run, kept rather than replaced, because a run records a decision
+# the user was asked to make and the accepted/rejected answers live in it.
+# `proposals` is a JSONB list of `jfl_core.models.ProposedCapability`; nothing
+# in it is a profile row until the user accepts it, and their rename wins
+# permanently -- see `jfl_web.routes.profile`.
+#
+# `unclustered_fact_ids` (sent, placed in nothing) and `omitted_fact_ids` (more
+# confirmed facts than one bounded call takes) exist so that no confirmed fact
+# is ever silently dropped: both lists are shown on the profile screen and both
+# are picked up by the next run.
+#
+# `trace_id` prices the run through `runs` (`cost_for_trace`) rather than
+# storing a cost here -- one place holds spend, and it is the one built for
+# querying it.
+# --------------------------------------------------------------------------
+_CAPABILITY_CLUSTER_STATUSES = ("pending", "done", "failed")
+
+# The same subset `_TITLE_SUGGESTION_ERROR_CODES` takes: no document here, so
+# nothing can be missing or too long.
+_CAPABILITY_CLUSTER_ERROR_CODES = (
+    "no_api_key",
+    "api_key_rejected",
+    "model_refused",
+    "model_error",
+    "credential_unreadable",
+)
+
+capability_clusters = Table(
+    "capability_clusters",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", Text, nullable=False, server_default="pending"),
+    # Minted when the run is created, not when it finishes, so a failed run can
+    # still be priced.
+    Column("trace_id", UUID(as_uuid=True), nullable=False),
+    Column("proposals", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("fact_count", Integer, nullable=False, server_default=text("0")),
+    Column("unclustered_fact_ids", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("omitted_fact_ids", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("error_code", Text),
+    _ts("dismissed_at"),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_CAPABILITY_CLUSTER_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "error_code is null or error_code in ('"
+        + "','".join(_CAPABILITY_CLUSTER_ERROR_CODES)
+        + "')",
+        name="error_code",
+    ),
+    Index("ix_capability_clusters_user_id_created_at", "user_id", text("created_at DESC")),
+)
+
+# --------------------------------------------------------------------------
 # The profile (docs/profile-schema.md, 2026-09-21). One denormalised row per
 # save, append-only, latest wins -- replacing `profile_answers`,
 # `profile_objectives` and `profile_ruled_out`, which held the eighteen

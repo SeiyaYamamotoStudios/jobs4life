@@ -491,6 +491,82 @@ def build_title_suggestion_prompt(
     )
 
 
+########################################################################
+# Capability clustering. The same shape as the title call above: short,
+# cheap, standalone, no corpus and no system/message split to cache. The
+# facts are volatile and go in the user message; only the instructions are
+# constant.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.CapabilityClusterOutput.
+CAPABILITY_CLUSTER_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "capabilities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    # The short ids from the user message ("f1", "f2"), never a
+                    # uuid: a uuid is expensive to emit and easy to corrupt a
+                    # character of, and a corrupted uuid is indistinguishable
+                    # from a real one. A corrupted "f420" is not, and
+                    # `jfl_generate.capabilities` drops anything it did not
+                    # send.
+                    "fact_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["label", "fact_ids"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["capabilities"],
+    "additionalProperties": False,
+}
+
+# No property named `reason`, and no free-text note per item either -- a long
+# labelling prompt plus a schema demanding a label and a note per item is the
+# exact shape that tripped the API's reverse-engineering classifier on
+# 2026-09-02. A label and the ids it covers is all this call needs.
+_CAPABILITY_CLUSTER_INSTRUCTIONS = """\
+You are grouping one person's confirmed career facts into capabilities for jobs4life, \
+a tool that measures how well someone's own record evidences a role's requirements.
+
+A capability is something this person can do. It usually spans several facts and \
+several employers -- "FX pricing platforms", "hiring engineering managers", "incident \
+command". It is not a job title, not an employer, and not one fact restated.
+
+Each fact in the next message is numbered with an id like f1, and shows the role it was \
+recorded under. Return a list of capabilities, each with:
+
+- label: the capability in this person's own vocabulary, taken from the words they \
+actually used. A few words at most. Never a job title, a seniority, or an employer's name.
+- fact_ids: the ids of the facts that capability covers.
+
+Rules:
+
+- Use only ids that appear in the next message. Do not invent one.
+- A fact belongs to at most one capability. Where two would fit, choose the better one.
+- Group across roles: the same capability practised at two employers is one entry, not two.
+- Do not merge two genuinely different things to make the list shorter.
+- A fact that fits no capability worth naming is left out. Leaving it out is better than \
+inventing a label for it -- the person is shown what you did not place, and nothing is lost.
+- Return at most {max_capabilities} capabilities.
+
+The current date and time is {now}.
+"""
+
+
+def build_capability_cluster_prompt(*, max_capabilities: int, now: datetime) -> str:
+    """Constant but for the ceiling and the clock: the facts are volatile and
+    belong in the user message, assembled by `jfl_generate.capabilities`.
+    """
+    return _CAPABILITY_CLUSTER_INSTRUCTIONS.format(
+        max_capabilities=max_capabilities, now=now.isoformat()
+    )
+
+
 def _split_system_blocks(
     template: str, corpus_text: str, *, cache: Literal["instructions", "corpus"]
 ) -> list[TextBlockParam]:

@@ -104,6 +104,24 @@ class TitleSuggestionsOutput(BaseModel):
     titles: list[SuggestedTitleItem]
 
 
+class ClusteredCapabilityItem(BaseModel):
+    """The wire shape one proposed capability comes back as.
+
+    `fact_ids` are the short ids from the user message ("f1"), not uuids --
+    `jfl_generate.capabilities` resolves them and **drops any it did not send**,
+    so a fabricated id never reaches storage. Sanitised into
+    `jfl_core.models.ProposedCapability` before anything downstream sees it,
+    same split as `SuggestedTitleItem`.
+    """
+
+    label: str
+    fact_ids: list[str] = Field(default_factory=list)
+
+
+class CapabilityClusterOutput(BaseModel):
+    capabilities: list[ClusteredCapabilityItem]
+
+
 # -- slice B4: two scores for one application --------------------------------
 #
 # Field-for-field with SCORE_OUTPUT_SCHEMA in prompts.py. There is deliberately

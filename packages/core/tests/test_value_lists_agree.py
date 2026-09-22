@@ -36,6 +36,8 @@ VALUE_SETS = [
     (models.WorkplaceMode, tables._WORKPLACE_MODES),
     (models.BoardJobEventKind, tables._BOARD_JOB_EVENT_KINDS),
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
+    (models.CapabilityClusterStatus, tables._CAPABILITY_CLUSTER_STATUSES),
+    (models.CapabilityClusterErrorCode, tables._CAPABILITY_CLUSTER_ERROR_CODES),
     (models.TitleSuggestionErrorCode, tables._TITLE_SUGGESTION_ERROR_CODES),
     (models.CandidateFactState, tables._CANDIDATE_FACT_STATES),
     (models.ScoreStatus, tables._SCORE_STATUSES),

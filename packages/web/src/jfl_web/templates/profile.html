@@ -120,6 +120,11 @@
   </p>
   {% endif %}
 
+  {# One cheap model call, on the user's own key, that groups confirmed facts
+     across roles -- because a role is not a capability. Proposals only: the
+     profile changes when the user accepts one, never before. #}
+  {% include "_capability_clusters.html" %}
+
   {% for capability in capabilities %}
   <div class="capability" id="capability-{{ capability.key }}">
     <div class="capability-head">

@@ -116,9 +116,13 @@ Interest = Literal["want_more", "happy_to", "rather_not", "never_again"]
 INTERESTS: tuple[Interest, ...] = ("want_more", "happy_to", "rather_not", "never_again")
 
 # Where a capability row came from. `cv_fact` rows are proposed from confirmed
-# candidate facts and arrive untiered; `user` rows the user added themselves.
-CapabilitySource = Literal["cv_fact", "user"]
-CAPABILITY_SOURCES: tuple[CapabilitySource, ...] = ("cv_fact", "user")
+# candidate facts and arrive untiered; `clustered` rows are the same facts
+# grouped across roles by one cheap model call, which is what makes "FX pricing
+# platforms" a row rather than one row per employer; `user` rows the user added
+# themselves -- and a row they renamed keeps the source it arrived with, because
+# where it came from is a fact about its history, not about its wording.
+CapabilitySource = Literal["cv_fact", "clustered", "user"]
+CAPABILITY_SOURCES: tuple[CapabilitySource, ...] = ("cv_fact", "clustered", "user")
 
 MAX_OBJECTIVES = 4
 
@@ -426,10 +430,19 @@ def propose_capabilities(
     case folded) are left alone, so re-running this never overwrites a tier the
     user chose.
 
+    **A fact already cited by a saved capability produces no seed.** A role is
+    not a capability -- "FX pricing platforms" spans several of them -- so the
+    grouping worth showing comes from `jfl_generate.capabilities`, and these
+    per-role rows are the free fallback for facts nothing on the profile
+    accounts for yet. Once a fact's span is somebody's evidence, proposing it
+    again under its employer's name would put the same material on the page
+    twice.
+
     Pure: takes facts, returns rows, touches nothing. The repository-shaped
     caller is `jfl_core.storage.profile.propose_capabilities_from_facts`.
     """
     taken = {capability_key(c.label) for c in existing}
+    evidenced = {span_id for capability in existing for span_id in capability.evidence}
     order: list[str] = []
     by_role: dict[str, list[CandidateFact]] = {}
     for fact in facts:
@@ -438,6 +451,8 @@ def propose_capabilities(
         if not fact.role_label.strip():
             continue
         if capability_key(fact.role_label) in taken:
+            continue
+        if fact.span_id in evidenced:
             continue
         if fact.role_key not in by_role:
             by_role[fact.role_key] = []
@@ -458,8 +473,57 @@ def propose_capabilities(
     return proposed
 
 
+# -- choosing what one clustering call is given ------------------------------
+
+# How many confirmed facts go into one grouping call. A user with thirty-three
+# CVs can confirm several hundred facts, and the whole lot in one call is a
+# long prompt, a long output, and a model asked to hold more in its head than
+# it can group well.
+#
+# Chosen as a **cap with the remainder left for the next run**, not truncation
+# and not batching by role. Truncation would silently drop somebody's material,
+# which is the failure this project exists to measure. Batching by role would
+# defeat the point of the call, since a capability is exactly the thing that
+# spans roles. A cap leaves the rest visible, named on the screen, and picked
+# up by the next run -- which is progressive because accepting a proposal makes
+# its facts evidenced, and an evidenced fact is not sent again.
+MAX_FACTS_PER_CLUSTER_CALL = 120
+
+
+def facts_to_cluster(
+    facts: Sequence[CandidateFact],
+    *,
+    existing: Sequence[Capability] = (),
+    limit: int = MAX_FACTS_PER_CLUSTER_CALL,
+) -> tuple[list[CandidateFact], list[CandidateFact]]:
+    """(what one call is given, what did not fit) -- both, never a silent drop.
+
+    Only `confirmed` facts carrying a `span_id` are eligible, for the reason
+    `propose_capabilities` gives: an unconfirmed fact is a CV's claim, not the
+    user's, and grouping one would put a capability on the profile that nothing
+    in the corpus evidences.
+
+    A fact whose span is already cited by a saved capability is skipped
+    entirely -- it is accounted for, and re-proposing it would ask the user the
+    same question twice. That is also what makes running this again cover new
+    ground rather than repeat itself.
+
+    Order is the caller's, which for
+    `PostgresCandidateFactRepository.list_facts` is role then CV order -- so
+    the overflow is the tail of the CV rather than an arbitrary slice.
+    """
+    evidenced = {span_id for capability in existing for span_id in capability.evidence}
+    eligible = [
+        fact
+        for fact in facts
+        if fact.state == "confirmed" and fact.span_id is not None and fact.span_id not in evidenced
+    ]
+    return eligible[:limit], eligible[limit:]
+
+
 __all__ = [
     "CAPABILITY_SOURCES",
+    "MAX_FACTS_PER_CLUSTER_CALL",
     "CAPABILITY_TIERS",
     "CONSTRAINT_KINDS",
     "CORPUS_SECTIONS",
@@ -481,6 +545,7 @@ __all__ = [
     "Stance",
     "capability_key",
     "comp_value",
+    "facts_to_cluster",
     "location_value",
     "propose_capabilities",
     "self_assessment_corpus_lines",
