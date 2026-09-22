@@ -527,6 +527,10 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .fact-progress {
   margin: 1rem 0;
   padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
 
 /* -- scoring (PLAN.md B4) -- */
 
@@ -535,12 +539,21 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .score-axes { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.75rem 0; }
 .score-axis {
   flex: 1 1 16rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
 
 /* -- application answers -- */
 
 .application-question-list { display: flex; flex-direction: column; gap: 0.9rem; }
 .application-question {
   padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
 
 /* -- cv intake -- */
 
@@ -556,6 +569,10 @@ ul.cv-roles { list-style: none; margin: 0.5rem 0; padding: 0; }
 ul.cv-roles li {
   padding: 0.5rem 0.9rem;
   margin: 0.35rem 0;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
 
 /* -- drafting (PLAN.md B5) -- */
 
