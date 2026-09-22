@@ -4,9 +4,9 @@
    from what a full page load would have shown.
    Needs in context: session, application, statuses. #}
 <tr id="application-{{ application.id }}">
-  <td class="col-title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
-  <td class="col-employer">{{ application.employer or "—" }}</td>
-  <td class="col-status">
+  <td class="col-title" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+  <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
+  <td class="col-status" data-label="Status">
     <form class="status-form">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
       <select name="to_status" data-status="{{ application.status }}"
@@ -19,7 +19,7 @@
       </select>
     </form>
   </td>
-  <td class="col-updated" title="{{ application.updated_at.isoformat() }}">
+  <td class="col-updated" data-label="Updated" title="{{ application.updated_at.isoformat() }}">
     {{ application.updated_at | humanize_dt }}
   </td>
 </tr>

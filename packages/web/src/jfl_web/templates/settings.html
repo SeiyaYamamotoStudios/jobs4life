@@ -41,7 +41,7 @@
   <p class="note">No key stored yet.</p>
   {% endif %}
 
-  <form method="post" action="/settings/api-key" autocomplete="off">
+  <form method="post" action="/settings/api-key" autocomplete="off" class="api-key-form">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <label for="api_key">{% if credential %}Replace with{% else %}API key{% endif %}</label>
     <input type="password" id="api_key" name="api_key" required

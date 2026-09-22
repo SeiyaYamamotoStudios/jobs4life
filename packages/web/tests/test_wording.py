@@ -76,7 +76,7 @@ def test_no_screen_says_corpus() -> None:
 def _nav_links() -> list[tuple[str, str]]:
     """(href, label) for every link in the signed-in nav, in order."""
     base = (TEMPLATE_DIR / "base.html").read_text()
-    nav = re.search(r"<nav>(.*?)</nav>", base, re.S)
+    nav = re.search(r"<nav\b[^>]*>(.*?)</nav>", base, re.S)
     assert nav is not None, "base.html has no <nav>"
     return re.findall(r'<a href="([^"]+)">([^<]+)</a>', nav.group(1))
 
