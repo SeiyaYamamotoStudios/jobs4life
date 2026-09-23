@@ -76,6 +76,29 @@ def test_the_model_is_read_from_the_environment() -> None:
         }
     )
     assert settings.model == "claude-sonnet-4-5"
+    # JFL_MODEL never moves the claim gate.
+    assert settings.gate_model == "claude-opus-5"
+
+
+def test_the_defaults_are_opus_5_5_for_product_calls_and_opus_5_for_the_gate() -> None:
+    settings = WorkerSettings.from_env(
+        {"JFL_DATABASE_URL": "postgresql+psycopg://x/y", "JFL_MASTER_KEY": _MASTER_KEY}
+    )
+    assert settings.model == "claude-opus-5-5"
+    assert settings.gate_model == "claude-opus-5"
+
+
+def test_the_gate_model_is_read_from_its_own_variable() -> None:
+    settings = WorkerSettings.from_env(
+        {
+            "JFL_DATABASE_URL": "postgresql+psycopg://x/y",
+            "JFL_MASTER_KEY": _MASTER_KEY,
+            "JFL_GATE_MODEL": "claude-opus-5-5",
+            "JFL_MODEL": "claude-opus-5",
+        }
+    )
+    assert settings.gate_model == "claude-opus-5-5"
+    assert settings.model == "claude-opus-5"
 
 
 def test_the_board_scheduling_interval_defaults_to_fifteen_minutes_and_can_be_set() -> None:

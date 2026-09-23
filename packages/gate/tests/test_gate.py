@@ -16,7 +16,7 @@ import anthropic
 import httpx2
 import pytest
 from anthropic.types import Message, RefusalStopDetails, TextBlock, Usage
-from jfl_core.context import RequestContext
+from jfl_core.context import GATE_MODEL, MODEL_EFFORT, RequestContext
 from jfl_core.models import RunRecord, Span, SpanCandidate
 from jfl_gate.gate import (
     EFFORT,
@@ -351,14 +351,14 @@ def test_successful_call_parses_result_and_records_an_ok_run(
     assert run.outcome == "ok"
     assert run.component == "gate"
     assert run.stage == "baseline"
-    assert run.model == MODEL
+    assert run.model == GATE_MODEL
     assert run.user_id == ctx.user_id
     assert run.trace_id == ctx.trace_id
     assert run.tokens_in == 1000
     assert run.tokens_out == 200
     assert run.cache_read_tokens == 500
     assert run.cache_write_tokens == 0
-    assert run.cost_usd == compute_cost_usd(MODEL, 1000, 200, 500, 0)
+    assert run.cost_usd == compute_cost_usd(GATE_MODEL, 1000, 200, 500, 0)
     assert run.error is None
     assert run.latency_ms is not None and run.latency_ms >= 0
     assert isinstance(run.started_at, datetime)
@@ -380,7 +380,7 @@ def test_request_caches_the_corpus_and_keeps_sentences_out_of_the_cached_block(
     assert len(client.messages.calls) == 1
     kwargs = client.messages.calls[0]
 
-    assert kwargs["model"] == MODEL
+    assert kwargs["model"] == GATE_MODEL
     system_blocks = kwargs["system"]
     # Two blocks -- instructions, then corpus -- with the cache breakpoint on the
     # corpus block (cache="corpus"), so the cached prefix is instructions+corpus,
@@ -853,3 +853,52 @@ class TestInitialsAreOneUnit:
 
         with pytest.raises(GateError, match="misaligned"):
             check_text(_ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), self._FEVER_13515)
+
+
+# --- the gate's own model ----------------------------------------------------------
+
+
+def test_gate_calls_and_bills_gate_model_not_the_product_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The product model and the gate model differ on purpose: the published
+    # over-claim / over-flag rates were measured on Opus 5, so the gate stays
+    # there while generation moves to Opus 5.5. A gate that read `ctx.model`
+    # would silently change what the published number describes.
+    client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM]))
+    _patch_client(monkeypatch, client)
+    runs = _FakeRunRepo()
+    ctx = RequestContext(
+        user_id=USER,
+        anthropic_api_key="k",
+        database_url="unused",
+        model="claude-opus-5-5",
+        gate_model="claude-opus-5",
+    )
+
+    check_text(ctx, _FakeGroundingRepo([_span()]), runs, "Led the platform team.")
+
+    assert client.messages.calls[0]["model"] == "claude-opus-5"
+    assert runs.recorded[0].model == "claude-opus-5"
+    assert runs.recorded[0].cost_usd == compute_cost_usd("claude-opus-5", 100, 50, 0, 0)
+
+
+def test_gate_model_override_reaches_the_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeAnthropicClient(response=_response([_SUPPORTED_ITEM]))
+    _patch_client(monkeypatch, client)
+    runs = _FakeRunRepo()
+    ctx = RequestContext(
+        user_id=USER, anthropic_api_key="k", database_url="unused", gate_model="claude-opus-5-5"
+    )
+
+    check_text(ctx, _FakeGroundingRepo([_span()]), runs, "Led the platform team.")
+
+    assert client.messages.calls[0]["model"] == "claude-opus-5-5"
+    # Effort stays pinned at `high` whichever model runs -- Opus 5.5 would
+    # otherwise default to `medium`.
+    assert client.messages.calls[0]["output_config"]["effort"] == "high"
+    assert runs.recorded[0].model == "claude-opus-5-5"
+
+
+def test_gate_effort_matches_the_product_effort() -> None:
+    assert EFFORT == MODEL_EFFORT == "high"

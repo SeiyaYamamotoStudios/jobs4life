@@ -59,6 +59,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Literal, get_args
 
+from jfl_core.context import GATE_MODEL as DEFAULT_GATE_MODEL
 from jfl_core.context import RequestContext
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
 from jfl_core.models import DraftKind, RunRecord
@@ -162,13 +163,15 @@ def _kind(payload: Mapping[str, object]) -> DraftKind:
     return raw
 
 
-def build_generate_cv_draft(*, master_key: MasterKey | None, model: str) -> Handler:
+def build_generate_cv_draft(
+    *, master_key: MasterKey | None, model: str, gate_model: str = DEFAULT_GATE_MODEL
+) -> Handler:
     """Bind the handler to the two things it needs from the process
     environment -- same pattern as `extraction.build_extract_job_ad`.
     """
 
     def handler(ctx: TaskContext) -> Mapping[str, object]:
-        return _generate_cv_draft(ctx, master_key=master_key, model=model)
+        return _generate_cv_draft(ctx, master_key=master_key, model=model, gate_model=gate_model)
 
     return handler
 
@@ -181,7 +184,7 @@ def _permanent(code: DraftErrorCode) -> PermanentTaskError:
 
 
 def _generate_cv_draft(
-    ctx: TaskContext, *, master_key: MasterKey | None, model: str
+    ctx: TaskContext, *, master_key: MasterKey | None, model: str, gate_model: str
 ) -> Mapping[str, object]:
     application_id = _application_id(ctx.task.payload)
     kind = _kind(ctx.task.payload)
@@ -229,6 +232,7 @@ def _generate_cv_draft(
         anthropic_api_key=api_key,
         database_url=ctx.engine.url.render_as_string(hide_password=False),
         model=model,
+        gate_model=gate_model,
         # The task's own id, so a redelivery is detectable -- see the module
         # docstring's idempotency note. `generate_draft` carries this straight
         # into `drafts.trace_id` and into both `runs` rows it writes.

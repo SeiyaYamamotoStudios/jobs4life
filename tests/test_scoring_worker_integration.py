@@ -385,7 +385,8 @@ def test_the_handler_scores_and_marks_the_row_done(
     # The breach is derived from the constraint verdict and stated in plain
     # words, never folded silently into the number.
     assert row.hard_gate_breaches[0].breach.startswith("On site five days a week")
-    assert row.model == "claude-opus-5"
+    # WorkerSettings' default product model.
+    assert row.model == "claude-opus-5-5"
     assert row.cost_usd is not None and row.cost_usd > 0
     assert row.trace_id is not None
     # Everything the user has not filled in is named, not guessed.

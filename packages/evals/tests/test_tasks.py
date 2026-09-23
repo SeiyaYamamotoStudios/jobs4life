@@ -232,3 +232,37 @@ def test_every_golden_item_reaches_the_gate_as_exactly_one_sentence() -> None:
     items = load_golden_set(Path(DEFAULT_DATASET_PATH))
     split = {item.id: sentences_from_text(item.claim) for item in items}
     assert {item_id: s for item_id, s in split.items() if len(s) != 1} == {}
+
+
+class TestGateModelSelection:
+    """`-T gate_model=...` is what makes the Opus 5 vs Opus 5.5 paired comparison
+    one command per model: Inspect's own `--model` must stay `none/none`."""
+
+    @staticmethod
+    def _gate_model_seen(monkeypatch: Any, gate_model: str | None) -> str:
+        import jfl_evals.tasks as tasks_module
+        from jfl_evals.tasks import run_claim_gate
+
+        monkeypatch.setenv("JFL_DATABASE_URL", "postgresql://unused")
+        monkeypatch.delenv("JFL_GATE_MODEL", raising=False)
+        seen: list[str] = []
+
+        def _fake_check_text(ctx: Any, *args: Any, **kwargs: Any) -> None:
+            seen.append(ctx.gate_model)
+            return None
+
+        monkeypatch.setattr(tasks_module, "check_text", _fake_check_text)
+        state = cast(Any, SimpleNamespace(metadata={"item": _item().model_dump(mode="json")}))
+        asyncio.run(run_claim_gate(gate_model=gate_model)(state, cast(Any, None)))
+        (model,) = seen
+        return model
+
+    def test_default_runs_the_gate_on_opus_5(self, monkeypatch: Any) -> None:
+        assert self._gate_model_seen(monkeypatch, None) == "claude-opus-5"
+
+    def test_gate_model_parameter_overrides_it(self, monkeypatch: Any) -> None:
+        assert self._gate_model_seen(monkeypatch, "claude-opus-5-5") == "claude-opus-5-5"
+
+    def test_the_task_accepts_gate_model(self) -> None:
+        task = claim_gate_fever(gate_model="claude-opus-5-5")
+        assert len(task.dataset) == 5

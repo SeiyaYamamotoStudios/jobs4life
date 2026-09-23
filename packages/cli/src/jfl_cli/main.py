@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import typer
-from jfl_core.context import RequestContext
+from jfl_core.context import GATE_MODEL, PRODUCT_MODEL, RequestContext
 from jfl_core.ingest.ingest import run_ingestion
 from jfl_core.models import Draft, DraftKind, Job, JobRequirement, RequirementCoverage
 
@@ -105,8 +105,16 @@ def _callback(
     model: str | None = typer.Option(
         None,
         "--model",
-        help="Anthropic model id for every call this command makes "
-        "(default: $JFL_MODEL, else claude-opus-5).",
+        help="Anthropic model id for every generation call this command makes "
+        f"(default: $JFL_MODEL, else {PRODUCT_MODEL}). Does not move the claim gate; "
+        "see --gate-model.",
+    ),
+    gate_model: str | None = typer.Option(
+        None,
+        "--gate-model",
+        help="Anthropic model id for the claim gate, independent of --model "
+        f"(default: $JFL_GATE_MODEL, else {GATE_MODEL} -- the model the published "
+        "over-claim and over-flag rates were measured on).",
     ),
 ) -> None:
     """job-for-life: the grounding gate and coverage report for AI-generated job
@@ -120,6 +128,10 @@ def _callback(
     # beats the default in RequestContext.
     if model is not None:
         os.environ["JFL_MODEL"] = model
+    # Same pattern, for the gate's own model: --gate-model beats $JFL_GATE_MODEL,
+    # which beats GATE_MODEL.
+    if gate_model is not None:
+        os.environ["JFL_GATE_MODEL"] = gate_model
 
 
 @app.command()

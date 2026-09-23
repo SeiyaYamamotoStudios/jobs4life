@@ -18,7 +18,7 @@ from typing import Literal
 
 import anthropic
 from anthropic.types import TextBlock
-from jfl_core.context import RequestContext
+from jfl_core.context import MODEL_EFFORT, RequestContext
 from jfl_core.models import RunRecord
 from jfl_core.repositories import RunRepository
 from jfl_gate.pricing import compute_cost_usd
@@ -67,7 +67,13 @@ def extract_requirements(
             # itself is what varies -- caching a prefix this short buys nothing.
             system=build_extract_prompt(),
             messages=[{"role": "user", "content": raw_text}],
-            output_config={"format": {"type": "json_schema", "schema": EXTRACT_OUTPUT_SCHEMA}},
+            # Effort pinned, not left to the model default: Opus 5 ran at `high` by
+            # default and Opus 5.5 would drop to `medium` -- see
+            # jfl_core.context.MODEL_EFFORT.
+            output_config={
+                "format": {"type": "json_schema", "schema": EXTRACT_OUTPUT_SCHEMA},
+                "effort": MODEL_EFFORT,
+            },
         )
     # Most-specific-first: RateLimitError/AuthenticationError/etc. are themselves
     # APIStatusError subclasses, so the broad catch must come last.

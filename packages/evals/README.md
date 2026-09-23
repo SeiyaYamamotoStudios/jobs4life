@@ -46,6 +46,26 @@ uv run inspect eval packages/evals/src/jfl_evals/tasks.py --model none/none -T l
 between works too. Inspect's own `--limit` flag can still be combined on top of this
 (e.g. to stop a run partway through) but is not what keeps a bare invocation cheap.
 
+### Which model the gate runs on
+
+The claim gate has its own model, separate from the product model: `$JFL_GATE_MODEL`,
+default `claude-opus-5` (see `jfl_core.context.GATE_MODEL`). Generation moved to
+`claude-opus-5-5` on 2026-09-23; the gate stays on Opus 5 until a paired run says the
+two agree, because the published rates were measured on Opus 5 and Opus 5.5 widens
+the `reasoning_extraction` classifier. `$JFL_MODEL` does **not** move the gate. To
+pick the gate's model for one run, pass `-T gate_model=...`:
+
+```bash
+uv run inspect eval packages/evals/src/jfl_evals/tasks.py --model none/none \
+  -T limit=210 -T gate_model=claude-opus-5
+uv run inspect eval packages/evals/src/jfl_evals/tasks.py --model none/none \
+  -T limit=210 -T gate_model=claude-opus-5-5
+uv run python packages/evals/scripts/compare_eval_runs.py logs/<opus-5>.eval logs/<opus-5-5>.eval
+```
+
+Each sample's `runs` records the model that actually ran, which is what the
+comparison script reads -- Inspect's own header says `none/none`.
+
 Results land in `logs/*.eval` (Inspect's own log format -- CLAUDE.md: "Inspect eval
 logs stay as Inspect's own files on disk, never in Postgres"). Open with
 `uv run inspect view` or read the JSON directly out of the zip.

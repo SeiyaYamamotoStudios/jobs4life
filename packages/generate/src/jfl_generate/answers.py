@@ -36,7 +36,7 @@ from typing import Literal
 
 import anthropic
 from anthropic.types import TextBlock, TextBlockParam
-from jfl_core.context import RequestContext
+from jfl_core.context import MODEL_EFFORT, RequestContext
 from jfl_core.models import Job, JobRequirement, RunRecord
 from jfl_core.repositories import GroundingRepository, RunRepository
 from jfl_gate.pricing import compute_cost_usd
@@ -104,7 +104,13 @@ def _call(
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user_message}],
-            output_config={"format": {"type": "json_schema", "schema": schema}},
+            # Effort pinned, not left to the model default: Opus 5 ran at `high` by
+            # default and Opus 5.5 would drop to `medium` -- see
+            # jfl_core.context.MODEL_EFFORT.
+            output_config={
+                "format": {"type": "json_schema", "schema": schema},
+                "effort": MODEL_EFFORT,
+            },
         )
     # Most-specific-first: RateLimitError/AuthenticationError/etc. are themselves
     # APIStatusError subclasses, so the broad catch must come last.

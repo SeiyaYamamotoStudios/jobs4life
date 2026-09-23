@@ -24,6 +24,7 @@ harmless-but-required env var for a command that never opens a connection.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import functools
 from pathlib import Path
 from typing import Any, cast
@@ -59,9 +60,14 @@ def _sample_for(item: GoldenItem) -> Sample:
 
 
 @solver
-def run_claim_gate() -> Solver:
+def run_claim_gate(gate_model: str | None = None) -> Solver:
     """Runs `check_text` for real, once per sample, against an in-memory corpus
     built from that item's FEVER evidence sentences (`jfl_evals.spans.build_spans`).
+
+    `gate_model`, when given, overrides the context's gate model for this run
+    only -- what makes the Opus 5 vs Opus 5.5 paired comparison one command per
+    model. Omitted, the gate runs on `$JFL_GATE_MODEL`, else
+    `jfl_core.context.GATE_MODEL`, exactly as the product does.
 
     `check_text` is synchronous and makes a blocking network call; it is pushed to
     a worker thread with `asyncio.to_thread` so Inspect can still run samples
@@ -71,6 +77,8 @@ def run_claim_gate() -> Solver:
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         item = GoldenItem.model_validate(state.metadata["item"])
         ctx = RequestContext.from_env()
+        if gate_model:
+            ctx = dataclasses.replace(ctx, gate_model=gate_model)
         spans = build_spans(item, ctx.user_id)
         grounding_repo = InMemoryGroundingRepository(spans)
         run_repo = InMemoryRunRepository()
@@ -290,6 +298,7 @@ def gate_grounding_scorer() -> Scorer:
 def claim_gate_fever(
     dataset_path: str = DEFAULT_DATASET_PATH,
     limit: int = DEFAULT_LIMIT,
+    gate_model: str | None = None,
 ) -> Task:
     """The tier-1 claim gate eval, against the FEVER-derived golden set.
 
@@ -304,12 +313,17 @@ def claim_gate_fever(
     directly and never asks Inspect to generate anything, so Inspect's model
     machinery is unused. See README.md for the exact command and the measured
     cost of the default 5-item run.
+
+    `gate_model` (`-T gate_model=claude-opus-5-5`) picks the model the claim gate
+    runs on, overriding `$JFL_GATE_MODEL`. `--model` cannot do this -- it is
+    Inspect's, and must stay `none/none`. Each sample's `runs` records the model
+    that actually ran, which is what `scripts/compare_eval_runs.py` reads.
     """
     items = load_golden_set(Path(dataset_path))
     samples = [_sample_for(item) for item in items[:limit]]
     return Task(
         dataset=MemoryDataset(samples=samples, name="jfl-claim-gate-fever-tier1"),
-        solver=run_claim_gate(),
+        solver=run_claim_gate(gate_model=gate_model),
         scorer=gate_grounding_scorer(),
         model="none/none",
     )

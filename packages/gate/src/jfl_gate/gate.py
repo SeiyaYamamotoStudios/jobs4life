@@ -43,7 +43,7 @@ from jfl_gate.schema import GateOutput, SentenceResult
 # generated, so the headroom costs nothing when the document is short.
 MAX_TOKENS = 64000
 
-# Left at the SDK default. Measured low/medium/high on one real CV (85 sentences,
+# Left at `high`, Opus 5's default. Measured low/medium/high on one real CV (85 sentences,
 # see analysis/gate-runs/A_index_low.json, B_index_medium.json, C_index_high.json):
 # framing was never wrongly flagged at any level (the one hard disqualifier), and
 # output tokens only fell 15% at low / 2% at medium vs high -- a small saving next
@@ -58,6 +58,11 @@ MAX_TOKENS = 64000
 # effort effect, and the token savings on the table are too small to bet on the
 # distinction. Not taking this lever; revisit with a larger sample if the
 # doc-length ceiling (MAX_TOKENS) ever forces the question.
+#
+# Pinned explicitly rather than left to the model's default: `high` was Opus 5's
+# default, and Opus 5.5 defaults to `medium`, so if `JFL_GATE_MODEL` ever names
+# Opus 5.5 an unpinned call would silently reason less than the measured gate did.
+# Kept equal to `jfl_core.context.MODEL_EFFORT` (a test pins that).
 EFFORT: Literal["low", "medium", "high", "xhigh", "max"] = "high"
 
 Outcome = Literal["ok", "error", "refused", "skipped"]
@@ -271,6 +276,15 @@ def check_text(
     on success, on an API error, and on a refusal alike -- before returning or
     raising.
 
+    The model is `ctx.gate_model`, never `ctx.model`. The gate is configured
+    independently of the product model (`$JFL_GATE_MODEL`, default `claude-opus-5`
+    -- see `jfl_core.context.GATE_MODEL`) and stays on Opus 5 while generation
+    moves to Opus 5.5, because the published over-claim 0.7% / over-flag 2.9%
+    were measured on Opus 5, and Opus 5.5 widens the `reasoning_extraction`
+    classifier that once refused every gate call. Switching waits for the paired
+    eval (`packages/evals/scripts/compare_eval_runs.py`); until then a product
+    model change must not quietly change what the published number describes.
+
     `shared_corpus` describes the workload, and only moves the cache breakpoint.
     True (the default, and the real product) means many calls run against one
     user's corpus, so the corpus belongs inside the cached prefix. False means
@@ -317,7 +331,7 @@ def check_text(
         # partial output, but a request with MAX_TOKENS this high is rejected outright
         # unless it streams.
         with client.messages.stream(
-            model=ctx.model,
+            model=ctx.gate_model,
             max_tokens=MAX_TOKENS,
             # Stable prefix (instructions + corpus) in `system`, cached; the
             # sentences under test go in `messages` below, never in this block --
@@ -365,7 +379,7 @@ def check_text(
                 trace_id=ctx.trace_id,
                 component="gate",
                 stage="baseline",
-                model=ctx.model,
+                model=ctx.gate_model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cache_read_tokens=cache_read_tokens,
@@ -389,7 +403,7 @@ def check_text(
     cache_read_tokens = usage.cache_read_input_tokens or 0
     cache_write_tokens = usage.cache_creation_input_tokens or 0
     cost_usd = compute_cost_usd(
-        ctx.model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens
+        ctx.gate_model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens
     )
 
     if response.stop_reason == "refusal":

@@ -201,14 +201,22 @@ def build_registry(
     )
     registry.register(
         CHECK_APPLICATION_ANSWER,
-        build_check_application_answer(master_key=settings.master_key, model=settings.model),
+        build_check_application_answer(
+            master_key=settings.master_key,
+            model=settings.model,
+            gate_model=settings.gate_model,
+        ),
         # True: the assessment call and the claim gate's own automatic pass are
         # both Anthropic calls on the user's own key.
         calls_model=True,
     )
     registry.register(
         DRAFT_APPLICATION_ANSWER,
-        build_draft_application_answer(master_key=settings.master_key, model=settings.model),
+        build_draft_application_answer(
+            master_key=settings.master_key,
+            model=settings.model,
+            gate_model=settings.gate_model,
+        ),
         # True, same reasoning: the draft call and its automatic gate pass.
         calls_model=True,
     )
@@ -220,7 +228,11 @@ def build_registry(
     )
     registry.register(
         GENERATE_CV_DRAFT,
-        build_generate_cv_draft(master_key=settings.master_key, model=settings.model),
+        build_generate_cv_draft(
+            master_key=settings.master_key,
+            model=settings.model,
+            gate_model=settings.gate_model,
+        ),
         # True: two Anthropic calls on the user's own key -- the draft, then
         # the automatic claim-gate pass (see jfl_generate.draft).
         calls_model=True,

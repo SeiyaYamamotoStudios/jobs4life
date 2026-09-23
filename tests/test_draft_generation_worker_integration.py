@@ -366,6 +366,37 @@ def test_both_runs_rows_share_one_trace_id_so_cost_is_one_query(
     assert all(r.user_id == user for r in runs)
 
 
+def test_the_draft_runs_on_the_product_model_and_its_gate_pass_on_the_gate_model(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # WorkerSettings' defaults: Opus 5.5 for generation, Opus 5 for the claim
+    # gate -- the model the published over-claim / over-flag rates describe.
+    store_key(engine, user, master_key, FAKE_KEY)
+    application_id, job_id = add_application(engine, user)
+    assert job_id is not None
+    enqueue(engine, user, application_id)
+
+    install_fake_client(monkeypatch, payload=DRAFT_PAYLOAD)
+    gate_calls = install_fake_gate(monkeypatch)
+    run_worker(engine, user, master_key, log_stream)
+
+    assert len(gate_calls) == 1
+    assert gate_calls[0].model == "claude-opus-5-5"
+    assert gate_calls[0].gate_model == "claude-opus-5"
+    with engine.begin() as conn:
+        drafts = PostgresJobRepository(conn).list_drafts(user, job_id)
+        draft_run = conn.execute(
+            select(runs_table).where(
+                runs_table.c.trace_id == drafts[0].trace_id, runs_table.c.stage == "draft"
+            )
+        ).one()
+    assert draft_run.model == "claude-opus-5-5"
+
+
 def test_a_redelivered_task_does_not_generate_a_second_draft(
     engine: Engine,
     user: uuid.UUID,

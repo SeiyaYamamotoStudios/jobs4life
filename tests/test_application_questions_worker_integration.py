@@ -375,12 +375,17 @@ def test_check_answer_gates_and_assesses_and_writes_two_runs_rows(
         }
         for s in stored_sentences
     ] == GATE_PAYLOAD["sentences"]
-    assert row.model == "claude-opus-5"
+    assert row.model == "claude-opus-5-5"
     assert row.trace_id is not None
 
     runs = run_rows(engine, user)
     assert len(runs) == 2
     assert {r.stage for r in runs} == {"assess_answer", "baseline"}
+    # The assessment runs on the product model, the gate pass on the gate's own.
+    assert {r.stage: r.model for r in runs} == {
+        "assess_answer": "claude-opus-5-5",
+        "baseline": "claude-opus-5",
+    }
     assert {r.trace_id for r in runs} == {row.trace_id}
     assert all(r.outcome == "ok" for r in runs)
 

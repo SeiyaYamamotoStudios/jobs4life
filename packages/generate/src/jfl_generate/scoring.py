@@ -51,7 +51,7 @@ from typing import Literal
 
 import anthropic
 from anthropic.types import TextBlock
-from jfl_core.context import RequestContext
+from jfl_core.context import MODEL_EFFORT, RequestContext
 from jfl_core.fit import want_it_basis
 from jfl_core.models import (
     ConstraintVerdict,
@@ -159,7 +159,13 @@ def score_application(
             # the unconfirmed claims, the current time -- in `messages`.
             system=system_blocks,
             messages=[{"role": "user", "content": user_message}],
-            output_config={"format": {"type": "json_schema", "schema": SCORE_OUTPUT_SCHEMA}},
+            # Effort pinned, not left to the model default: Opus 5 ran at `high` by
+            # default and Opus 5.5 would drop to `medium` -- see
+            # jfl_core.context.MODEL_EFFORT.
+            output_config={
+                "format": {"type": "json_schema", "schema": SCORE_OUTPUT_SCHEMA},
+                "effort": MODEL_EFFORT,
+            },
         )
     # Most-specific-first: RateLimitError/AuthenticationError/etc. are themselves
     # APIStatusError subclasses, so the broad catch must come last.

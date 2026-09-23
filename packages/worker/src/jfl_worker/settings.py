@@ -16,15 +16,15 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from jfl_core.context import GATE_MODEL, PRODUCT_MODEL
 from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import LOCAL_USER_ID
 
 DISABLE_MODEL_CALLS_ENV = "JFL_DISABLE_MODEL_CALLS"
 
-# Kept in sync with `jfl_gate.pricing.MODEL` and `RequestContext.model` the same
-# way those two are kept in sync with each other: by hand, because the worker's
-# settings module may not reach across into the gate to read a constant.
-DEFAULT_MODEL = "claude-opus-5"
+# Both read from jfl_core.context, the one place the defaults are defined.
+DEFAULT_MODEL = PRODUCT_MODEL
+DEFAULT_GATE_MODEL = GATE_MODEL
 
 # Explicitly-off values. Anything else non-empty counts as ON, because the
 # person typing this is doing it at speed while a user's key burns money, and
@@ -164,6 +164,11 @@ class WorkerSettings:
     # `JFL_MODEL`, so a deployment sets it once.
     model: str = DEFAULT_MODEL
 
+    # Which model the claim gate's automatic passes call -- `JFL_GATE_MODEL`,
+    # independent of `model`. See `jfl_core.context.GATE_MODEL` for why the gate
+    # does not follow the product model.
+    gate_model: str = DEFAULT_GATE_MODEL
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> WorkerSettings:
         """The only place this process reads its environment.
@@ -176,6 +181,7 @@ class WorkerSettings:
             database_url=source["JFL_DATABASE_URL"],
             master_key=MasterKey.from_env(source),
             model=source.get("JFL_MODEL") or DEFAULT_MODEL,
+            gate_model=source.get("JFL_GATE_MODEL") or DEFAULT_GATE_MODEL,
             poll_interval=_seconds(source, "JFL_WORKER_POLL_INTERVAL", DEFAULT_POLL_INTERVAL),
             visibility_timeout=_seconds(
                 source, "JFL_WORKER_VISIBILITY_TIMEOUT", DEFAULT_VISIBILITY_TIMEOUT

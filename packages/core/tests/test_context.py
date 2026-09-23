@@ -23,14 +23,44 @@ def _required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # touched" implies -- nothing but os.environ drives this.
     monkeypatch.setenv("JFL_DATABASE_URL", "postgresql://unused")
     monkeypatch.delenv("JFL_MODEL", raising=False)
+    monkeypatch.delenv("JFL_GATE_MODEL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("JFL_USER_ID", raising=False)
     monkeypatch.delenv("JFL_EMBEDDING_DEVICE", raising=False)
 
 
-def test_model_defaults_to_claude_opus_5_when_jfl_model_is_unset() -> None:
+def test_model_defaults_to_claude_opus_5_5_when_jfl_model_is_unset() -> None:
     ctx = RequestContext.from_env()
-    assert ctx.model == "claude-opus-5"
+    assert ctx.model == "claude-opus-5-5"
+
+
+def test_gate_model_defaults_to_claude_opus_5_not_the_product_model() -> None:
+    # The published over-claim / over-flag rates were measured on Opus 5; the
+    # gate moves only after the paired eval, never as a side effect of the
+    # product default changing.
+    ctx = RequestContext.from_env()
+    assert ctx.gate_model == "claude-opus-5"
+
+
+def test_gate_model_does_not_follow_jfl_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JFL_MODEL", "claude-sonnet-5")
+    ctx = RequestContext.from_env()
+    assert ctx.model == "claude-sonnet-5"
+    assert ctx.gate_model == "claude-opus-5"
+
+
+def test_gate_model_is_read_from_jfl_gate_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JFL_GATE_MODEL", "claude-opus-5-5")
+    ctx = RequestContext.from_env()
+    assert ctx.gate_model == "claude-opus-5-5"
+    assert ctx.model == "claude-opus-5-5"
+
+
+def test_empty_env_values_fall_back_to_the_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JFL_MODEL", "")
+    monkeypatch.setenv("JFL_GATE_MODEL", "")
+    ctx = RequestContext.from_env()
+    assert (ctx.model, ctx.gate_model) == ("claude-opus-5-5", "claude-opus-5")
 
 
 def test_model_is_read_from_jfl_model_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,7 +76,8 @@ def test_request_context_dataclass_default_model_matches_from_env_default() -> N
     ctx = RequestContext(
         user_id=uuid.uuid4(), anthropic_api_key=None, database_url="postgresql://unused"
     )
-    assert ctx.model == "claude-opus-5"
+    assert ctx.model == "claude-opus-5-5"
+    assert ctx.gate_model == "claude-opus-5"
 
 
 def test_other_from_env_fields_are_unaffected_by_the_model_addition() -> None:

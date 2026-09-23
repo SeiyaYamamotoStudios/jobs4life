@@ -41,6 +41,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 
+from jfl_core.context import GATE_MODEL as DEFAULT_GATE_MODEL
 from jfl_core.context import RequestContext
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
 from jfl_core.models import AnswerErrorCode, Job, JobRequirement, RunRecord
@@ -128,21 +129,29 @@ def _job_and_requirements(
     return found if found is not None else (None, [])
 
 
-def build_check_application_answer(*, master_key: MasterKey | None, model: str) -> Handler:
+def build_check_application_answer(
+    *, master_key: MasterKey | None, model: str, gate_model: str = DEFAULT_GATE_MODEL
+) -> Handler:
     """Bind the handler to the two things it needs from the process
     environment. See `jfl_worker.handlers.extraction.build_extract_job_ad`'s
     docstring -- same reasoning.
     """
 
     def handler(ctx: TaskContext) -> Mapping[str, object]:
-        return _check_application_answer(ctx, master_key=master_key, model=model)
+        return _check_application_answer(
+            ctx, master_key=master_key, model=model, gate_model=gate_model
+        )
 
     return handler
 
 
-def build_draft_application_answer(*, master_key: MasterKey | None, model: str) -> Handler:
+def build_draft_application_answer(
+    *, master_key: MasterKey | None, model: str, gate_model: str = DEFAULT_GATE_MODEL
+) -> Handler:
     def handler(ctx: TaskContext) -> Mapping[str, object]:
-        return _draft_application_answer(ctx, master_key=master_key, model=model)
+        return _draft_application_answer(
+            ctx, master_key=master_key, model=model, gate_model=gate_model
+        )
 
     return handler
 
@@ -170,7 +179,7 @@ def _load_key_or_fail(
 
 
 def _check_application_answer(
-    ctx: TaskContext, *, master_key: MasterKey | None, model: str
+    ctx: TaskContext, *, master_key: MasterKey | None, model: str, gate_model: str
 ) -> Mapping[str, object]:
     answer_id = _answer_id(ctx.task.payload)
 
@@ -199,6 +208,7 @@ def _check_application_answer(
         # Only the CLI builds engines from this; the worker already has one.
         database_url=ctx.engine.url.render_as_string(hide_password=False),
         model=model,
+        gate_model=gate_model,
     )
     recorder = _RunRecorder(ctx.engine)
 
@@ -244,7 +254,7 @@ def _check_application_answer(
 
 
 def _draft_application_answer(
-    ctx: TaskContext, *, master_key: MasterKey | None, model: str
+    ctx: TaskContext, *, master_key: MasterKey | None, model: str, gate_model: str
 ) -> Mapping[str, object]:
     answer_id = _answer_id(ctx.task.payload)
 
@@ -275,6 +285,7 @@ def _draft_application_answer(
         anthropic_api_key=api_key,
         database_url=ctx.engine.url.render_as_string(hide_password=False),
         model=model,
+        gate_model=gate_model,
     )
     recorder = _RunRecorder(ctx.engine)
 
