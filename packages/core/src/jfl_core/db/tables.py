@@ -1883,6 +1883,12 @@ score_pushbacks = Table(
     _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
     _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
     _ts("applied_at"),
+    # "Not what I meant". Set once, on an applied row, when the user says the
+    # reading was wrong; the row keeps its delta and its receipt so the record
+    # of what the tool did stays readable, and every sum that makes up the
+    # profile -- displacement, observations, the drift meter -- skips it. Undo
+    # is a mark on the log, never an edit of what was logged.
+    _ts("withdrawn_at"),
     CheckConstraint("axis in ('" + "','".join(_SCORE_AXES) + "')", name="axis"),
     CheckConstraint("asserted_direction in ('up','down')", name="asserted_direction"),
     CheckConstraint("status in ('" + "','".join(_PUSHBACK_STATUSES) + "')", name="status"),
@@ -1921,6 +1927,11 @@ score_pushbacks = Table(
     CheckConstraint(
         "(status = 'applied') = (applied_delta is not null)",
         name="applied_iff_delta",
+    ),
+    # Only something that was applied can be undone.
+    CheckConstraint(
+        "withdrawn_at is null or status = 'applied'",
+        name="withdrawn_only_if_applied",
     ),
     Index(
         "ix_score_pushbacks_user_id_created_at",

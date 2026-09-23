@@ -9,10 +9,13 @@ never write to `application_scores`; this module imports none of them, which is
 what makes that a property of the code rather than a promise in a docstring.
 
 **Append-only.** A row is inserted the moment the user submits, before anything
-is classified and before anything moves, because the design's rule is that a
+is read and before anything moves, because the design's rule is that a
 pushback is recorded whether or not it changes anything. The only later writes
-to a row are the classification, and the single application of its effect.
-Changing your mind is a new pushback, never an edit.
+to a row are its reading (what kind of statement it is and which way it
+pushes), the single application of its effect, and -- if the user says "Not
+what I meant" -- a withdrawal mark. A withdrawn row keeps its delta and its
+receipt; every sum below skips it. Changing your mind is a new pushback, never
+an edit.
 
 The arithmetic is `jfl_core.pushback` -- pure, and deliberately not here. This
 module decides nothing; it reads what the record already holds, hands it to
@@ -74,6 +77,7 @@ _COLUMNS = (
     table.c.created_at,
     table.c.updated_at,
     table.c.applied_at,
+    table.c.withdrawn_at,
 )
 
 _OVERRIDE_COLUMNS = (
@@ -115,6 +119,7 @@ def _from_row(row: Any) -> Pushback:
         created_at=row.created_at,
         updated_at=row.updated_at,
         applied_at=row.applied_at,
+        withdrawn_at=row.withdrawn_at,
     )
 
 
@@ -213,15 +218,73 @@ class PostgresPushbackRepository(TenantScopedRepository):
         )
         return self.get(pushback_id)
 
+    def set_reading(
+        self,
+        pushback_id: uuid.UUID,
+        *,
+        axis: Axis,
+        direction: Direction,
+        shown_score: int | None,
+        shown_explanation: str,
+    ) -> Pushback | None:
+        """Say which score this was about and which way it pushes, before it
+        is applied.
+
+        The one-box form asks for words and nothing else, so these are not
+        known when the row is inserted: the reading (a model's, or the user's
+        pick from the plain list) supplies them. The dimension is the axis as a
+        whole -- the box does not ask which constraint or claim, and guessing
+        one would be a second judgement to get wrong. The stimulus is re-pointed
+        at the number on that axis, which is the one the words were about.
+        Never touches an applied row.
+        """
+        from jfl_core.pushback import COULD_GET_OVERALL, WANT_OVERALL
+
+        self._conn.execute(
+            update(table)
+            .where(
+                table.c.id == pushback_id,
+                table.c.user_id == self._user_id,
+                table.c.status != "applied",
+            )
+            .values(
+                axis=axis,
+                dimension=WANT_OVERALL if axis == "want" else COULD_GET_OVERALL,
+                asserted_direction=direction,
+                shown_score=shown_score,
+                shown_explanation=shown_explanation,
+            )
+        )
+        return self.get(pushback_id)
+
+    def withdraw(self, pushback_id: uuid.UUID) -> Pushback | None:
+        """ "Not what I meant": this correction stops counting.
+
+        A mark, not a delete and not an edit. The row keeps what it did, so the
+        log still shows that it happened and that it was undone; every sum that
+        makes up the profile skips it from now on. Only an applied row can be
+        withdrawn (a CHECK says so too), and only once.
+        """
+        self._conn.execute(
+            update(table)
+            .where(
+                table.c.id == pushback_id,
+                table.c.user_id == self._user_id,
+                table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
+            )
+            .values(withdrawn_at=func.now())
+        )
+        return self.get(pushback_id)
+
     def mark_classification_failed(
         self, pushback_id: uuid.UUID, code: PushbackErrorCode
     ) -> Pushback | None:
-        """The cheap classifying call failed. Not much of a failure.
+        """The cheap reading call failed. Not much of a failure.
 
-        The row stays `awaiting_classification` with a code on it, and the
-        screen simply asks the user which of the three kinds it is -- which it
-        was going to ask anyway, since the classification is theirs to confirm.
-        A model outage costs a convenience here, never the loop.
+        The row stays `awaiting_classification` with a code on it, nothing has
+        moved, and the screen asks the user which of a short list of plain
+        readings they meant. A model outage costs one click, never the loop.
         """
         self._conn.execute(
             update(table)
@@ -243,13 +306,14 @@ class PostgresPushbackRepository(TenantScopedRepository):
         evidence_question: str = "",
         submitted_applications: int = 0,
     ) -> Pushback | None:
-        """Apply the classification the user confirmed, once.
+        """Apply a reading of this pushback, once.
 
-        `classification` and `new_information` come from the form the user just
-        looked at, not from the stored model answer: the model's proposal is a
-        default on a radio button, and what is applied is what the human left
-        selected. A misclassified pushback changes the wrong thing, so it never
-        gets to change anything without being seen.
+        The reading comes from the cheap model call, applied straight away, or
+        from the user's own pick when they said "Not what I meant" or the call
+        failed. Undo-after rather than confirm-before: what protects against a
+        misreading is that the result is shown at once, in plain words, with a
+        one-click way back -- and that the rule in `decide()` never lets any
+        reading move "could I get this" upward.
 
         Two inputs come from the record rather than the request -- the prior
         observations on this dimension and its accumulated displacement -- so
@@ -364,6 +428,23 @@ class PostgresPushbackRepository(TenantScopedRepository):
         ).all()
         return [_from_row(row) for row in rows]
 
+    def applied_log(self) -> list[Pushback]:
+        """Every correction that still counts, in the order it was applied.
+
+        What the before -> after on a receipt is computed from: the profile
+        just before a correction is the sum of everything applied ahead of it.
+        """
+        rows = self._conn.execute(
+            select(*_COLUMNS)
+            .where(
+                table.c.user_id == self._user_id,
+                table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
+            )
+            .order_by(table.c.applied_at.asc(), table.c.created_at.asc())
+        ).all()
+        return [_from_row(row) for row in rows]
+
     def displacements(self) -> dict[str, float]:
         """Every dimension this user's corrections have moved, and by how much.
 
@@ -374,7 +455,11 @@ class PostgresPushbackRepository(TenantScopedRepository):
         """
         rows = self._conn.execute(
             select(table.c.target_dimension, func.sum(table.c.applied_delta))
-            .where(table.c.user_id == self._user_id, table.c.status == "applied")
+            .where(
+                table.c.user_id == self._user_id,
+                table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
+            )
             .group_by(table.c.target_dimension)
         ).all()
         return {row[0]: float(row[1] or 0) for row in rows if row[0]}
@@ -384,6 +469,7 @@ class PostgresPushbackRepository(TenantScopedRepository):
             select(func.coalesce(func.sum(table.c.applied_delta), 0)).where(
                 table.c.user_id == self._user_id,
                 table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
                 table.c.target_dimension == dimension,
             )
         ).scalar_one()
@@ -393,8 +479,8 @@ class PostgresPushbackRepository(TenantScopedRepository):
         """ "11 pushbacks, 10 upward, +3.1 net" -- the three numbers, counted.
 
         Over applied rows, so all three describe the same set. A pushback still
-        waiting for its classification to be confirmed has not done anything
-        yet and is not counted as though it had.
+        being read has not done anything yet and is not counted as though it
+        had; one the user withdrew as a misreading no longer counts either.
         """
         row = self._conn.execute(
             select(
@@ -403,7 +489,11 @@ class PostgresPushbackRepository(TenantScopedRepository):
                 func.count().filter(table.c.asserted_direction == "down"),
                 func.coalesce(func.sum(table.c.applied_delta), 0),
                 func.count().filter(table.c.disposition == "pending_evidence"),
-            ).where(table.c.user_id == self._user_id, table.c.status == "applied")
+            ).where(
+                table.c.user_id == self._user_id,
+                table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
+            )
         ).one()
         return DriftMeter(
             total=row[0],
@@ -425,6 +515,7 @@ class PostgresPushbackRepository(TenantScopedRepository):
                 table.c.user_id == self._user_id,
                 table.c.disposition == "pending_evidence",
                 table.c.resulting_span_id.is_(None),
+                table.c.withdrawn_at.is_(None),
             )
             .order_by(table.c.created_at.asc())
         ).all()
@@ -440,6 +531,7 @@ class PostgresPushbackRepository(TenantScopedRepository):
             select(func.count()).where(
                 table.c.user_id == self._user_id,
                 table.c.status == "applied",
+                table.c.withdrawn_at.is_(None),
                 table.c.target_dimension == dimension,
             )
         ).scalar_one()
@@ -456,6 +548,7 @@ class PostgresPushbackRepository(TenantScopedRepository):
                 table.c.user_id == self._user_id,
                 table.c.target_dimension == dimension,
                 table.c.asserted_direction == direction,
+                table.c.withdrawn_at.is_(None),
                 table.c.id != exclude,
             )
         ).all()

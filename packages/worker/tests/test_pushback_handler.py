@@ -1,13 +1,13 @@
 """The `classify_pushback` handler's decisions.
 
-`_classify`, `_pushback_id` and `dimension_label` are pure and tested the same
+`_classify` and `_pushback_id` are pure and tested the same
 way `test_title_suggestions_handler.py` tests its siblings -- no database.
 
 The handler's control flow (skip a redelivered/already-classified task, fail
 loudly with no master key or no stored key, fail the row and retry on a
-transient model error, fail the row and stop on a permanent one, apply a
-successful classification) is exercised here too, against fakes rather than
-real Postgres: `PostgresPushbackRepository` and `load_api_key` are
+transient model error, fail the row and stop on a permanent one, read and
+apply a successful call in one go) is exercised here too, against fakes rather
+than real Postgres: `PostgresPushbackRepository` and `load_api_key` are
 monkeypatched at the names `jfl_worker.handlers.pushback` imports them under,
 and `ctx.engine` is a throwaway in-memory sqlite engine that the fakes never
 actually query -- it exists only so `ctx.engine.begin()` and
@@ -34,7 +34,6 @@ from jfl_worker.handlers.pushback import (
     _earlier_texts,
     _pushback_id,
     build_classify_pushback,
-    dimension_label,
 )
 from jfl_worker.registry import PermanentTaskError, TaskContext
 from sqlalchemy import create_engine
@@ -94,11 +93,10 @@ def test_the_classifier_still_matches_the_messages_classify_pushback_actually_ra
     # possible smoke test that the generate package is importable from here.
     assert build_pushback_classification_prompt(
         user_text="I actually led that team",
-        axis="get",
-        direction="up",
-        shown_score=4,
-        shown_explanation="",
-        dimension_label="a capability",
+        could_get_score=4,
+        could_get_explanation="",
+        want_score=6,
+        want_explanation="",
         earlier_texts=[],
         now=NOW,
     )
@@ -120,29 +118,6 @@ class TestPushbackId:
         with pytest.raises(PermanentTaskError) as raised:
             _pushback_id({"pushback_id": "not-a-uuid-and-maybe-a-secret"})
         assert "not-a-uuid-and-maybe-a-secret" not in str(raised.value)
-
-
-class TestDimensionLabel:
-    def test_constraint(self) -> None:
-        assert dimension_label("constraint:workplace") == "workplace"
-
-    def test_objective(self) -> None:
-        assert dimension_label("objective:1") == "objective 1"
-
-    def test_capability_collapses_to_a_generic_phrase(self) -> None:
-        """The key after the colon is an internal id (`jfl_core.profile.Capability`),
-        not guaranteed to be readable prose, so it is never interpolated.
-        """
-        assert dimension_label("capability:fx-pricing-platforms") == "a capability"
-
-    def test_want_overall(self) -> None:
-        assert dimension_label("want_overall") == 'the whole "do I want this" number'
-
-    def test_could_get_overall(self) -> None:
-        assert dimension_label("could_get_overall") == 'the whole "could I get this" number'
-
-    def test_unknown_dimension_passes_through(self) -> None:
-        assert dimension_label("something_else") == "something_else"
 
 
 # --- fakes for the handler's control flow ------------------------------------
@@ -197,6 +172,8 @@ class _FakePushbackRepo:
         trace_id: uuid.UUID | None = None,
     ) -> Pushback | None:
         row = self._store[pushback_id]
+        if row.status == "applied":  # as the real repository: never reclassified
+            return row
         updated = row.model_copy(
             update={
                 "status": "classified",
@@ -209,6 +186,48 @@ class _FakePushbackRepo:
             }
         )
         self._store[pushback_id] = updated
+        return updated
+
+    def set_reading(
+        self,
+        pushback_id: uuid.UUID,
+        *,
+        axis: str,
+        direction: str,
+        shown_score: int | None,
+        shown_explanation: str,
+    ) -> Pushback | None:
+        row = self._store[pushback_id]
+        if row.status == "applied":
+            return row
+        updated = row.model_copy(
+            update={
+                "axis": axis,
+                "asserted_direction": direction,
+                "shown_score": shown_score,
+                "shown_explanation": shown_explanation,
+            }
+        )
+        self._store[pushback_id] = updated
+        return updated
+
+    def apply(
+        self,
+        pushback_id: uuid.UUID,
+        *,
+        classification: str,
+        new_information: bool,
+        evidence_question: str = "",
+        submitted_applications: int = 0,
+    ) -> Pushback | None:
+        row = self._store[pushback_id]
+        if row.status == "applied":
+            return row
+        updated = row.model_copy(
+            update={"status": "applied", "classification": classification, "applied_delta": 0.0}
+        )
+        self._store[pushback_id] = updated
+        self.applied_with = {"submitted_applications": submitted_applications}
         return updated
 
     def mark_classification_failed(self, pushback_id: uuid.UUID, code: str) -> Pushback | None:
@@ -228,6 +247,33 @@ def _install_fake_repo(monkeypatch: pytest.MonkeyPatch, store: dict[uuid.UUID, P
         return _FakePushbackRepo(store, user_id)
 
     monkeypatch.setattr(pushback_handler, "PostgresPushbackRepository", factory)
+    monkeypatch.setattr(pushback_handler, "PostgresScoreRepository", _FakeScoreRepo)
+    monkeypatch.setattr(pushback_handler, "PostgresApplicationRepository", _FakeApplicationRepo)
+
+
+class _FakeScore:
+    could_get_score = 4
+    could_get_assessment = "The ad asks for org-wide ownership."
+    want_it_score = 6
+    want_it_assessment = "Remote, and hands-on."
+
+
+class _FakeScoreRepo:
+    def __init__(self, conn: object, user_id: uuid.UUID) -> None:
+        del conn, user_id
+
+    def get(self, score_id: uuid.UUID) -> _FakeScore:
+        del score_id
+        return _FakeScore()
+
+
+class _FakeApplicationRepo:
+    def __init__(self, conn: object, user_id: uuid.UUID) -> None:
+        del conn, user_id
+
+    def list_applications(self, *, archived: bool = False) -> list[object]:
+        del archived
+        return []
 
 
 def _task_context(pushback_id: uuid.UUID) -> TaskContext:
@@ -411,7 +457,7 @@ def test_a_permanent_model_failure_fails_the_row_and_raises_permanently(
     assert store[pid].error_code == "api_key_rejected"
 
 
-def test_a_successful_call_applies_the_classification_to_the_row(
+def test_a_successful_call_reads_and_applies_the_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pid = uuid.uuid4()
@@ -423,7 +469,9 @@ def test_a_successful_call_applies_the_classification_to_the_row(
 
     def _fake_call(request: object, recorder: object, **kwargs: object) -> PushbackClassification:
         calls.append(kwargs)
-        return PushbackClassification(kind="capability", new_information=True, note="a note")
+        return PushbackClassification(
+            kind="capability", direction="up", new_information=True, note="a note"
+        )
 
     monkeypatch.setattr(pushback_handler, "call_classify_pushback", _fake_call)
 
@@ -432,8 +480,14 @@ def test_a_successful_call_applies_the_classification_to_the_row(
 
     assert result is not None and result["classification"] == "capability"
     updated = store[pid]
-    assert updated.status == "classified"
+    # Applied straight away: the screen shows the result with an undo beside
+    # it, rather than asking for a confirmation first.
+    assert updated.status == "applied"
     assert updated.classification == "capability"
+    # The words were about "could I get this", so the stimulus follows them.
+    assert updated.axis == "get"
+    assert updated.asserted_direction == "up"
+    assert updated.shown_score == 4
     assert updated.classification_source == "model"
     assert updated.classification_note == "a note"
     assert updated.new_information is True
@@ -441,36 +495,70 @@ def test_a_successful_call_applies_the_classification_to_the_row(
 
     assert len(calls) == 1
     assert calls[0]["user_text"] == "I actually led that team"
-    assert calls[0]["dimension_label"] == "a capability"
+    # Both numbers go to the model: the box sits under both.
+    assert calls[0]["could_get_score"] == 4
+    assert calls[0]["want_score"] == 6
 
 
-def test_earlier_texts_are_this_users_own_words_on_the_same_dimension_only() -> None:
+def test_a_preference_reading_points_the_row_at_do_i_want_this(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pid = uuid.uuid4()
-    target = _pushback(pushback_id=pid, dimension="capability:fx", user_text="current")
-    same_dim_earlier = _pushback(
-        dimension="capability:fx",
-        user_text="earlier same dimension",
-        created_at=datetime(2026, 9, 1, tzinfo=UTC),
+    store = {pid: _pushback(pushback_id=pid)}
+    _install_fake_repo(monkeypatch, store)
+    monkeypatch.setattr(pushback_handler, "load_api_key", lambda *a, **k: "sk-ant-test")
+    monkeypatch.setattr(
+        pushback_handler,
+        "call_classify_pushback",
+        lambda *a, **k: PushbackClassification(
+            kind="preference", direction="down", new_information=True, note=""
+        ),
     )
-    other_dim = _pushback(
-        dimension="constraint:workplace",
-        user_text="different dimension entirely",
-        created_at=datetime(2026, 9, 1, tzinfo=UTC),
-    )
-    later_same_dim = _pushback(
-        dimension="capability:fx",
+
+    build_classify_pushback(master_key=MasterKey.generate())(_task_context(pid))
+
+    updated = store[pid]
+    assert (updated.axis, updated.asserted_direction, updated.shown_score) == ("want", "down", 6)
+    assert updated.status == "applied"
+
+
+def test_a_row_the_user_already_read_themselves_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The user picked a reading while the call was in flight: theirs stands."""
+    pid = uuid.uuid4()
+    store = {pid: _pushback(pushback_id=pid)}
+    _install_fake_repo(monkeypatch, store)
+    monkeypatch.setattr(pushback_handler, "load_api_key", lambda *a, **k: "sk-ant-test")
+
+    def _user_got_there_first(*a: object, **k: object) -> PushbackClassification:
+        store[pid] = store[pid].model_copy(
+            update={"status": "applied", "classification": "factual", "applied_delta": 0.0}
+        )
+        return PushbackClassification(
+            kind="preference", direction="up", new_information=True, note=""
+        )
+
+    monkeypatch.setattr(pushback_handler, "call_classify_pushback", _user_got_there_first)
+    build_classify_pushback(master_key=MasterKey.generate())(_task_context(pid))
+    assert store[pid].classification == "factual"
+
+
+def test_earlier_texts_are_this_users_earlier_words_and_not_the_withdrawn_ones() -> None:
+    pid = uuid.uuid4()
+    target = _pushback(pushback_id=pid, user_text="current")
+    earlier = _pushback(user_text="said earlier", created_at=datetime(2026, 9, 1, tzinfo=UTC))
+    withdrawn = _pushback(
+        user_text="misread, and undone", created_at=datetime(2026, 9, 2, tzinfo=UTC)
+    ).model_copy(update={"withdrawn_at": datetime(2026, 9, 2, tzinfo=UTC)})
+    later = _pushback(
         user_text="not yet said at the time of this pushback",
         created_at=datetime(2026, 9, 30, tzinfo=UTC),
     )
-    store = {
-        target.id: target,
-        same_dim_earlier.id: same_dim_earlier,
-        other_dim.id: other_dim,
-        later_same_dim.id: later_same_dim,
-    }
+    store = {p.id: p for p in (target, earlier, withdrawn, later)}
     repo = _FakePushbackRepo(store, USER)
 
-    assert _earlier_texts(repo, target) == ["earlier same dimension"]
+    assert _earlier_texts(repo, target) == ["said earlier"]
 
 
 def test_earlier_texts_is_capped(monkeypatch: pytest.MonkeyPatch) -> None:

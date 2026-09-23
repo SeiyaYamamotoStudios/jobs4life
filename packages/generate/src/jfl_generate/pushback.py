@@ -9,14 +9,14 @@ classification-shaped task, not the product model's job, and CLAUDE.md's
 2026-09-05 decision log leaves this second, cheaper model selectable per call
 site rather than tied to the product-model decision it made.
 
-**This call proposes; it does not decide.** `jfl_core.pushback`'s whole design
-turns on the user seeing and being able to correct the classification before
-anything moves -- a misclassified pushback silently changes the wrong thing,
-and `capability` upward versus downward is the sharpest possible place for
-that to go wrong. So this module hands back a plain, correctable suggestion;
-`PostgresPushbackRepository.apply` (see its docstring) is what actually
-applies a classification, and it applies the one the human left selected, not
-the one stored here.
+**This call reads; the rule decides.** The pushback box is one textarea, so
+this call reads three things out of the words: what kind of statement it is,
+which way it pushes, and whether it says anything new. The worker applies that
+reading straight away and the screen shows, in plain words, what was taken and
+what changed, with a one-click "Not what I meant" that undoes it and re-applies
+under the reading the user picks. Undo-after instead of confirm-before -- and
+what makes that safe is not this call but `jfl_core.pushback.decide`: no
+reading, right or wrong, can move "could I get this" upward.
 
 **Never asked to rewrite the user's words.** The prompt says so and the
 sanitiser only collapses whitespace and caps length -- it does not paraphrase.
@@ -41,7 +41,7 @@ import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord
-from jfl_core.pushback import PUSHBACK_KINDS, PushbackKind
+from jfl_core.pushback import DIRECTIONS, PUSHBACK_KINDS, Direction, PushbackKind
 from jfl_core.repositories import RunRepository
 from jfl_gate.pricing import compute_cost_usd
 
@@ -73,6 +73,7 @@ class PushbackClassification:
     """
 
     kind: PushbackKind
+    direction: Direction
     new_information: bool
     note: str
 
@@ -82,11 +83,10 @@ def classify_pushback(
     run_repo: RunRepository,
     *,
     user_text: str,
-    axis: str,
-    direction: str,
-    shown_score: int | None,
-    shown_explanation: str,
-    dimension_label: str,
+    could_get_score: int | None,
+    could_get_explanation: str,
+    want_score: int | None,
+    want_explanation: str,
     earlier_texts: Sequence[str] = (),
     now: datetime,
 ) -> PushbackClassification:
@@ -94,11 +94,10 @@ def classify_pushback(
     `runs` row -- on success, on an API error, and on a refusal alike --
     before returning or raising.
 
-    `axis` and `direction` are given for the prompt's own framing; the
-    dimension itself is described by `dimension_label`, already turned into
-    plain words by the caller. `earlier_texts` is this user's earlier
-    pushbacks on the same dimension, given so `new_information` can be judged
-    against what has already been said rather than guessed at.
+    Both numbers and their sentences are given, because the box sits under
+    both and the words may be about either. `earlier_texts` is this user's
+    recent earlier pushbacks, given so `new_information` can be judged against
+    what has already been said rather than guessed at.
 
     `now` is the caller's clock (CLAUDE.md's 2026-09-07 decision: every model
     call is told what time it is), not read here, so one handler attempt and
@@ -129,11 +128,10 @@ def classify_pushback(
             max_tokens=MAX_TOKENS,
             system=build_pushback_classification_prompt(
                 user_text=user_text,
-                axis=axis,
-                direction=direction,
-                shown_score=shown_score,
-                shown_explanation=shown_explanation,
-                dimension_label=dimension_label,
+                could_get_score=could_get_score,
+                could_get_explanation=could_get_explanation,
+                want_score=want_score,
+                want_explanation=want_explanation,
                 earlier_texts=earlier_texts,
                 now=now,
             ),
@@ -276,12 +274,25 @@ def _sanitise(parsed: PushbackClassificationOutput) -> PushbackClassification:
     no evidence asked for (`jfl_core.pushback._capability`), so a fabricated or
     malformed kind must never be able to reach it -- and `"factual"` is the one
     of the three that moves nothing at all, whichever direction the user
-    asserted, so the worst a bad model answer can do here is ask the user to
-    confirm what it already had to ask them anyway.
+    asserted, so the worst a bad model answer can do here is show the user a
+    reading that changed nothing, with "Not what I meant" beside it.
+
+    A missing or unrecognised direction falls back the same way: a kind with no
+    trustworthy direction becomes `"factual"`, and the direction becomes `"up"`
+    -- which moves nothing on a factual reading and counts as an upward push on
+    the drift meter, the conservative side for a meter that exists to catch
+    flattery.
     """
     raw_kind = parsed.kind
     kind: PushbackKind = cast(PushbackKind, raw_kind) if raw_kind in PUSHBACK_KINDS else "factual"
+    direction: Direction
+    if parsed.direction in DIRECTIONS:
+        direction = cast(Direction, parsed.direction)
+    else:
+        kind, direction = "factual", "up"
     note = " ".join(parsed.classification_note.split())
     if len(note) > MAX_NOTE_CHARS:
         note = note[:MAX_NOTE_CHARS].rstrip()
-    return PushbackClassification(kind=kind, new_information=parsed.new_information, note=note)
+    return PushbackClassification(
+        kind=kind, direction=direction, new_information=parsed.new_information, note=note
+    )

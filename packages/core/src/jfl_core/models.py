@@ -1355,7 +1355,7 @@ class Pushback(BaseModel):
     pushback typed after reading our sentence is partly a response to our
     sentence, and the sentence is part of the record.
 
-    `applied_delta` is None until the user has confirmed the classification, and
+    `applied_delta` is None until the pushback has been read and applied, and
     0.0 is a normal, frequent and honest value afterwards: every capability
     claim that the number should go up lands on it, by design.
     """
@@ -1389,16 +1389,20 @@ class Pushback(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     applied_at: dt.datetime | None = None
+    # Set when the user said "Not what I meant". The row keeps what it did, for
+    # the record; nothing that sums the log counts it any more.
+    withdrawn_at: dt.datetime | None = None
 
     @property
     def awaiting_user(self) -> bool:
-        """Whether the user still has to see and confirm the classification.
-
-        Nothing is applied until they have. A misclassified pushback silently
-        changes the wrong thing, and "silently" is the word that makes it
-        unacceptable here.
+        """Whether this has not been applied yet -- still being read, or the
+        reading failed and the user has to say which they meant.
         """
         return self.status != "applied"
+
+    @property
+    def withdrawn(self) -> bool:
+        return self.withdrawn_at is not None
 
     @property
     def moved(self) -> bool:

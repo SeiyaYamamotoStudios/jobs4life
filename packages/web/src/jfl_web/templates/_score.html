@@ -92,42 +92,9 @@
     </div>
   </div>
 
-  {# Pushing back. One form per axis, offering only that axis's own dimensions
-     -- the user's constraints, objectives and unevidenced claims -- so there is
-     no way to name a claim-gate verdict, a span or a coverage status, because
-     none of them is on the list. #}
-  <details class="pushback-form">
-    <summary>{{ pushback_heading }}</summary>
-    <p class="note">{{ pushback_intro }}</p>
-    {% for axis, label, dimensions in [("get", could_get_label, get_dimensions), ("want", want_it_label, want_dimensions)] %}
-    <form method="post" action="/applications/{{ application_id }}/pushback">
-      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-      <input type="hidden" name="axis" value="{{ axis }}">
-      <h4>{{ label }}</h4>
-      <label for="dimension-{{ axis }}">What is wrong</label>
-      <select id="dimension-{{ axis }}" name="dimension">
-        {% for key, words in dimensions %}
-        <option value="{{ key }}">{{ words }}</option>
-        {% endfor %}
-      </select>
-      <fieldset>
-        <legend>{{ direction_label }}</legend>
-        {% for value, words in direction_choices %}
-        <label><input type="radio" name="direction" value="{{ value }}" {% if loop.first %}checked{% endif %}> {{ words }}</label>
-        {% endfor %}
-      </fieldset>
-      <fieldset>
-        <legend>{{ asserted_points_label }}</legend>
-        {% for value, words in asserted_points_choices %}
-        <label><input type="radio" name="points" value="{{ value }}" {% if loop.first %}checked{% endif %}> {{ words }}</label>
-        {% endfor %}
-      </fieldset>
-      <label for="text-{{ axis }}">In your own words</label>
-      <textarea id="text-{{ axis }}" name="user_text" rows="3" required></textarea>
-      <button type="submit">Record this</button>
-    </form>
-    {% endfor %}
-  </details>
+  {# Disagreeing: one box under the two numbers, and the card saying what the
+     last disagreement did. See `_pushbacks.html`. #}
+  {% include "_pushbacks.html" %}
 
   {# The escape hatch, offered honestly and labelled wherever it appears. It
      informs, it never blocks -- and the number it moves is the advisory one,
@@ -252,9 +219,5 @@
   </details>
   {% endif %}
 
-  {# Every disagreement with this score, and exactly what each one did. Inside
-     the score panel rather than elsewhere on the page, because the drift meter
-     belongs where a person is when they are about to push back. #}
-  {% include "_pushbacks.html" %}
 {% endcall %}
 </section>

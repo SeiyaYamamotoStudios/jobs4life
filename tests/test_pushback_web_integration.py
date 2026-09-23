@@ -1,18 +1,17 @@
-"""The whole pushback loop through the real routes, against a live Postgres.
+"""The one-box pushback flow through the real routes, against a live Postgres.
 
 Marked `integration`; needs a migrated database. Google is stubbed, same
-pattern as `test_scoring_web_integration.py`. No Anthropic call anywhere:
-nothing here constructs a client, the worker is never run, and the
-classification a real run would produce is written straight to the repository
-so the screens can be exercised without spending anything.
+pattern as `test_scoring_web_integration.py`. No Anthropic call anywhere: the
+worker's real handler is run, but with the model call replaced by a fixed
+reading, so the path from "read" to "applied" is the one production takes.
 
-What this pins is the loop as a person walks it: push back, see the
-classification, correct it, and see -- on the page -- what changed, what did
-not, and what would. Plus the guarantees that are the whole point: the stored
-score is never rewritten, a claim that the tool has underrated you moves
-nothing until a fact is confirmed, the third correction on one dimension stops
-arguing and offers a comparison, and the drift meter is on the screen where the
-person is when they are about to push back again.
+What this pins is the flow as a person walks it: type into one box, see one
+card that says what we took it to mean and what the number did (before ->
+after, or "stays at"), and undo it with "Not what I meant". Plus the guarantees
+that are the whole point: the stored score is never rewritten, a claim that the
+tool has underrated you moves nothing until a fact is confirmed, repetition
+moves nothing, the drift sentence escalates past its threshold, and no internal
+word reaches the screen.
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ import os
 import re
 import uuid
 from collections.abc import Iterator
+from html import unescape
 
 import pytest
 from fastapi import Request
@@ -33,13 +33,16 @@ from jfl_core.db.tables import score_pushbacks as pushbacks_table
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
-from jfl_core.models import ConstraintVerdict, ObjectiveVerdict
-from jfl_core.pushback import COULD_GET_OVERALL, WANT_OVERALL
-from jfl_core.storage.pushbacks import PostgresPushbackRepository
+from jfl_core.models import ConstraintVerdict, ObjectiveVerdict, Task
 from jfl_core.storage.scores import PostgresScoreRepository
+from jfl_generate.errors import GenerateError
+from jfl_generate.pushback import PushbackClassification
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity, OAuthError
+from jfl_web.pushbacks import DRIFT_LOUD
 from jfl_web.settings import WebSettings
+from jfl_worker.handlers import pushback as pushback_handler
+from jfl_worker.registry import PermanentTaskError, TaskContext
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.engine import Engine
 
@@ -201,25 +204,13 @@ def finish_score(
     return row.id
 
 
-def push_back(
-    client: TestClient,
-    application_id: uuid.UUID,
-    *,
-    axis: str = "want",
-    dimension: str = WANT_OVERALL,
-    direction: str = "up",
-    text: str = WORDS,
-    points: str = "1",
-) -> Response:
+def push_back(client: TestClient, application_id: uuid.UUID, text: str = WORDS) -> Response:
+    """The box: words, and nothing else."""
     return client.post(
         f"/applications/{application_id}/pushback",
         data={
             "csrf_token": _csrf(client, f"/applications/{application_id}"),
-            "axis": axis,
-            "dimension": dimension,
-            "direction": direction,
             "user_text": text,
-            "points": points,
         },
         follow_redirects=False,
     )
@@ -235,35 +226,89 @@ def latest_pushback(engine: Engine, user_id: uuid.UUID) -> uuid.UUID:
         ).scalar_one()
 
 
-def classify_as(engine: Engine, user_id: uuid.UUID, pushback_id: uuid.UUID, kind: str) -> None:
-    """What the worker's cheap model call would have written. Nothing is
-    applied by it -- that is the whole point of the confirmation step.
+def run_reader(
+    engine: Engine,
+    user_id: uuid.UUID,
+    pushback_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    kind: str = "preference",
+    direction: str = "up",
+    new_information: bool = True,
+    fail: str | None = None,
+) -> None:
+    """The worker's real handler, with the model call replaced by a fixed
+    reading (or a fixed failure). Everything after the call -- set the reading,
+    classify, apply -- is the production path against this database.
     """
-    with engine.begin() as conn:
-        PostgresPushbackRepository(conn, user_id).set_classification(
-            pushback_id,
-            classification=kind,  # type: ignore[arg-type]
-            new_information=True,
-            note="Reads as a statement about what you want.",
+    monkeypatch.setattr(pushback_handler, "load_api_key", lambda *a, **k: "sk-ant-test")
+
+    def _read(*args: object, **kwargs: object) -> PushbackClassification:
+        if fail is not None:
+            raise GenerateError(fail)
+        return PushbackClassification(
+            kind=kind,  # type: ignore[arg-type]
+            direction=direction,  # type: ignore[arg-type]
+            new_information=new_information,
+            note="",
         )
 
+    monkeypatch.setattr(pushback_handler, "call_classify_pushback", _read)
+    now = dt.datetime.now(dt.UTC)
+    task = Task(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        kind="classify_pushback",
+        payload={"pushback_id": str(pushback_id)},
+        status="running",
+        attempts=1,
+        max_attempts=5,
+        scheduled_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    handler = pushback_handler.build_classify_pushback(master_key=MasterKey.generate())
+    if fail is None:
+        handler(TaskContext(task=task, engine=engine, now=now))
+    else:
+        with pytest.raises((PermanentTaskError, GenerateError)):
+            handler(TaskContext(task=task, engine=engine, now=now))
 
-def apply_as(
+
+def say(
     client: TestClient,
-    pushback_id: uuid.UUID,
+    engine: Engine,
+    user_id: uuid.UUID,
     application_id: uuid.UUID,
-    kind: str,
-    new_information: str = "yes",
+    monkeypatch: pytest.MonkeyPatch,
+    text: str = WORDS,
+    **reading: object,
+) -> uuid.UUID:
+    """Type into the box and let the worker read it."""
+    assert push_back(client, application_id, text).status_code == 303
+    pushback_id = latest_pushback(engine, user_id)
+    run_reader(engine, user_id, pushback_id, monkeypatch, **reading)  # type: ignore[arg-type]
+    return pushback_id
+
+
+def pick(
+    client: TestClient, pushback_id: uuid.UUID, application_id: uuid.UUID, reading: str
 ) -> Response:
     return client.post(
-        f"/pushbacks/{pushback_id}/apply",
+        f"/pushbacks/{pushback_id}/reading",
         data={
             "csrf_token": _csrf(client, f"/applications/{application_id}"),
-            "classification": kind,
-            "new_information": new_information,
+            "reading": reading,
         },
         follow_redirects=False,
     )
+
+
+def row(engine: Engine, pushback_id: uuid.UUID) -> object:
+    with engine.begin() as conn:
+        return conn.execute(
+            select(pushbacks_table).where(pushbacks_table.c.id == pushback_id)
+        ).one()
 
 
 def score_row(engine: Engine, score_id: uuid.UUID) -> dict[str, object]:
@@ -273,10 +318,44 @@ def score_row(engine: Engine, score_id: uuid.UUID) -> dict[str, object]:
         )
 
 
-# -- recording ---------------------------------------------------------------
+def panel(client: TestClient, application_id: uuid.UUID) -> str:
+    """The pushback panel as the polled fragment renders it."""
+    response = client.get(f"/applications/{application_id}/pushbacks")
+    assert response.status_code == 200
+    return response.text
 
 
-def test_a_pushback_is_recorded_verbatim_and_applies_nothing(
+def text_of(html: str) -> str:
+    """What a person reads: tags stripped, whitespace folded."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", html)).split())
+
+
+# -- the box -------------------------------------------------------------------
+
+
+def test_the_box_is_one_textarea_and_one_button_and_nothing_else(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    fragment = panel(client, application_id)
+    form = re.search(r'<form[^>]*class="pushback-box".*?</form>', fragment, re.S)
+    assert form is not None
+    assert "Disagree with this? Tell us why." in form.group(0)
+    assert form.group(0).count("<textarea") == 1
+    assert form.group(0).count("<button") == 1
+    for gone in ("<select", 'type="radio"', 'type="checkbox"', "<fieldset"):
+        assert gone not in form.group(0)
+    # Nothing else until it is used: no card, no history, no drift sentence,
+    # no list of limits.
+    assert "pushback-card" not in fragment
+    assert "drift-line" not in fragment
+    assert "pushback-limits" not in fragment
+
+
+def test_submitting_records_the_words_verbatim_and_shows_it_being_read(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs)
@@ -284,28 +363,15 @@ def test_a_pushback_is_recorded_verbatim_and_applies_nothing(
     finish_score(engine, user_id, application_id)
 
     assert push_back(client, application_id).status_code == 303
+    pushback_id = latest_pushback(engine, user_id)
+    stored = row(engine, pushback_id)
+    assert stored.user_text == WORDS  # type: ignore[attr-defined]
+    assert stored.status == "awaiting_classification"  # type: ignore[attr-defined]
+    assert stored.applied_delta is None  # type: ignore[attr-defined]
 
-    page = client.get(f"/applications/{application_id}").text
-    assert "I ran the whole platform for two years" in page
-    # Nothing has been applied and the page says which kind it thinks it is
-    # only as a default on a radio the person has to confirm.
-    assert "What kind of statement is this?" in page
-    with engine.begin() as conn:
-        row = conn.execute(
-            select(pushbacks_table).where(pushbacks_table.c.user_id == user_id)
-        ).one()
-    assert row.user_text == WORDS
-    assert row.status == "awaiting_classification"
-    assert row.applied_delta is None
-
-
-def test_recording_a_pushback_queues_exactly_one_classification(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
-) -> None:
-    user_id = sign_in(client, google, subs)
-    application_id = add_application(client)
-    finish_score(engine, user_id, application_id)
-    push_back(client, application_id)
+    fragment = panel(client, application_id)
+    assert "Reading what you wrote" in fragment
+    assert 'hx-trigger="every 3s"' in fragment
 
     with engine.begin() as conn:
         kinds = list(
@@ -316,7 +382,7 @@ def test_recording_a_pushback_queues_exactly_one_classification(
     assert kinds.count("classify_pushback") == 1
 
 
-def test_a_pushback_needs_a_csrf_token(
+def test_the_box_needs_a_csrf_token(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     user_id = sign_in(client, google, subs)
@@ -324,203 +390,461 @@ def test_a_pushback_needs_a_csrf_token(
     finish_score(engine, user_id, application_id)
     response = client.post(
         f"/applications/{application_id}/pushback",
-        data={"axis": "want", "dimension": WANT_OVERALL, "direction": "up", "user_text": WORDS},
+        data={"user_text": WORDS},
         follow_redirects=False,
     )
     assert response.status_code == 403
 
 
-def test_a_pushback_cannot_name_something_protected(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
-) -> None:
-    user_id = sign_in(client, google, subs)
-    application_id = add_application(client)
-    finish_score(engine, user_id, application_id)
-    response = push_back(client, application_id, dimension="coverage:requirement-1")
-    assert response.status_code == 400
-    assert "not something a pushback can change" in response.text
+# -- the card --------------------------------------------------------------------
 
 
-# -- seeing and correcting the classification --------------------------------
-
-
-def test_the_user_sees_the_classification_and_can_correct_it(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
-) -> None:
-    """The misclassification guard, end to end.
-
-    The model calls it a preference. The person says it is a claim about their
-    own depth. What is applied is the person's answer, and the consequence is
-    the asymmetric one: the number does not move.
-    """
-    user_id = sign_in(client, google, subs)
-    application_id = add_application(client)
-    score_id = finish_score(engine, user_id, application_id)
-    push_back(client, application_id, axis="get", dimension=COULD_GET_OVERALL)
-    pushback_id = latest_pushback(engine, user_id)
-    classify_as(engine, user_id, pushback_id, "preference")
-
-    page = client.get(f"/applications/{application_id}").text
-    assert "Reads as a statement about what you want." in page
-    assert 'value="preference"' in page and "checked" in page
-
-    assert apply_as(client, pushback_id, application_id, "capability").status_code == 303
-
-    with engine.begin() as conn:
-        row = conn.execute(select(pushbacks_table).where(pushbacks_table.c.id == pushback_id)).one()
-    assert row.classification == "capability"
-    assert float(row.applied_delta) == 0.0
-    assert row.disposition == "pending_evidence"
-    assert score_row(engine, score_id)["could_get_score"] == 4
-
-
-def test_the_receipt_says_what_changed_what_did_not_and_what_would(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
-) -> None:
-    user_id = sign_in(client, google, subs)
-    application_id = add_application(client)
-    finish_score(engine, user_id, application_id)
-    push_back(client, application_id, axis="get", dimension=COULD_GET_OVERALL)
-    pushback_id = latest_pushback(engine, user_id)
-    apply_as(client, pushback_id, application_id, "capability")
-
-    page = client.get(f"/applications/{application_id}").text
-    assert "What changed now" in page
-    assert "What did not change" in page
-    assert "What would change it" in page
-    assert "The number stayed at 4" in page
-
-
-# -- the asymmetry, on the screen -------------------------------------------
-
-
-def test_a_preference_moves_the_displayed_number_and_never_the_stored_one(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_a_preference_shows_the_plain_reading_and_the_number_before_and_after(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     score_id = finish_score(engine, user_id, application_id)
     before = score_row(engine, score_id)
 
-    push_back(client, application_id, text="I would love a job like this")
-    apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
+    say(client, engine, user_id, application_id, monkeypatch, "I would love a job like this")
 
-    page = client.get(f"/applications/{application_id}").text
+    page = text_of(client.get(f"/applications/{application_id}").text)
+    assert "You'd take roles like this more readily than we scored." in page
+    assert "Do I want this: 5 → 6" in page
+    assert "This counts for every job you score, not just this one." in page
+    # The stored run is never rewritten; the big number says it was moved.
     assert "moved by your corrections" in page
-    assert "The tool said 5." in page
     assert score_row(engine, score_id) == before
 
 
-def test_a_claim_that_you_are_underrated_opens_a_question_and_moves_nothing(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_a_second_correction_moves_it_less_and_says_why(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    say(client, engine, user_id, application_id, monkeypatch, "I would love a job like this")
+    say(client, engine, user_id, application_id, monkeypatch, "And it is fully remote, too")
+
+    card = text_of(panel(client, application_id))
+    # 1 * 5/(5+1) = 0.83 of a point: 6 -> 6.8, which the big number rounds to 7.
+    assert "Do I want this: 6 → 6.8 (shown as 7)" in card
+    assert "One correction moves it a little; repeated ones move it less" in card
+
+
+def test_saying_the_same_thing_again_moves_nothing_and_says_so(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    say(client, engine, user_id, application_id, monkeypatch, "I really want this kind of role")
+    second = say(
+        client, engine, user_id, application_id, monkeypatch, "I really want this kind of role"
+    )
+
+    assert float(row(engine, second).applied_delta) == 0.0  # type: ignore[attr-defined]
+    card = text_of(panel(client, application_id))
+    assert "Do I want this: stays at 6" in card
+    assert "saying it again doesn't move it" in card
+
+
+def test_at_the_limit_it_stops_and_offers_a_comparison(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    for i in range(4):
+        say(client, engine, user_id, application_id, monkeypatch, f"a different point {i}")
+
+    card = text_of(panel(client, application_id))
+    assert "stays at 7" in card
+    assert "already moved this as far as they can" in card
+    assert "pick one to compare it with" in card
+
+
+def test_a_stronger_fit_claim_moves_nothing_and_links_to_the_fact_that_would(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     score_id = finish_score(engine, user_id, application_id)
-    push_back(client, application_id, axis="get", dimension=COULD_GET_OVERALL)
-    pushback_id = latest_pushback(engine, user_id)
-    apply_as(client, pushback_id, application_id, "capability")
 
-    page = client.get(f"/applications/{application_id}").text
-    assert "The sentence that would move this" in page
-    assert "what decisions were yours" in page
+    pushback_id = say(
+        client, engine, user_id, application_id, monkeypatch, kind="capability", direction="up"
+    )
+
+    fragment = panel(client, application_id)
+    card = text_of(fragment)
+    assert "You think you're a stronger fit than we scored." in card
+    assert "Could I get this: stays at 4" in card
+    assert "Your score won't move on your word alone" in card
+    assert f'href="/pushbacks/{pushback_id}/evidence">answer this</a>' in fragment
+    stored = row(engine, pushback_id)
+    assert float(stored.applied_delta) == 0.0  # type: ignore[attr-defined]
+    assert stored.axis == "get"  # type: ignore[attr-defined]
     assert score_row(engine, score_id)["could_get_score"] == 4
+
+    form = client.get(f"/pushbacks/{pushback_id}/evidence")
+    assert form.status_code == 200
+    assert "What's the fact behind it?" in text_of(form.text)
 
     answer = "I owned the platform at Acme: nine engineers, the on-call rota, a 400k budget."
     response = client.post(
         f"/pushbacks/{pushback_id}/evidence",
-        data={
-            "csrf_token": _csrf(client, f"/applications/{application_id}"),
-            "answer": answer,
-        },
+        data={"csrf_token": _csrf(client, f"/pushbacks/{pushback_id}/evidence"), "answer": answer},
         follow_redirects=False,
     )
     assert response.status_code == 303
-
+    stored = row(engine, pushback_id)
     with engine.begin() as conn:
-        row = conn.execute(select(pushbacks_table).where(pushbacks_table.c.id == pushback_id)).one()
         span = conn.execute(
-            select(spans_table.c.text).where(spans_table.c.id == row.resulting_span_id)
+            select(spans_table.c.text).where(
+                spans_table.c.id == stored.resulting_span_id  # type: ignore[attr-defined]
+            )
         ).scalar_one()
     # Verbatim, and the number STILL has not moved: it moves when the job is
     # scored again against the facts that now include this one.
     assert span == answer
-    assert float(row.applied_delta) == 0.0
     assert score_row(engine, score_id)["could_get_score"] == 4
+    assert "You've confirmed the fact behind it." in text_of(panel(client, application_id))
 
 
-def test_saying_it_again_moves_the_number_less_not_more(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_an_overrated_fit_moves_down_in_full(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
+    say(
+        client,
+        engine,
+        user_id,
+        application_id,
+        monkeypatch,
+        "Honestly I have never run anything that size",
+        kind="capability",
+        direction="down",
+    )
+    card = text_of(panel(client, application_id))
+    assert "You think we've overrated your fit." in card
+    assert "Could I get this: 4 → 3" in card
+    assert "Taken as you said it, in full" in card
 
-    push_back(client, application_id, text="I really want this kind of role")
-    first = latest_pushback(engine, user_id)
-    apply_as(client, first, application_id, "preference")
 
-    push_back(client, application_id, text="I really want this kind of role")
+def test_an_objection_about_the_ad_changes_nothing_about_you_and_says_so_honestly(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    say(
+        client,
+        engine,
+        user_id,
+        application_id,
+        monkeypatch,
+        "The ad says remote in the second paragraph",
+        kind="factual",
+        direction="up",
+    )
+    fragment = panel(client, application_id)
+    card = text_of(fragment)
+    assert "You think we've misread the ad." in card
+    assert "Nothing about you changed" in card
+    # It does not claim to have re-read the ad with the correction: nothing
+    # feeds a correction into scoring yet, so the card says that instead.
+    assert "We can't yet re-read the ad with your correction in mind" in card
+    assert f'action="/applications/{application_id}/score"' in fragment
+
+
+# -- "Not what I meant" ------------------------------------------------------------
+
+
+def test_not_what_i_meant_undoes_and_reapplies_under_the_chosen_reading(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The misreading guard, end to end.
+
+    The words are read as a preference and move "do I want this" up. The
+    person says they meant they are a stronger fit. The first correction stops
+    counting, and the new reading moves nothing -- the asymmetric rule.
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    score_id = finish_score(engine, user_id, application_id)
+    first = say(client, engine, user_id, application_id, monkeypatch)
+    assert "Do I want this: 5 → 6" in text_of(panel(client, application_id))
+    assert "Not what I meant" in panel(client, application_id)
+
+    assert pick(client, first, application_id, "fit_more").status_code == 303
+
+    assert row(engine, first).withdrawn_at is not None  # type: ignore[attr-defined]
     second = latest_pushback(engine, user_id)
-    apply_as(client, second, application_id, "preference")
+    assert second != first
+    replaced = row(engine, second)
+    assert replaced.user_text == WORDS  # type: ignore[attr-defined]
+    assert replaced.classification == "capability"  # type: ignore[attr-defined]
+    assert replaced.asserted_direction == "up"  # type: ignore[attr-defined]
+    assert replaced.classification_source == "user"  # type: ignore[attr-defined]
+    assert float(replaced.applied_delta) == 0.0  # type: ignore[attr-defined]
 
-    with engine.begin() as conn:
-        deltas = {
-            row.id: float(row.applied_delta)
-            for row in conn.execute(
-                select(pushbacks_table).where(pushbacks_table.c.user_id == user_id)
-            )
-        }
-    assert deltas[first] == pytest.approx(1.0)
-    assert deltas[second] == 0.0
-    assert "a restatement contributes nothing" in client.get(f"/applications/{application_id}").text
+    page = text_of(client.get(f"/applications/{application_id}").text)
+    assert "You think you're a stronger fit than we scored." in page
+    assert "Could I get this: stays at 4" in page
+    # The withdrawn preference no longer lifts the number.
+    assert "moved by your corrections" not in page
+    assert score_row(engine, score_id)["want_it_score"] == 5
 
 
-def test_the_third_correction_on_one_dimension_offers_a_comparison(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_just_undo_it_takes_it_back_and_puts_nothing_in_its_place(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
+    first = say(client, engine, user_id, application_id, monkeypatch)
 
-    for i in range(3):
-        push_back(client, application_id, text=f"a genuinely different point number {i}")
-        apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
-
-    page = client.get(f"/applications/{application_id}").text
-    assert "Let us do this differently" in page
-    assert "which of these two would you rather have?" in page
-
-
-# -- the drift meter ---------------------------------------------------------
+    assert pick(client, first, application_id, "undo").status_code == 303
+    assert latest_pushback(engine, user_id) == first
+    page = text_of(client.get(f"/applications/{application_id}").text)
+    assert "Undone. That correction no longer counts for anything." in page
+    assert "moved by your corrections" not in page
+    # And it does not count on the drift sentence either.
+    assert "You've pushed back" not in page
 
 
-def test_the_drift_meter_is_on_the_screen_where_the_pushing_back_happens(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_when_the_reading_fails_the_person_picks_and_it_applies_to_the_same_row(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
-    push_back(client, application_id, text="I would love a job like this")
-    apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
+    pushback_id = say(
+        client,
+        engine,
+        user_id,
+        application_id,
+        monkeypatch,
+        fail="authentication_error: invalid x-api-key",
+    )
+    fragment = panel(client, application_id)
+    assert "We couldn't work out what you meant" in text_of(fragment)
+    assert "hx-trigger" not in fragment
+    assert "I'd want this less than you scored" in text_of(fragment)
 
-    page = client.get(f"/applications/{application_id}").text
-    assert "1 pushback, 1 upward, +1.0 net" in page
-    assert "What your corrections have done" in page
+    assert pick(client, pushback_id, application_id, "want_less").status_code == 303
+    assert latest_pushback(engine, user_id) == pushback_id
+    applied = row(engine, pushback_id)
+    assert applied.status == "applied"  # type: ignore[attr-defined]
+    assert applied.asserted_direction == "down"  # type: ignore[attr-defined]
+    assert "Do I want this: 5 → 4" in text_of(panel(client, application_id))
 
 
-def test_the_corrections_page_lists_every_one_in_the_users_own_words(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_an_unknown_reading_is_refused(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
-    push_back(client, application_id, text="I would love a job like this")
-    apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
+    first = say(client, engine, user_id, application_id, monkeypatch)
+    assert pick(client, first, application_id, "capability_up").status_code == 400
+    assert row(engine, first).withdrawn_at is None  # type: ignore[attr-defined]
 
-    page = client.get("/pushbacks").text
+
+def test_choosing_a_reading_needs_a_csrf_token(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    first = say(client, engine, user_id, application_id, monkeypatch)
+    response = client.post(
+        f"/pushbacks/{first}/reading", data={"reading": "undo"}, follow_redirects=False
+    )
+    assert response.status_code == 403
+    assert row(engine, first).withdrawn_at is None  # type: ignore[attr-defined]
+    response = client.post(
+        f"/pushbacks/{first}/evidence", data={"answer": "words"}, follow_redirects=False
+    )
+    assert response.status_code == 403
+
+
+# -- the drift sentence --------------------------------------------------------
+
+
+def test_the_drift_sentence_is_quiet_at_first(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    say(client, engine, user_id, application_id, monkeypatch, kind="capability", direction="up")
+
+    fragment = panel(client, application_id)
+    assert "You've pushed back once on this profile, upward." in text_of(fragment)
+    assert 'class="drift-line"' in fragment
+    assert DRIFT_LOUD not in fragment
+    assert '<a href="/pushbacks">See everything you&#39;ve said</a>' in fragment
+
+
+def test_the_drift_sentence_escalates_past_the_threshold(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Three upward pushes, all of them upward, and none of them moving a
+    number (so it is the share that trips it, not the net movement).
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    for i in range(2):
+        say(
+            client,
+            engine,
+            user_id,
+            application_id,
+            monkeypatch,
+            f"I have done more than this, point {i}",
+            kind="capability",
+            direction="up",
+        )
+    assert DRIFT_LOUD not in panel(client, application_id)
+
+    say(
+        client,
+        engine,
+        user_id,
+        application_id,
+        monkeypatch,
+        "And more again",
+        kind="capability",
+        direction="up",
+    )
+    fragment = panel(client, application_id)
+    assert "You've pushed back 3 times on this profile, all upward." in text_of(fragment)
+    assert 'class="drift-line drift-meter"' in fragment
+    assert DRIFT_LOUD in text_of(fragment)
+    # The same sentence heads the log page.
+    assert DRIFT_LOUD in text_of(client.get("/pushbacks").text)
+
+
+def test_a_two_way_history_stays_quiet(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    for i, direction in enumerate(("up", "up", "down", "up", "down")):
+        say(
+            client,
+            engine,
+            user_id,
+            application_id,
+            monkeypatch,
+            f"point {i}",
+            kind="capability",
+            direction=direction,
+        )
+    fragment = panel(client, application_id)
+    assert "5 times on this profile, mostly upward" in text_of(fragment)
+    assert DRIFT_LOUD not in fragment
+
+
+# -- the log page ------------------------------------------------------------------
+
+
+def test_the_log_is_a_plain_history_in_the_users_own_words(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+    say(client, engine, user_id, application_id, monkeypatch, "I would love a job like this")
+    say(
+        client,
+        engine,
+        user_id,
+        application_id,
+        monkeypatch,
+        "I ran that platform",
+        kind="capability",
+        direction="up",
+    )
+
+    page = text_of(client.get("/pushbacks").text)
     assert "I would love a job like this" in page
-    assert "1 pushback, 1 upward, +1.0 net" in page
+    assert "Moved “Do I want this” up by 1 point, for every job." in page
+    assert "I ran that platform" in page
+    assert "Changed nothing yet: waiting on the fact behind it." in page
 
 
 def test_every_page_links_to_the_corrections_log(
@@ -530,7 +854,94 @@ def test_every_page_links_to_the_corrections_log(
     assert '<a href="/pushbacks">Corrections</a>' in client.get("/applications").text
 
 
-# -- the local override ------------------------------------------------------
+# -- no internal words on screen ----------------------------------------------------
+
+# The words the owner named, plus the rest of the machinery's vocabulary. Checked
+# against what a person reads -- tags stripped -- so class names and form field
+# names may keep their own words.
+INTERNAL = (
+    "δ",
+    "shrinkage",
+    "shrunk",
+    "dimension",
+    "capability",
+    "preference",
+    "classif",
+    "observation",
+    "displacement",
+    "claim gate",
+    "golden set",
+    "corpus",
+    "want_overall",
+    "could_get_overall",
+    "pending_evidence",
+)
+
+
+def _assert_plain(html: str, where: str) -> None:
+    visible = text_of(html).lower()
+    found = [word for word in INTERNAL if word in visible]
+    assert not found, f"{where} shows internal words {found}"
+
+
+def _pushback_markup(html: str) -> str:
+    match = re.search(r'<section id="pushbacks".*?</section>', html, re.S)
+    assert match is not None
+    return match.group(0)
+
+
+def test_no_internal_word_appears_in_any_pushback_markup(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every card state, the history, the limits list, the log and the
+    evidence page -- each rendered for real and swept.
+    """
+    user_id = sign_in(client, google, subs)
+    application_id = add_application(client)
+    finish_score(engine, user_id, application_id)
+
+    push_back(client, application_id, "one")
+    _assert_plain(panel(client, application_id), "the reading card")
+
+    readings = [
+        {"kind": "preference", "direction": "up"},
+        {"kind": "preference", "direction": "down"},
+        {"kind": "preference", "direction": "down", "new_information": False},
+        {"kind": "capability", "direction": "up"},
+        {"kind": "capability", "direction": "down"},
+        {"kind": "factual", "direction": "up"},
+        {"fail": "authentication_error: nope"},
+    ]
+    last = None
+    for i, reading in enumerate(readings):
+        last = say(client, engine, user_id, application_id, monkeypatch, f"words {i}", **reading)
+        _assert_plain(panel(client, application_id), f"the card for {reading}")
+        _assert_plain(
+            _pushback_markup(client.get(f"/applications/{application_id}").text),
+            f"the page panel for {reading}",
+        )
+
+    assert last is not None
+    pick(client, last, application_id, "want_more")
+    pick(client, latest_pushback(engine, user_id), application_id, "undo")
+    _assert_plain(panel(client, application_id), "the undone card")
+
+    _assert_plain(client.get("/pushbacks").text, "the log page")
+    with engine.begin() as conn:
+        waiting = conn.execute(
+            select(pushbacks_table.c.id).where(
+                pushbacks_table.c.user_id == user_id,
+                pushbacks_table.c.disposition == "pending_evidence",
+            )
+        ).scalar_one()
+    _assert_plain(client.get(f"/pushbacks/{waiting}/evidence").text, "the evidence page")
+
+
+# -- what corrections never reach ------------------------------------------------
 
 
 def test_an_override_is_labelled_scoped_and_feeds_nothing(
@@ -555,27 +966,23 @@ def test_an_override_is_labelled_scoped_and_feeds_nothing(
 
     page = client.get(f"/applications/{application_id}").text
     assert "Your override. The tool said 4." in page
-    # Scoped to this application, and not a correction: the other job is
-    # untouched and the drift meter has not moved.
     assert "Your override" not in client.get(f"/applications/{other_id}").text
     assert score_row(engine, score_id)["could_get_score"] == 4
     assert score_row(engine, other_score)["could_get_score"] == 4
-    assert "0.0 net" not in page  # no meter at all: nothing has been corrected
-    assert "What your corrections have done" not in page
-
-
-# -- what corrections never reach -------------------------------------------
+    # Not a correction: no drift sentence at all.
+    assert "You've pushed back" not in page
 
 
 def test_an_application_already_sent_keeps_the_score_it_was_sent_under(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
-    push_back(client, application_id, text="I would love a job like this")
-    apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
-
     client.post(
         f"/applications/{application_id}/status",
         data={
@@ -584,25 +991,36 @@ def test_an_application_already_sent_keeps_the_score_it_was_sent_under(
         },
         follow_redirects=False,
     )
-    page = client.get(f"/applications/{application_id}").text
+    say(client, engine, user_id, application_id, monkeypatch, "I would love a job like this")
+
+    page = text_of(client.get(f"/applications/{application_id}").text)
     assert "keeps the score it was sent under" in page
+    assert "Do I want this: stays at 5" in page
     assert "moved by your corrections" not in page
 
 
-def test_the_page_says_what_pushing_back_cannot_change(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+def test_the_card_says_what_disagreeing_can_never_change(
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
+    say(client, engine, user_id, application_id, monkeypatch)
     page = client.get(f"/applications/{application_id}").text
-    assert "What pushing back cannot change, ever" in page
-    assert "what the claim gate says about any sentence" in page
-    assert "the golden set, the eval labels or the measured over-claim rate" in page
+    assert "What disagreeing can never change" in page
+    assert "what we say about any sentence in your CV or cover letter" in page
 
 
 def test_corrections_cannot_lift_a_number_over_a_broken_must_have(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+    client: TestClient,
+    google: StubGoogle,
+    subs: list[str],
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from jfl_core.models import HardGateBreach
 
@@ -616,28 +1034,28 @@ def test_corrections_cannot_lift_a_number_over_a_broken_must_have(
         hard_gate_breaches=[HardGateBreach(gate="location", breach="On site five days a week.")],
     )
     for i in range(2):
-        push_back(client, application_id, text=f"a different point {i}")
-        apply_as(client, latest_pushback(engine, user_id), application_id, "preference")
+        say(client, engine, user_id, application_id, monkeypatch, f"a different point {i}")
 
-    page = client.get(f"/applications/{application_id}").text
+    page = text_of(client.get(f"/applications/{application_id}").text)
     assert "holds this down whatever your corrections say" in page
+    assert "A must-have this ad breaks holds it here" in page
 
 
-# -- tenancy -----------------------------------------------------------------
+# -- tenancy -------------------------------------------------------------------------
 
 
-def test_another_accounts_pushback_cannot_be_applied(
+def test_another_accounts_correction_is_a_404_everywhere(
     client: TestClient,
     settings: WebSettings,
     google: StubGoogle,
     subs: list[str],
     engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user_id = sign_in(client, google, subs)
     application_id = add_application(client)
     finish_score(engine, user_id, application_id)
-    push_back(client, application_id)
-    theirs = latest_pushback(engine, user_id)
+    theirs = say(client, engine, user_id, application_id, monkeypatch, kind="capability")
 
     other = TestClient(
         create_app(settings, identity_provider=google), base_url="https://testserver"
@@ -646,16 +1064,33 @@ def test_another_accounts_pushback_cannot_be_applied(
         sign_in(other, google, subs)
         mine = add_application(other)
         finish_score(engine, _signed_in_user_id(other), mine)
-        response = other.post(
-            f"/pushbacks/{theirs}/apply",
-            data={
-                "csrf_token": _csrf(other, f"/applications/{mine}"),
-                "classification": "preference",
-                "new_information": "yes",
-            },
-            follow_redirects=False,
-        )
-        assert response.status_code == 404
-    with engine.begin() as conn:
-        row = conn.execute(select(pushbacks_table).where(pushbacks_table.c.id == theirs)).one()
-    assert row.status == "awaiting_classification"
+        token = _csrf(other, f"/applications/{mine}")
+        for response in (
+            other.post(
+                f"/pushbacks/{theirs}/reading",
+                data={"csrf_token": token, "reading": "undo"},
+                follow_redirects=False,
+            ),
+            other.post(
+                f"/pushbacks/{theirs}/reading",
+                data={"csrf_token": token, "reading": "want_more"},
+                follow_redirects=False,
+            ),
+            other.get(f"/pushbacks/{theirs}/evidence"),
+            other.post(
+                f"/pushbacks/{theirs}/evidence",
+                data={"csrf_token": token, "answer": "not mine to give"},
+                follow_redirects=False,
+            ),
+            other.get(f"/applications/{application_id}/pushbacks"),
+            other.post(
+                f"/applications/{application_id}/pushback",
+                data={"csrf_token": token, "user_text": "not mine"},
+                follow_redirects=False,
+            ),
+        ):
+            assert response.status_code == 404
+        assert WORDS not in other.get("/pushbacks").text
+    stored = row(engine, theirs)
+    assert stored.withdrawn_at is None  # type: ignore[attr-defined]
+    assert stored.resulting_span_id is None  # type: ignore[attr-defined]
