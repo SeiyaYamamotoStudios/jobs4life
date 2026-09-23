@@ -71,6 +71,7 @@ from typing import Literal, cast, get_args
 from jfl_core.context import GATE_MODEL as DEFAULT_GATE_MODEL
 from jfl_core.context import RequestContext
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
+from jfl_core.cv_header import header_from_profile, header_name
 from jfl_core.models import DraftKind, RunRecord
 from jfl_core.profile import Capability, Profile
 from jfl_core.storage.applications import PostgresApplicationRepository
@@ -288,6 +289,7 @@ def _generate_cv_draft(
             application_id,
             job_id,
             capabilities=capabilities,
+            profile=profile,
             name=header_name(profile, display_name),
         )
 
@@ -315,23 +317,6 @@ def _generate_cv_draft(
     return {"application_id": str(application_id), "draft_id": str(draft.id), "draft_kind": kind}
 
 
-def header_name(profile: Profile, display_name: str) -> str:
-    """The CV header's name: the profile's, if it states one, else the
-    account's display name, else "" -- in which case
-    `jfl_generate.cv_document` falls back to the corpus document's own title.
-
-    The profile's contact settings are read by attribute because they belong to
-    the profile editing screen, not to this handler: a profile that has no
-    `contact` section (or no name in it) simply falls through. Never inferred
-    -- a name is only ever one the user typed or the account carries.
-    """
-    contact = getattr(profile, "contact", None)
-    name = getattr(contact, "name", None) or getattr(profile, "name", None)
-    if isinstance(name, str) and name.strip():
-        return name.strip()
-    return display_name
-
-
 def _write_cv_document(
     ctx: TaskContext,
     request: RequestContext,
@@ -340,6 +325,7 @@ def _write_cv_document(
     job_id: uuid.UUID,
     *,
     capabilities: Sequence[Capability],
+    profile: Profile,
     name: str,
 ) -> Mapping[str, object]:
     """The complete CV: two model calls, then one new `cv_documents` row.
@@ -365,10 +351,14 @@ def _write_cv_document(
             raise _permanent(code) from None
         raise
 
+    # The header's contact, links and tagline, and the interests, are profile
+    # settings -- applied only now, after the claim gate has run, so they are
+    # never part of what the model or the gate is sent (`jfl_core.cv_header`).
+    document = header_from_profile(profile, generated.document)
     with ctx.engine.begin() as conn:
         version = PostgresCvDocumentRepository(conn, ctx.user_id).add_version(
             application_id,
-            generated.document,
+            document,
             status="generated",
             gate_result=generated.gate_result,
             trace_id=ctx.task.id,

@@ -157,15 +157,15 @@ def _check_cv_edits(
 
     with ctx.engine.begin() as conn:
         repo = PostgresCvDocumentRepository(conn, ctx.user_id)
-        versions = repo.list_versions(application_id)
-    if any(v.trace_id == ctx.task.id for v in versions):
+        already = repo.version_for_trace(ctx.task.id)
+        version = repo.get_version(version_id)
+    if already is not None:
         return {"application_id": str(application_id), "skipped": "already checked"}
-    version = next((v for v in versions if v.id == version_id), None)
-    if version is None:
+    if version is None or version.application_id != application_id:
         return {"application_id": str(application_id), "skipped": "no such version"}
     lines: list[tuple[str, str]] = []
     for path in paths:
-        line = line_at(version.doc, path)
+        line = line_at(version.document, path)
         if line is not None and line.origin == "user":
             lines.append((path, line.text))
     if not lines:
@@ -207,8 +207,16 @@ def _check_cv_edits(
         latest = repo.latest(application_id)
         if latest is None:
             return {"application_id": str(application_id), "skipped": "no version"}
-        checked = with_verdicts(latest.doc, verdicts)
-        if checked == latest.doc:
+        checked = with_verdicts(latest.document, verdicts)
+        if checked == latest.document:
             return {"application_id": str(application_id), "skipped": "edited again since"}
-        saved = repo.add_version(application_id, checked, status="checked", trace_id=ctx.task.id)
+        saved = repo.add_version(
+            application_id,
+            checked,
+            status="checked",
+            gate_result=output.model_dump(mode="json"),
+            trace_id=ctx.task.id,
+        )
+    if saved is None:
+        return {"application_id": str(application_id), "skipped": "no such application"}
     return {"application_id": str(application_id), "version_id": str(saved.id)}

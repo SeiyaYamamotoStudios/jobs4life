@@ -35,7 +35,7 @@
   <a href="/applications/{{ application_id }}/drafts#cv-document">Back to the CV</a>
 </div>
 <p class="lede">
-  Version {{ version.version }}{% if application.employer %}, for {{ application.employer }}{% endif %}.
+  Version {{ number }}{% if application.employer %}, for {{ application.employer }}{% endif %}.
   Saving makes a new version — this one stays, and still downloads.
 </p>
 
@@ -95,7 +95,15 @@
         <span>{{ role.title }}</span> · <span>{{ role.employer }}</span>{% if role.location %} · <span>{{ role.location }}</span>{% endif %} · <span>{{ role.dates }}</span>
         <span class="note">— from your confirmed facts, not editable here</span>
       </p>
+      {% if role.descriptor or values["roles." ~ r ~ ".descriptor"] %}
+      <div class="cv-edit-line" id="field-roles.{{ r }}.descriptor">
+        <label for="edit-roles.{{ r }}.descriptor">What the company does <span class="status-badge verdict-not-checked">Not checked</span></label>
+        <input id="edit-roles.{{ r }}.descriptor" name="roles.{{ r }}.descriptor" type="text" value="{{ values["roles." ~ r ~ ".descriptor"] }}">
+        <p class="note">{{ descriptor_meaning }}</p>
+      </div>
+      {% else %}
       {{ text_field("roles." ~ r ~ ".descriptor", "What the company does") }}
+      {% endif %}
       {% for bullet in role.bullets %}
       {{ line_field("roles." ~ r ~ ".bullets." ~ loop.index0, "Bullet " ~ loop.index) }}
       {% endfor %}

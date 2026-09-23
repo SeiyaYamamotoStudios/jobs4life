@@ -3,9 +3,14 @@ export and the file name. Pure; fixtures are fictional."""
 
 from __future__ import annotations
 
+import typing
+
 import pytest
 from jfl_core.cv_document import CvDocument, CvHeader, CvLine, CvLink, CvRole, CvSkill
+from jfl_core.models import CvDocumentStatus
 from jfl_web.cvdocs import (
+    DESCRIPTOR_MEANING,
+    STATUS_WORDS,
     check_failure,
     cv_check,
     cv_filename,
@@ -79,6 +84,26 @@ def test_the_check_groups_worst_first_and_keeps_edits_apart() -> None:
     assert [v.line.text for v in check.unchecked] == ["A summary."]
     assert check.flagged[0].action is not None
     assert check.flagged[0].where == "EM, Fictional Freight"
+
+
+def test_a_descriptor_is_shown_as_not_checked_and_never_counted() -> None:
+    doc = _doc(CvLine(text="Good.", verdict="supported"))
+    doc.roles[0].descriptor = "A fictional freight company."
+    check = cv_check(doc)
+    (view,) = check.descriptors
+    assert (view.path, view.where, view.text) == (
+        "roles.0.descriptor",
+        "EM, Fictional Freight",
+        "A fictional freight company.",
+    )
+    assert view.meaning == DESCRIPTOR_MEANING
+    # Not a claim: it adds nothing to the counts or the export warning.
+    assert check.claims == 2
+    assert export_warning(doc) == ""
+
+
+def test_every_version_status_has_words() -> None:
+    assert set(STATUS_WORDS) == set(typing.get_args(CvDocumentStatus))
 
 
 def test_plain_text_is_the_words_only() -> None:

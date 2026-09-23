@@ -35,14 +35,18 @@ from jfl_core.context import RequestContext
 from jfl_core.corpus_source import append_confirmed_fact
 from jfl_core.crypto.envelope import MasterKey, seal
 from jfl_core.db.tables import runs as runs_table
+from jfl_core.db.tables import spans as spans_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.ids import requirement_id
 from jfl_core.models import JobRequirement, RequirementCoverage, RunRecord
+from jfl_core.profile import CvHeaderLink, CvHeaderSettings, Profile
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
 from jfl_core.storage.postgres import PostgresJobRepository
+from jfl_core.storage.profile import PostgresProfileRepository, save_profile
 from jfl_core.storage.tasks import PostgresTaskRepository
+from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
 from jfl_gate.schema import GateOutput, SentenceResult
 from jfl_intake.http import Transport
 from jfl_worker.handlers import GENERATE_CV_DRAFT, build_registry
@@ -324,6 +328,60 @@ def test_the_handler_stores_a_complete_gated_cv(
         runs = conn.execute(select(runs_table).where(runs_table.c.trace_id == task_id)).all()
     assert sorted(r.stage for r in runs) == ["baseline", "cv_document"]
     assert {r.model for r in runs} == {"claude-opus-5-5", "claude-opus-5"}
+
+
+def test_the_header_and_interests_come_from_the_profile_and_reach_no_model(
+    engine: Engine, user: uuid.UUID, master_key: MasterKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Name, tagline, contact, links and interests are profile settings: they
+    land on the generated CV and are never sent to the model, the claim gate
+    or the corpus."""
+    store_key(engine, user, master_key)
+    application_id = add_application(engine, user)
+    profile = Profile(
+        cv_header=CvHeaderSettings(
+            name="Morgan Q. Fictional",
+            tagline="Head of Engineering | Logistics",
+            phone="07700 900123",
+            email="morgan@fictional.invalid.example",
+            location="Leeds, UK",
+            links=[CvHeaderLink(label="github.com/morganq", url="https://github.com/morganq")],
+        ),
+        interests=["Orienteering", "Bell ringing"],
+    )
+    with engine.begin() as conn:
+        save_profile(
+            PostgresProfileRepository(conn, user), PostgresUserCorpusRepository(conn, user), profile
+        )
+    enqueue(engine, user, application_id)
+    client = install_fake_client(monkeypatch, payload=CV_PAYLOAD)
+    gated = install_fake_gate(monkeypatch)
+
+    run_worker(engine, user, master_key)
+
+    version = latest(engine, user, application_id)
+    assert version is not None
+    header = version.document.header
+    assert header.name == "Morgan Q. Fictional"  # the profile's, over the account's
+    assert header.tagline == "Head of Engineering | Logistics"
+    assert header.contact == ["07700 900123", "morgan@fictional.invalid.example", "Leeds, UK"]
+    assert [(link.label, link.url) for link in header.links] == [
+        ("github.com/morganq", "https://github.com/morganq")
+    ]
+    assert version.document.interests == ["Orienteering", "Bell ringing"]
+
+    sent_to_model = json.dumps(client.calls, default=str)
+    settings = ["07700 900123", "morgan@fictional", "Leeds, UK", "morganq", "Orienteering"]
+    for value in settings + ["Morgan Q. Fictional"]:
+        assert value not in sent_to_model, value
+        assert all(value not in text for text in gated), value
+    with engine.begin() as conn:
+        span_texts = (
+            conn.execute(select(spans_table.c.text).where(spans_table.c.user_id == user))
+            .scalars()
+            .all()
+        )
+    assert not any(value in text for value in settings for text in span_texts)
 
 
 def test_a_redelivered_task_does_not_write_a_second_version(

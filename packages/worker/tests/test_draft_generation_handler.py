@@ -12,13 +12,11 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from jfl_core.profile import Profile
 from jfl_worker.handlers.draft_generation import (
     _application_id,
     _classify,
     _kind,
     _permanent,
-    header_name,
 )
 from jfl_worker.registry import PermanentTaskError
 
@@ -126,21 +124,3 @@ class TestKind:
 def test_permanent_builds_the_one_message_shape_the_web_layer_parses() -> None:
     error = _permanent("no_coverage")
     assert str(error) == "draft generation failed permanently: no_coverage"
-
-
-class TestHeaderName:
-    def test_the_account_name_when_the_profile_names_no_one(self) -> None:
-        assert header_name(Profile(), "Morgan Fictional") == "Morgan Fictional"
-
-    def test_empty_when_neither_names_anyone(self) -> None:
-        # jfl_generate.cv_document then falls back to the corpus title.
-        assert header_name(Profile(), "") == ""
-
-    def test_a_profile_contact_name_wins(self) -> None:
-        class _Contact:
-            name = "  Morgan F.  "
-
-        class _WithContact:
-            contact = _Contact()
-
-        assert header_name(_WithContact(), "Account Name") == "Morgan F."  # type: ignore[arg-type]

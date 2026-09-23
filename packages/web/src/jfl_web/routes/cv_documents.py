@@ -43,7 +43,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.cv_document import CvDocument, CvHeader, CvLink
+from jfl_core.cv_header import header_from_profile
 from jfl_core.cv_lines import (
     InvalidEditError,
     ProtectedFieldError,
@@ -51,14 +51,14 @@ from jfl_core.cv_lines import (
     editable_fields,
     unchecked_edits,
 )
-from jfl_core.cv_render import render_cv_html, render_cv_pdf
-from jfl_core.profile import Profile
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.cv_documents import CvDocumentVersion, PostgresCvDocumentRepository
 from jfl_core.storage.tasks import UNFINISHED_STATUSES, PostgresTaskRepository
 from jfl_core.storage.ui_sections import SectionState
 
+from jfl_web.cv_pdf import render_cv_html, render_cv_pdf
 from jfl_web.cvdocs import (
+    DESCRIPTOR_MEANING,
     STATUS_WORDS,
     TEMPLATE_LABELS,
     check_edits_cost,
@@ -139,30 +139,39 @@ def cv_document_context(
     if not versions:
         return {"cvdoc": None, "cv_message": None}
     latest, older = versions[0], versions[1:]
-    check = cv_check(latest.doc)
+    # Versions are append-only and never deleted one at a time, so a version's
+    # place in the list is a stable number: the first ever written is 1.
+    count = len(versions)
+    check = cv_check(latest.document)
     pending = _pending_check(tasks, application_id)
     previews = {
-        name: render_cv_html(latest.doc.model_copy(update={"template": name}))
+        name: render_cv_html(latest.document.model_copy(update={"template": name}))
         for name in _TEMPLATES
     }
     return {
         "cvdoc": {
             "version": latest,
-            "doc": latest.doc,
+            "number": count,
+            "doc": latest.document,
             "check": check,
-            "warning": export_warning(latest.doc),
-            "text": cv_plain_text(latest.doc),
+            "warning": export_warning(latest.document),
+            "text": cv_plain_text(latest.document),
             "previews": previews,
             "templates": TEMPLATE_LABELS,
-            "unchecked_edits": len(unchecked_edits(latest.doc)),
+            "unchecked_edits": len(unchecked_edits(latest.document)),
             "check_pending": pending,
             "check_failed": None if pending else _failed_check(tasks, application_id, latest),
             "check_cost": check_edits_cost(),
             "status_words": STATUS_WORDS,
-            "section": cv_document_section(states, latest, check, pending=pending),
+            "section": cv_document_section(states, latest, check, number=count, pending=pending),
             "older": [
-                {"version": v, "warning": export_warning(v.doc), "check": cv_check(v.doc)}
-                for v in older
+                {
+                    "version": v,
+                    "number": count - 1 - index,
+                    "warning": export_warning(v.document),
+                    "check": cv_check(v.document),
+                }
+                for index, v in enumerate(older)
             ],
             "versions_section": cv_versions_section(states, older),
         },
@@ -194,6 +203,7 @@ def _owned_latest(
 
 def _edit_page(
     request: Request,
+    cv_documents: PostgresCvDocumentRepository,
     session: AuthenticatedSession,
     application_id: uuid.UUID,
     detail: Any,
@@ -204,7 +214,7 @@ def _edit_page(
     stale: bool = False,
     submitted: dict[str, str] | None = None,
 ) -> Response:
-    fields = editable_fields(version.doc)
+    fields = editable_fields(version.document)
     values = {f.path: (submitted or {}).get(f.path, f.value) for f in fields}
     return render(
         request,
@@ -215,9 +225,13 @@ def _edit_page(
             "application_id": application_id,
             "application": detail.application,
             "version": version,
-            "doc": version.doc,
+            # The edit screen only ever opens the latest version, so its
+            # number is the count (see `cv_document_context`).
+            "number": len(cv_documents.list_versions(application_id)),
+            "doc": version.document,
             "fields": {f.path: f for f in fields},
             "values": values,
+            "descriptor_meaning": DESCRIPTOR_MEANING,
             "error": error,
             "stale": stale,
         },
@@ -238,6 +252,7 @@ def edit_cv(
         return _not_found(request, session)
     return _edit_page(
         request,
+        cv_documents,
         session,
         application_id,
         detail,
@@ -279,6 +294,7 @@ async def save_cv_edits(
         if not isinstance(value, str) or key in submitted:
             return _edit_page(
                 request,
+                cv_documents,
                 session,
                 application_id,
                 detail,
@@ -288,10 +304,11 @@ async def save_cv_edits(
             )
         submitted[key] = value
     try:
-        result = apply_edits(latest.doc, submitted)
+        result = apply_edits(latest.document, submitted)
     except ProtectedFieldError:
         return _edit_page(
             request,
+            cv_documents,
             session,
             application_id,
             detail,
@@ -305,6 +322,7 @@ async def save_cv_edits(
     except InvalidEditError as exc:
         return _edit_page(
             request,
+            cv_documents,
             session,
             application_id,
             detail,
@@ -339,27 +357,11 @@ async def switch_template(
         return RedirectResponse(f"/applications/{application_id}/drafts", status_code=303)
     if not _base_is_latest(form, latest):
         return _drafts_url(application_id, "stale")
-    if template == latest.doc.template:
+    if template == latest.document.template:
         return _drafts_url(application_id, "unchanged")
-    doc = latest.doc.model_copy(update={"template": template})
+    doc = latest.document.model_copy(update={"template": template})
     cv_documents.add_version(application_id, doc, status="template", trace_id=None)
     return _drafts_url(application_id, "template")
-
-
-def header_from_profile(profile: Profile, current: CvDocument) -> CvDocument:
-    """The CV with its header and interests taken from the profile's settings.
-
-    Settings, not claims: nothing here is checked. A name left blank on the
-    profile keeps the one the CV already has, since a CV cannot have no name.
-    """
-    settings = profile.cv_header
-    header = CvHeader(
-        name=settings.name or current.header.name,
-        tagline=settings.tagline,
-        contact=settings.contact,
-        links=[CvLink(label=link.label, url=link.url) for link in settings.links],
-    )
-    return current.model_copy(update={"header": header, "interests": list(profile.interests)})
 
 
 @router.post("/applications/{application_id}/cv/header")
@@ -378,8 +380,8 @@ async def refresh_header(
     form = await request.form()
     if not _base_is_latest(form, latest):
         return _drafts_url(application_id, "stale")
-    doc = header_from_profile(profile_store.current(), latest.doc)
-    if doc == latest.doc:
+    doc = header_from_profile(profile_store.current(), latest.document)
+    if doc == latest.document:
         return _drafts_url(application_id, "unchanged")
     cv_documents.add_version(application_id, doc, status="header", trace_id=None)
     return _drafts_url(application_id, "header")
@@ -400,7 +402,7 @@ def check_my_edits(
     detail, latest = _owned_latest(applications, cv_documents, application_id)
     if detail is None or latest is None:
         return _not_found(request, session)
-    paths = unchecked_edits(latest.doc)
+    paths = unchecked_edits(latest.document)
     if not paths:
         return _drafts_url(application_id, "nothing")
     if not _pending_check(tasks, application_id):
@@ -424,9 +426,9 @@ def _version(
     detail = applications.get_application(application_id)
     if detail is None:
         return None, None
-    found = next(
-        (v for v in cv_documents.list_versions(application_id) if v.id == version_id), None
-    )
+    found = cv_documents.get_version(version_id)
+    if found is None or found.application_id != application_id:
+        return detail, None
     return detail, found
 
 
@@ -443,9 +445,9 @@ def download_pdf(
     detail, version = _version(applications, cv_documents, application_id, version_id)
     if detail is None or version is None:
         return _not_found(request, session)
-    name = cv_filename(version.doc.header.name, detail.application.employer, "pdf")
+    name = cv_filename(version.document.header.name, detail.application.employer, "pdf")
     return Response(
-        content=render_cv_pdf(version.doc),
+        content=render_cv_pdf(version.document),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
@@ -463,9 +465,9 @@ def download_text(
     detail, version = _version(applications, cv_documents, application_id, version_id)
     if detail is None or version is None:
         return _not_found(request, session)
-    name = cv_filename(version.doc.header.name, detail.application.employer, "txt")
+    name = cv_filename(version.document.header.name, detail.application.employer, "txt")
     return Response(
-        content=cv_plain_text(version.doc),
+        content=cv_plain_text(version.document),
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )

@@ -788,16 +788,19 @@ application_question_answers = Table(
 # document, never an UPDATE to an earlier one -- the latest row is what is
 # shown, and every earlier one is still there. `document` is the whole
 # `CvDocument` as JSON (a plain JSONB dict here, since `jfl_core.db` does not
-# import the model). `status` says how this version came to be: `generated`
-# by the worker, `edited` by the user, `approved` when they have signed off
-# what the export renders. `gate_result` is the claim gate's raw output for a
-# generated version (the citations live there); NULL for a version the gate
-# never saw. `trace_id` is the generating task's id, shared with that version's
-# `runs` rows, so a version's cost is one query and a redelivered task finds
-# the version it already wrote.
+# import the model). `status` records what produced this version: `generated`
+# by the worker, `edited` (wording), `template` (classic/modern switch),
+# `header` (header and interests refreshed from the profile) or `checked` (the
+# user's edits re-checked by the claim gate). There is deliberately no
+# `approved`: approving changes no content, so it is not a version -- the export
+# serves exactly the stored version the user downloads. `gate_result` is the
+# claim gate's raw output for a `generated` or `checked` version (the citations
+# live there); NULL for a version the gate never saw. `trace_id` is the
+# generating task's id, shared with that version's `runs` rows, so a version's
+# cost is one query and a redelivered task finds the version it already wrote.
 # --------------------------------------------------------------------------
 
-_CV_DOCUMENT_STATUSES = ("generated", "edited", "approved")
+_CV_DOCUMENT_STATUSES = ("generated", "edited", "template", "header", "checked")
 
 _CV_TEMPLATES = ("classic", "modern")
 
@@ -2087,32 +2090,4 @@ ui_section_states = Table(
     _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
     _ts("updated_at", nullable=False, server_default=text("now()")),
     UniqueConstraint("user_id", "section_key"),
-)
-
-# --------------------------------------------------------------------------
-# PLACEHOLDER (cvedit branch) -- cv_documents. The generation branch owns the
-# real table and its migration; at merge that one wins and this definition and
-# `migrations/versions/c9e0d1a2b3f4_cv_documents_placeholder_cvedit.py` are
-# dropped. Append-only: every edit, template switch and check is a new row.
-# --------------------------------------------------------------------------
-
-cv_documents = Table(
-    "cv_documents",
-    metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    Column(
-        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    ),
-    Column(
-        "application_id",
-        UUID(as_uuid=True),
-        ForeignKey("applications.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("version", Integer, nullable=False),
-    Column("doc", JSONB, nullable=False),
-    Column("status", Text, nullable=False),
-    Column("trace_id", UUID(as_uuid=True)),
-    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
-    UniqueConstraint("application_id", "version"),
 )

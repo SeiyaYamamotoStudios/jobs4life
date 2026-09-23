@@ -6,8 +6,8 @@ Revises: c4e8a2f61d57
 "Write the CV" now produces a whole CV -- header, summary, skills, every role
 with its bullets, education -- as one `CvDocument` (`jfl_core.cv_document`),
 stored as JSONB. Append-only: a regenerate is a new row, and so is an edit;
-the latest row per application is the one shown. `status` is how the version
-came to be (`generated`, `edited`, `approved`). `gate_result` is the claim
+the latest row per application is the one shown. `status` is what produced the
+version (`generated`, `edited`, `template`, `header`, `checked`). `gate_result` is the claim
 gate's raw output for a generated version, NULL otherwise. `trace_id` is shared
 with the version's `runs` rows.
 
@@ -51,7 +51,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "status in ('generated','edited','approved')", name=op.f('ck_cv_documents_status')
+            "status in ('generated','edited','template','header','checked')", name=op.f('ck_cv_documents_status')
         ),
         sa.CheckConstraint(
             "template in ('classic','modern')", name=op.f('ck_cv_documents_template')

@@ -23,7 +23,6 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
 from jfl_core.cv_document import CvDocument, CvHeader, CvLine, CvRole, CvSkill
-from jfl_core.cv_render import render_cv_pdf
 from jfl_core.db.tables import applications as applications_table
 from jfl_core.db.tables import spans as spans_table
 from jfl_core.db.tables import tasks as tasks_table
@@ -32,6 +31,7 @@ from jfl_core.models import Task
 from jfl_core.storage.cv_documents import CvDocumentVersion, PostgresCvDocumentRepository
 from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_web.app import create_app
+from jfl_web.cv_pdf import render_cv_pdf
 from jfl_web.oauth import GoogleIdentity
 from jfl_web.settings import WebSettings
 from jfl_worker.handlers import cv_edits_check
@@ -182,9 +182,11 @@ def sample_doc(**changes: Any) -> CvDocument:
 
 def store(engine: Engine, user_id: uuid.UUID, app_id: str, doc: CvDocument) -> CvDocumentVersion:
     with engine.begin() as conn:
-        return PostgresCvDocumentRepository(conn, user_id).add_version(
+        version = PostgresCvDocumentRepository(conn, user_id).add_version(
             uuid.UUID(app_id), doc, status="generated", trace_id=uuid.uuid4()
         )
+    assert version is not None
+    return version
 
 
 def versions(engine: Engine, user_id: uuid.UUID, app_id: str) -> list[CvDocumentVersion]:
@@ -368,8 +370,12 @@ def test_the_preview_shows_every_section_and_the_check_beside_it(
     assert "Not supported" in text and "Check this" in text
     assert "No figure in the facts." in text
     assert "Edit this line" in text
-    # Framing reads as not checked, never as supported.
-    assert "Not checked (1)" in text
+    # Framing reads as not checked, never as supported -- and so does the
+    # role's descriptor, which the claim gate is never sent (it describes the
+    # employer, not the person), so it must not look as if it passed.
+    assert "Not checked (2)" in text
+    assert "Freight routing software." in text
+    assert "Describes the employer, not you, so it is never checked." in text
 
 
 def test_the_warning_appears_and_the_download_still_works(
@@ -390,7 +396,7 @@ def test_the_warning_appears_and_the_download_still_works(
         == 'attachment; filename="Robin_Example_CV_Fictional_Freight.pdf"'
     )
     # Exactly the stored version, rendered -- nothing regenerated or added.
-    assert pdf.content == render_cv_pdf(version.doc)
+    assert pdf.content == render_cv_pdf(version.document)
     assert b"No figure in the facts." not in pdf.content
 
     txt = client.get(f"/applications/{app_id}/cv/{version.id}/text")
@@ -437,8 +443,9 @@ def test_editing_a_line_writes_a_new_version_marked_as_the_users(
     assert response.headers["location"].endswith("?cv=saved#cv-document")
 
     stored = versions(engine, user_id, app_id)
-    assert [v.version for v in stored] == [2, 1]
-    latest = stored[0].doc
+    assert [v.status for v in stored] == ["edited", "generated"]
+    assert stored[1].id == first.id
+    latest = stored[0].document
     bullet = latest.roles[0].bullets[1]
     assert (bullet.text, bullet.origin, bullet.verdict, bullet.note) == (
         "Cut cloud costs.",
@@ -449,7 +456,7 @@ def test_editing_a_line_writes_a_new_version_marked_as_the_users(
     assert latest.skills_heading == "Skills"
     # Untouched lines keep their verdicts; the first version is unchanged.
     assert latest.roles[0].bullets[0].verdict == "supported"
-    assert stored[1].doc == first.doc
+    assert stored[1].document == first.document
 
     text = page(client, app_id)
     assert "Not checked since you edited it." in text
@@ -558,6 +565,10 @@ class _FakeOutput:
     def __init__(self, sentences: list[Any]) -> None:
         self.sentences = sentences
 
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        # The handler stores the gate's raw output on the `checked` version.
+        return {"sentences": [vars(s) for s in self.sentences]}
+
 
 class _FakeSentence:
     def __init__(self, text: str, kind: str, verdict: str | None, note: str = "") -> None:
@@ -608,7 +619,7 @@ def test_the_check_handler_writes_verdicts_as_a_new_version(
     stored = versions(engine, user_id, app_id)
     assert [v.status for v in stored][:2] == ["checked", "edited"]
     assert stored[0].trace_id == task.id
-    bullet = stored[0].doc.roles[0].bullets[1]
+    bullet = stored[0].document.roles[0].bullets[1]
     assert (bullet.verdict, bullet.note, bullet.origin) == ("review", "Partly.", "user")
 
     # A redelivery does nothing.
@@ -636,8 +647,8 @@ def test_template_switch_previews_both_and_saves_a_new_version(
     )
     assert response.headers["location"].endswith("?cv=template#cv-document")
     stored = versions(engine, user_id, app_id)
-    assert stored[0].doc.template == "classic"
-    assert stored[0].doc.model_copy(update={"template": "modern"}) == first.doc
+    assert stored[0].document.template == "classic"
+    assert stored[0].document.model_copy(update={"template": "modern"}) == first.document
     assert "cv-frame-classic is-current" in page(client, app_id)
 
     bad = client.post(
@@ -666,7 +677,7 @@ def test_header_refresh_takes_the_profile_settings(
         f"/applications/{app_id}/cv/header",
         data={"csrf_token": csrf(client), "base_version": str(first.id)},
     )
-    latest = versions(engine, user_id, app_id)[0].doc
+    latest = versions(engine, user_id, app_id)[0].document
     assert latest.header.name == "Robin Example"  # kept: the profile left it blank
     assert latest.header.contact == ["robin@example.test"]
     assert latest.interests == ["Bouldering"]
@@ -689,7 +700,7 @@ def test_older_versions_stay_listed_and_downloadable(
     assert not re.search(r"\sopen\b", section.group(0).replace("data-default-open", ""))
     old = client.get(f"/applications/{app_id}/cv/{first.id}/pdf")
     assert old.status_code == 200
-    assert old.content == render_cv_pdf(first.doc)
+    assert old.content == render_cv_pdf(first.document)
 
 
 # -- tenancy and CSRF ---------------------------------------------------------
@@ -728,10 +739,12 @@ def test_another_users_cv_404s_on_every_route(
     # Bob's own application cannot reach Alice's version by its id either.
     bob_app = add_application(client, engine)
     assert client.get(f"/applications/{bob_app}/cv/{alice_version.id}/pdf").status_code == 404
-    with engine.begin() as conn, pytest.raises(LookupError):
-        PostgresCvDocumentRepository(conn, bob_id).add_version(
+    with engine.begin() as conn:
+        written = PostgresCvDocumentRepository(conn, bob_id).add_version(
             uuid.UUID(alice_app), sample_doc(), status="edited", trace_id=None
         )
+    assert written is None
+    assert len(versions(engine, alice_id, alice_app)) == 1
 
 
 def test_every_cv_post_needs_csrf(

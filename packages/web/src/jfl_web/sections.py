@@ -436,7 +436,12 @@ def draft_section(
 
 
 def cv_document_section(
-    states: dict[str, SectionState], version: object, check: object, *, pending: bool = False
+    states: dict[str, SectionState],
+    version: object,
+    check: object,
+    *,
+    number: int,
+    pending: bool = False,
 ) -> Section:
     """The generated CV document on the CV page: what the person came for, so
     open, and forced open while a check of their edits is running."""
@@ -450,7 +455,7 @@ def cv_document_section(
         default_open=True,
         forced_open=pending,
         summary=joined(
-            f"version {getattr(version, 'version', '')}",
+            f"version {number}",
             humanize(created_at) if created_at is not None else "",
             f"{supported} of {counted(claims, 'line')} traced" if claims else "",
         ),

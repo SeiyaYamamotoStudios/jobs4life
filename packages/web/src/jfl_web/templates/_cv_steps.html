@@ -20,7 +20,7 @@
     {% for step in plan.steps %}
     <li class="step step-{{ step.state }}"{% if step.state in ("current", "running") %} aria-current="step"{% endif %}>
       <span class="step-mark" aria-hidden="true">
-        {%- if step.state == "done" %}✓{% elif step.state == "running" %}…{% elif step.state == "failed" %}✗{% elif step.state == "blocked" %}!{% elif step.state == "current" %}→{% else %}○{% endif -%}
+        {%- if step.state == "done" %}✓{% elif step.state == "running" %}…{% elif step.state == "failed" %}✗{% elif step.state == "blocked" %}!{% elif step.state == "current" %}●{% else %}○{% endif -%}
       </span>
       <span class="step-label">{{ step.label }}</span>
       <span class="step-state">

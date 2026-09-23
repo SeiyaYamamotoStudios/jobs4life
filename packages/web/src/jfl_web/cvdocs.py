@@ -36,8 +36,9 @@ from jfl_web.drafts import (
 
 TEMPLATE_LABELS: dict[str, str] = {"classic": "Classic", "modern": "Modern"}
 
-# What a stored version's status reads as in the version list. Unknown values
-# (the generation branch may add its own) are shown as they are.
+# What a stored version's status reads as in the version list -- one entry per
+# `jfl_core.models.CvDocumentStatus`, each the event that produced the version
+# (`packages/web/tests/test_cvdocs.py` checks the two agree).
 STATUS_WORDS: dict[str, str] = {
     "generated": "written",
     "edited": "your edits",
@@ -153,6 +154,23 @@ def line_view(doc: CvDocument, path: str, line: CvLine) -> LineView:
     )
 
 
+# A role's descriptor ("A payments company serving European retailers") is
+# written by the model but never sent to the claim gate: it describes the
+# employer, not the person (`jfl_generate.cv_document`). So it is shown as Not
+# checked, with this reason -- never counted, and never implied to have passed.
+DESCRIPTOR_MEANING = (
+    "Describes the employer, not you, so it is never checked. Make sure it is right."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DescriptorView:
+    path: str
+    where: str
+    text: str
+    meaning: str = DESCRIPTOR_MEANING
+
+
 @dataclass(frozen=True, slots=True)
 class CvCheck:
     """One version's lines, counted and grouped for the page."""
@@ -165,6 +183,7 @@ class CvCheck:
     backed: tuple[LineView, ...]
     unchecked: tuple[LineView, ...]
     edited_unchecked: tuple[LineView, ...]
+    descriptors: tuple[DescriptorView, ...] = ()
 
     @property
     def claims(self) -> int:
@@ -185,6 +204,13 @@ def cv_check(doc: CvDocument) -> CvCheck:
         backed=tuple(by["supported"]),
         unchecked=tuple(v for v in unchecked if not (v.edited and v.line.verdict is None)),
         edited_unchecked=tuple(v for v in unchecked if v.edited and v.line.verdict is None),
+        descriptors=tuple(
+            DescriptorView(
+                f"roles.{r}.descriptor", f"{role.title}, {role.employer}", role.descriptor
+            )
+            for r, role in enumerate(doc.roles)
+            if role.descriptor
+        ),
     )
 
 
@@ -263,7 +289,9 @@ __all__ = [
     "CHECK_EDITS_COST",
     "STATUS_WORDS",
     "TEMPLATE_LABELS",
+    "DESCRIPTOR_MEANING",
     "CvCheck",
+    "DescriptorView",
     "LineView",
     "check_edits_cost",
     "check_failure",

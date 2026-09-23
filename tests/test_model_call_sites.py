@@ -237,3 +237,106 @@ def test_every_refusal_records_its_category(site: CallSite) -> None:
         isinstance(n, ast.Attribute) and n.attr == "category" for n in ast.walk(site.function)
     )
     assert reads_category, f"{site.where} does not record the refusal category"
+
+
+# --------------------------------------------------------------------------
+# Who spends model calls. The scan above checks the request shape of every
+# `messages.create`; this names every *entry point* that reaches one, directly
+# or through the claim gate -- so a new worker handler, CLI command or route
+# that starts paying for model calls on the user's key changes this list and
+# has to be looked at, rather than arriving silently. `check_cv_edits`
+# ("Check my edits" on a generated CV) reaches the model only through
+# `jfl_gate.gate.check_text`, which is exactly the kind of call this catches.
+# --------------------------------------------------------------------------
+
+_MODEL_CALLERS: dict[str, set[str]] = {
+    # Worker handlers -- one per task kind that runs on the user's key.
+    "jfl_worker/handlers/application_questions.py": {
+        "jfl_gate.gate.check_text",
+        "jfl_generate.answers.assess_answer",
+        "jfl_generate.answers.draft_application_answer",
+    },
+    "jfl_worker/handlers/capability_clusters.py": {
+        "jfl_generate.capabilities.cluster_capabilities"
+    },
+    "jfl_worker/handlers/coverage_generation.py": {"jfl_generate.jobs.run_coverage"},
+    "jfl_worker/handlers/cv_edits_check.py": {"jfl_gate.gate.check_text"},
+    "jfl_worker/handlers/cv_facts.py": {"jfl_generate.cv_facts.extract_cv_facts"},
+    "jfl_worker/handlers/draft_generation.py": {
+        "jfl_generate.cv_document.generate_cv_document",
+        "jfl_generate.draft.generate_draft",
+    },
+    "jfl_worker/handlers/extraction.py": {"jfl_generate.jobs.add_job"},
+    "jfl_worker/handlers/profile_suggestions.py": {
+        "jfl_generate.profile_suggestions.suggest_profile_settings"
+    },
+    "jfl_worker/handlers/pushback.py": {"jfl_generate.pushback.classify_pushback"},
+    "jfl_worker/handlers/scoring.py": {
+        "jfl_generate.jobs.run_coverage",
+        "jfl_generate.scoring.score_application",
+    },
+    "jfl_worker/handlers/title_suggestions.py": {"jfl_generate.titles.suggest_titles"},
+}
+
+
+def _src_module(path: Path) -> str:
+    """`jfl_worker/handlers/scoring.py` -- the path below the package's `src`."""
+    parts = path.parts
+    return "/".join(parts[parts.index("src") + 1 :])
+
+
+def _spending_functions() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """(dotted module -> its top-level functions that reach a model call,
+    src module -> the spending functions it imports from elsewhere).
+
+    Transitive to a fixpoint: a function that calls a spending function in its
+    own module, or one imported from another, spends too.
+    """
+    trees = {
+        _src_module(p): ast.parse(p.read_text(), filename=str(p))
+        for p in sorted(_PACKAGES.glob("*/src/**/*.py"))
+    }
+    dotted = {m: m.removesuffix(".py").removesuffix("/__init__").replace("/", ".") for m in trees}
+    spending: dict[str, set[str]] = {}
+    for site in _SITES:
+        for node in site.tree.body:
+            if isinstance(node, ast.FunctionDef) and any(n is site.call for n in ast.walk(node)):
+                mod = next(m for m in trees if m.endswith(site.module))
+                spending.setdefault(dotted[mod], set()).add(node.name)
+    imported: dict[str, set[str]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for mod, tree in trees.items():
+            local = set(spending.get(dotted[mod], set()))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module in spending:
+                    for alias in node.names:
+                        if alias.name in spending[node.module]:
+                            local.add(alias.asname or alias.name)
+                            full = f"{node.module}.{alias.name}"
+                            if full not in imported.setdefault(mod, set()):
+                                imported[mod].add(full)
+                                changed = True
+            for fn in tree.body:
+                if not isinstance(fn, ast.FunctionDef):
+                    continue
+                calls = {
+                    n.func.id
+                    for n in ast.walk(fn)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                }
+                if calls & local and fn.name not in spending.get(dotted[mod], set()):
+                    spending.setdefault(dotted[mod], set()).add(fn.name)
+                    changed = True
+    return spending, {m: names for m, names in imported.items() if names}
+
+
+def test_every_worker_task_that_calls_a_model_is_listed() -> None:
+    _, imported = _spending_functions()
+    handlers = {
+        m: names
+        for m, names in imported.items()
+        if m.startswith("jfl_worker/handlers/") and not m.endswith("__init__.py")
+    }
+    assert handlers == _MODEL_CALLERS

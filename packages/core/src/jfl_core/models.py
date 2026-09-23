@@ -141,8 +141,11 @@ class GapQuestion(BaseModel):
 
 DraftKind = Literal["cv_bullets", "cover_letter"]
 
-# How a `cv_documents` version came to be -- see `jfl_core.db.tables.cv_documents`.
-CvDocumentStatus = Literal["generated", "edited", "approved"]
+# What produced a `cv_documents` version -- see `jfl_core.db.tables.cv_documents`.
+# Each is a real event that writes a new row: the worker `generated` it, the user
+# `edited` its wording, switched its `template`, refreshed its `header` (and
+# interests) from the profile, or had their edits `checked` by the claim gate.
+CvDocumentStatus = Literal["generated", "edited", "template", "header", "checked"]
 
 
 class Draft(BaseModel):

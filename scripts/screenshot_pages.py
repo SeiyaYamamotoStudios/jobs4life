@@ -14,11 +14,16 @@ What it does:
      short titles, one titled only by a long URL, both scores, unscored, a
      failed and a pending score, one archived; watched boards with long names
      and many jobs, one shown by its URL; a changes feed with new and closed
-     jobs; three CVs (read, unread, failed). Not seeded: drafts, profile
-     answers, confirmed facts -- those pages render their empty states;
+     jobs; three CVs (read, unread, failed); and a generated CV document for
+     the detail application (a `generated` version, then an `edited` one, with
+     supported, flagged, framing and edited-unchecked lines and a descriptor).
+     Not seeded: text drafts, profile answers, confirmed facts -- those pages
+     render their empty states;
   3. renders each page through the test client and writes it as a standalone
      HTML file with the stylesheet inlined (so it renders from `file://`);
-  4. screenshots each file with headless Firefox at 1440, 1024 and 390 px wide;
+  4. screenshots each file with headless Firefox at 1440, 1024 and 390 px wide,
+     and renders the seeded CV to PDF in each template (`cv-<template>.pdf`)
+     and to PNG with `pdftoppm` (`cv-<template>-<page>.png`) when present;
   5. deletes the user (every table cascades from `users`), even on failure.
 
 Everything seeded is fiction -- layout test data, never corpus, never a
@@ -34,7 +39,7 @@ Run it against a scratch database, never the default one:
     ... --pages applications,jobs --widths 1440,390
     ... --no-screenshots
 
-Output: `<out>/<page>.html` and `<out>/<page>-<width>.png`. Firefox captures
+Output: `<out>/<page>.html` and `<out>/<page>-<width>.png`, plus the CV PDFs. Firefox captures
 the window, not the whole document, so `--height` (default 1600) decides how
 much of a long page is seen. A page *wider* than the window shows its overflow
 as a clipped right edge or a sideways scrollbar, which is the thing to look
@@ -61,12 +66,14 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.testclient import TestClient
 from jfl_core.crypto.envelope import MasterKey
+from jfl_core.cv_document import CvDocument, CvHeader, CvLine, CvLink, CvRole, CvSkill
 from jfl_core.db.tables import applications as applications_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.ids import requirement_id
 from jfl_core.models import JobRequirement, ObservedJob, Workplace
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
 from jfl_core.storage.postgres import PostgresJobRepository
 from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
@@ -74,6 +81,7 @@ from jfl_intake.adapters.base import FetchResult
 from jfl_intake.engine import REPOST_WINDOW, plan_check
 from jfl_intake.normalise import fingerprint
 from jfl_web.app import create_app
+from jfl_web.cv_pdf import render_cv_pdf
 from jfl_web.oauth import GoogleIdentity, OAuthError
 from jfl_web.settings import WebSettings
 from sqlalchemy import create_engine, delete, select, update
@@ -398,6 +406,141 @@ def seed(engine: Engine, user_id: uuid.UUID) -> dict[str, uuid.UUID]:
     return ids
 
 
+# A complete generated CV, fictional throughout. Verdicts are set by hand here
+# because this is layout data: every state the CV page must draw -- supported,
+# check this, not supported, framing, an edited line awaiting a check, and a
+# role descriptor the claim gate never sees -- appears at least once.
+def fictional_cv() -> CvDocument:
+    return CvDocument(
+        template="modern",
+        header=CvHeader(
+            name="Avery Imaginary-Longname",
+            tagline="Engineering Manager | Platform & Reliability | Applied AI",
+            contact=["07700 900000", "avery@example.invalid", "Bristol, UK"],
+            links=[
+                CvLink(label="linkedin.com/in/avery-example", url="https://linkedin.com/in/x"),
+                CvLink(label="github.com/avery-example", url="https://github.com/x"),
+            ],
+        ),
+        summary=[
+            CvLine(
+                text="Engineering manager who builds calm, well-instrumented platform teams "
+                "and likes the unglamorous work of making on-call quiet.",
+                verdict="framing",
+            ),
+            CvLine(
+                text="Led the platform group at Northwind Imaginary Logistics through a move "
+                "from a single region to three, with no customer-visible outage.",
+                verdict="supported",
+                note="Northwind > Platform: led the multi-region migration.",
+            ),
+        ],
+        skills=[
+            CvSkill(
+                label="Platform & Distributed Systems",
+                text=CvLine(
+                    text="Kubernetes, Kafka and Postgres at scale; capacity planning for "
+                    "seasonal freight peaks.",
+                    verdict="supported",
+                ),
+            ),
+            CvSkill(
+                label="People Leadership",
+                text=CvLine(
+                    text="Grew a team from four to eleven engineers across two sites.",
+                    verdict="review",
+                    note="The facts say the team grew; they do not give the numbers.",
+                ),
+            ),
+            CvSkill(
+                label="Applied AI",
+                text=CvLine(
+                    text="Shipped an LLM triage assistant for support tickets.", origin="user"
+                ),
+            ),
+        ],
+        roles=[
+            CvRole(
+                title="Senior Engineering Manager, Platform",
+                employer="Northwind Imaginary Logistics",
+                location="Bristol, UK",
+                dates="Nov 2022 – Present",
+                descriptor="Freight routing and tracking software for European hauliers.",
+                bullets=[
+                    CvLine(
+                        text="Ran the multi-region migration end to end, including the "
+                        "database cut-over plan and the rollback drills.",
+                        verdict="supported",
+                    ),
+                    CvLine(
+                        text="Cut cloud spend by 38% in twelve months.",
+                        verdict="unsupported",
+                        note="No figure for cloud spend appears in the facts.",
+                    ),
+                    CvLine(
+                        text="Owned the incident process for the whole engineering org.",
+                        verdict="review",
+                        note="The facts name the platform group, not the whole org.",
+                    ),
+                ],
+            ),
+            CvRole(
+                title="Engineering Manager",
+                employer="Contoso Fictional Payments",
+                location="Remote",
+                dates="Mar 2019 – Oct 2022",
+                descriptor="Card acquiring for small online retailers.",
+                bullets=[
+                    CvLine(
+                        text="Managed the payments API team of six through PCI DSS "
+                        "recertification.",
+                        verdict="supported",
+                    ),
+                    CvLine(
+                        text="Introduced blameless post-incident reviews.",
+                        verdict="supported",
+                    ),
+                ],
+            ),
+        ],
+        education=[
+            CvLine(text="BSc Computer Science, University of Nowhere, 2008", origin="fact"),
+        ],
+        interests=["Fell running", "Choral singing", "Restoring old bicycles"],
+    )
+
+
+def seed_cv_document(engine: Engine, user_id: uuid.UUID, application_id: uuid.UUID) -> None:
+    """A `generated` version, then an `edited` one on top, so the page shows the
+    latest and lists the earlier version."""
+    doc = fictional_cv()
+    first = doc.model_copy(deep=True)
+    first.skills[2].text = CvLine(
+        text="Built an LLM triage assistant for support tickets.", verdict="review"
+    )
+    with engine.begin() as conn:
+        repo = PostgresCvDocumentRepository(conn, user_id)
+        repo.add_version(application_id, first, status="generated", trace_id=uuid.uuid4())
+        repo.add_version(application_id, doc, status="edited")
+
+
+def render_pdfs(out: pathlib.Path) -> list[pathlib.Path]:
+    """The seeded CV as a PDF in each template, and each page as a PNG."""
+    written: list[pathlib.Path] = []
+    for template in ("classic", "modern"):
+        pdf = out / f"cv-{template}.pdf"
+        pdf.write_bytes(render_cv_pdf(fictional_cv().model_copy(update={"template": template})))
+        written.append(pdf)
+        if shutil.which("pdftoppm"):
+            subprocess.run(
+                ["pdftoppm", "-png", "-r", "90", str(pdf), str(out / f"cv-{template}")],
+                check=True,
+                timeout=60,
+            )
+            written.extend(sorted(out.glob(f"cv-{template}-*.png")))
+    return written
+
+
 # -- rendering ------------------------------------------------------------------
 
 LINK = re.compile(r'<link rel="stylesheet" href="[^"]*style\.css[^"]*">')
@@ -510,6 +653,7 @@ def main() -> int:
 
     with signed_in_client(database_url) as (client, engine, user_id):
         ids = seed(engine, user_id)
+        seed_cv_document(engine, user_id, ids["detail"])
         save_job_filter(client)
         pages = {
             "applications": "/applications",
@@ -523,6 +667,7 @@ def main() -> int:
             "background": "/background",
             "application": f"/applications/{ids['detail']}",
             "application-cv": f"/applications/{ids['detail']}/drafts",
+            "application-cv-edit": f"/applications/{ids['detail']}/cv/edit",
         }
         written = []
         for name, path in pages.items():
@@ -547,6 +692,10 @@ def main() -> int:
                     )
                 )
                 written.append(opened)
+
+    if not wanted or wanted & {"application-cv", "application-cv-edit", "cv-pdf"}:
+        for path in render_pdfs(out):
+            print(path)
 
     if args.no_screenshots:
         for html in written:

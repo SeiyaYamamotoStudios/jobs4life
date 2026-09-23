@@ -14,7 +14,7 @@
    informs, it never blocks (CLAUDE.md). Framing and anything never checked
    read "Not checked", never supported. #}
 {% set version = cvdoc.version %}
-{% set doc = cvdoc.doc %}
+{% set doc = cvdoc.version.document %}
 {% set check = cvdoc.check %}
 {% set text_id = "cv-text-" ~ version.id %}
 {% set base = "/applications/" ~ application_id ~ "/cv" %}
@@ -23,7 +23,7 @@
   {% if cv_message %}<p class="{{ cv_message[0] }}" role="status">{{ cv_message[1] }}</p>{% endif %}
   <p class="draft-headline">{{ check.headline }}</p>
   <p class="draft-meta">
-    Version {{ version.version }}
+    Version {{ cvdoc.number }}
     &middot; {{ cvdoc.status_words.get(version.status, version.status) }}
     &middot; saved <time title="{{ version.created_at.isoformat() }}">{{ version.created_at | humanize_dt }}</time>
   </p>
@@ -79,7 +79,7 @@
         <li><span class="status-badge verdict-supported">Supported</span> traces to a fact you confirmed</li>
         <li><span class="status-badge verdict-review">Check this</span> only partly traces, or says more</li>
         <li><span class="status-badge verdict-unsupported">Not supported</span> nothing you confirmed backs it</li>
-        <li><span class="status-badge verdict-not-checked">Not checked</span> framing, or edited since the check</li>
+        <li><span class="status-badge verdict-not-checked">Not checked</span> framing, a company description, or edited since the check</li>
       </ul>
 
       {% if check.edited_unchecked or cvdoc.check_pending %}
@@ -163,15 +163,23 @@
       </details>
       {% endif %}
 
-      {% if check.unchecked %}
+      {% if check.unchecked or check.descriptors %}
+      {% set not_checked = (check.unchecked | length) + (check.descriptors | length) %}
       <details class="draft-verdicts">
-        <summary>Not checked ({{ check.unchecked | length }}) — framing, yours to stand behind</summary>
+        <summary>Not checked ({{ not_checked }}) — framing and company descriptions, yours to stand behind</summary>
         <ul class="draft-sentences">
           {% for view in check.unchecked %}
           <li>
             <span class="status-badge {{ view.style }}">{{ view.label }}</span>
             {{ view.line.text }}
             <p class="note">{{ view.meaning }}</p>
+          </li>
+          {% endfor %}
+          {% for view in check.descriptors %}
+          <li>
+            <span class="status-badge verdict-not-checked">Not checked</span>
+            {{ view.text }}
+            <p class="note">{{ view.where }} · {{ view.meaning }}</p>
           </li>
           {% endfor %}
         </ul>
@@ -202,7 +210,7 @@
       {% for entry in cvdoc.older %}
       {% set old = entry.version %}
       <li>
-        <span class="cv-version-name">Version {{ old.version }}</span>
+        <span class="cv-version-name">Version {{ entry.number }}</span>
         <span class="note">
           {{ cvdoc.status_words.get(old.status, old.status) }} ·
           <time title="{{ old.created_at.isoformat() }}">{{ old.created_at | humanize_dt }}</time>
