@@ -570,3 +570,68 @@ def test_a_read_that_finds_nothing_to_do_still_hands_on_to_the_check(
     assert follow_up is not None
     assert follow_up.kind == GENERATE_COVERAGE
     assert follow_up.payload == {"job_id": str(job_id), "after": str(task.id)}
+
+
+def test_a_chained_check_skips_a_job_the_scorer_already_checked(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adding an application queues the scorer, which runs this check itself when
+    it finds none. If "Write the CV" was pressed before the ad was read, the CV
+    chain then reaches this step with the job already checked -- and running it
+    again would charge the user twice for the same answer. A chained step (one
+    carrying `after`) skips and hands on; a button press never carries `after`.
+    """
+    store_key(engine, user, master_key, FAKE_KEY)
+    job_id = add_job(engine, user, requirements=["5+ years of Python"])
+
+    install_fake_client(monkeypatch, payload=COVERAGE_PAYLOAD)
+    enqueue(engine, user, job_id)  # the scorer's own check, say
+    run_worker(engine, user, master_key, log_stream)
+
+    draft_step = {
+        "kind": "generate_cv_draft",
+        "payload": {"application_id": str(uuid.uuid4()), "kind": "cv_bullets"},
+    }
+    with engine.begin() as conn:
+        PostgresTaskRepository(conn, user).enqueue(
+            kind=GENERATE_COVERAGE,
+            payload={"job_id": str(job_id), "after": str(uuid.uuid4()), "then": [draft_step]},
+        )
+    run_worker(engine, user, master_key, log_stream)
+
+    with engine.begin() as conn:
+        coverage_runs = conn.execute(
+            select(runs_table).where(runs_table.c.user_id == user, runs_table.c.stage == "coverage")
+        ).all()
+        drafts = PostgresTaskRepository(conn, user).list_tasks(kind="generate_cv_draft")
+    assert len(coverage_runs) == 1  # charged once, not twice
+    assert len(drafts) == 1  # and the chain still carried on to the draft
+
+
+def test_a_pressed_check_always_runs_even_when_the_job_was_checked(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The skip is for chained steps only. A person asking for a fresh check --
+    after confirming new facts, say -- gets one."""
+    store_key(engine, user, master_key, FAKE_KEY)
+    job_id = add_job(engine, user, requirements=["5+ years of Python"])
+
+    install_fake_client(monkeypatch, payload=COVERAGE_PAYLOAD)
+    enqueue(engine, user, job_id)
+    run_worker(engine, user, master_key, log_stream)
+    enqueue(engine, user, job_id)
+    run_worker(engine, user, master_key, log_stream)
+
+    with engine.begin() as conn:
+        coverage_runs = conn.execute(
+            select(runs_table).where(runs_table.c.user_id == user, runs_table.c.stage == "coverage")
+        ).all()
+    assert len(coverage_runs) == 2

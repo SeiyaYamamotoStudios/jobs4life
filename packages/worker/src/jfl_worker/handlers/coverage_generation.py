@@ -148,6 +148,26 @@ def _permanent(code: CoverageErrorCode) -> PermanentTaskError:
     return PermanentTaskError(f"coverage generation failed permanently: {code}")
 
 
+def _every_requirement_checked(ctx: TaskContext, job_id: uuid.UUID) -> bool:
+    """True when each of the job's *current* requirements has a coverage row.
+
+    Current, not merely any: re-reading an ad replaces its requirements, and
+    coverage recorded against the old ones says nothing about the new. A job
+    with no requirements is not "checked" -- the step then runs and fails with
+    its own plain reason.
+    """
+    with ctx.engine.connect() as conn:
+        repo = PostgresJobRepository(conn)
+        found = repo.get_job(ctx.user_id, job_id)
+        if found is None:
+            return False
+        _job, requirements = found
+        if not requirements:
+            return False
+        covered = {row.requirement_id for row in repo.latest_coverage(ctx.user_id, job_id)}
+    return {r.id for r in requirements} <= covered
+
+
 def _generate_coverage(
     ctx: TaskContext, *, master_key: MasterKey | None, model: str
 ) -> Mapping[str, object]:
@@ -164,6 +184,16 @@ def _generate_coverage(
         # queues it at most once either way.
         queue_next(ctx)
         return {"job_id": str(job_id), "skipped": "coverage already recorded for this task"}
+
+    if "after" in ctx.task.payload and _every_requirement_checked(ctx, job_id):
+        # A chained step, not a button press: by the time this runs the job has
+        # often been checked already -- most often by the scorer, which runs
+        # coverage itself when it finds none, and which adding an application
+        # now queues automatically. Running it again would charge the user twice
+        # for the same answer. A person pressing "check again" sends no `after`
+        # key, so an explicit re-check always runs.
+        queue_next(ctx)
+        return {"job_id": str(job_id), "skipped": "every requirement already checked"}
 
     if master_key is None:
         raise _permanent("credential_unreadable")
