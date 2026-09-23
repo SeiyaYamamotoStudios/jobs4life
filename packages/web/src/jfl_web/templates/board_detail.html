@@ -2,13 +2,13 @@
 {% block title %}{{ board.label or board.board_url }} — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>{{ board.label or board.board_url }}</h1>
+  <h1{% if not board.label %} class="url-text"{% endif %}>{{ board.label or board.board_url }}</h1>
   <a href="/boards">Back to boards</a>
 </div>
 
 <dl class="facts">
   <dt>Platform</dt><dd>{{ platform_label }}</dd>
-  <dt>URL</dt><dd><a href="{{ board.board_url }}">{{ board.board_url }}</a></dd>
+  <dt>URL</dt><dd><a href="{{ board.board_url }}" class="url-text">{{ board.board_url }}</a></dd>
   <dt>Added</dt>
   <dd title="{{ board.created_at.isoformat() }}">{{ board.created_at | humanize_dt }}</dd>
   <dt>Open jobs</dt>

@@ -73,6 +73,7 @@
   {% include "_title_suggestions.html" %}
   {% if checked_status == "saved" %}<p class="ok" role="status">Filter saved.</p>{% endif %}
   {% if checked_status == "titles_added" %}<p class="ok" role="status">Titles added to your filter.</p>{% endif %}
+  {% if checked_status == "titles_requested" %}<p class="ok" role="status">Looking for suggested titles.</p>{% endif %}
 </section>
 
 <section>
@@ -125,18 +126,18 @@
         {% set job = match.job %}
         {% set board = board_by_id[job.board_id] %}
         <tr>
-          <td class="col-job" data-label="Job">
+          <td class="col-job col-primary" data-label="Job">
             {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
           </td>
           <td class="col-board" data-label="Board">
-            <a href="/boards/{{ board.id }}">{{ board.label or board.board_url }}</a>
+            <a href="/boards/{{ board.id }}"{% if not board.label %} class="url-text"{% endif %}>{{ board.label or board.board_url }}</a>
             <div class="note">{{ platform_label(board.platform) }}</div>
           </td>
           <td class="col-workplace" data-label="Workplace">
             {% include "_workplace_badge.html" %}
           </td>
           <td class="col-locations" data-label="Locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
-          <td class="col-updated" data-label="Seen since" title="{{ job.first_seen_at.isoformat() }}">{{ job.first_seen_at | humanize_dt }}</td>
+          <td class="col-updated" data-label="Seen since">{{ job.first_seen_at | time_compact }}</td>
           <td class="col-track">{% include "_track_button.html" %}</td>
         </tr>
         {% endfor %}

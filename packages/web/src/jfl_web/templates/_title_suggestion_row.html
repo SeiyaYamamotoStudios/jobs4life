@@ -4,9 +4,13 @@
    build these four values the same way (`jfl_web.titlesuggestions`), so this
    partial never has to guess which caller it is in.
 
-   `row` is None when no suggestion call was ever made for this phrase -- no
-   API key stored at save time. Suggestions are never added to the filter
-   silently: the only path onto it is the ticked checkboxes below. #}
+   `row` is always a live row here: phrases with none are the panel's single
+   collapsed line, not a card each. Suggestions are never added to the filter
+   silently: the only path onto it is the ticked checkboxes below.
+
+   One card, one action row: Dismiss sits in the same row as "Add ticked
+   titles" (a `formaction` on the same form), never in a box of its own --
+   docs/ui-sections.md. #}
 <div class="title-suggestion"
      {% if row %}id="suggestion-{{ row.id }}"{% endif %}
      {% if row and row.status == "pending" %}
@@ -15,22 +19,16 @@
      hx-swap="outerHTML"
      {% endif %}>
 
-  {% if row is none %}
-  <p class="note">
-    Add your API key in <a href="/settings">Settings</a> to get suggested titles
-    adjacent to &ldquo;{{ phrase }}&rdquo;.
-  </p>
-
-  {% elif row.status == "pending" %}
+  {% if row.status == "pending" %}
   <p class="note" role="status">Looking for titles adjacent to &ldquo;{{ phrase }}&rdquo;&hellip;</p>
 
   {% elif row.status == "failed" %}
   <p class="error" role="alert">{{ failure.message }}
     {% if failure.fix_url %}<a href="{{ failure.fix_url }}">{{ failure.fix_label }}</a>.{% endif %}
   </p>
-  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss">
+  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss" class="title-suggestion-actions">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit" class="secondary">Dismiss</button>
+    <button type="submit" class="link">Dismiss</button>
   </form>
 
   {% elif row.status == "done" %}
@@ -49,17 +47,20 @@
       </li>
       {% endfor %}
     </ul>
-    <button type="submit" class="secondary">Add ticked titles</button>
+    <div class="title-suggestion-actions">
+      <button type="submit" class="secondary">Add ticked titles</button>
+      <button type="submit" class="link" formaction="/jobs/filter/titles/{{ row.id }}/dismiss">Dismiss</button>
+    </div>
   </form>
   {% else %}
-  <p class="note">
-    No adjacent titles suggested for &ldquo;{{ phrase }}&rdquo; that aren't in your
-    filter already.
-  </p>
-  {% endif %}
-  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss">
+  <form method="post" action="/jobs/filter/titles/{{ row.id }}/dismiss" class="title-suggestion-actions">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit" class="secondary">Dismiss</button>
+    <p class="note">
+      No adjacent titles suggested for &ldquo;{{ phrase }}&rdquo; that aren't in your
+      filter already.
+    </p>
+    <button type="submit" class="link">Dismiss</button>
   </form>
+  {% endif %}
   {% endif %}
 </div>

@@ -241,6 +241,82 @@ def test_no_api_key_means_nothing_is_enqueued(
     assert "Add your API key" in page
 
 
+def test_phrases_saved_before_the_key_collapse_to_one_line_and_one_action(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
+) -> None:
+    """The owner's screen: phrases saved with no key, then a key stored. The
+    panel used to show a box per phrase saying to add a key that was already
+    there. Now: one line, one action, and the action asks for each once."""
+    user_id = sign_in(client, google, subs, engine)
+    phrases = ["engineering manager", "tech lead", "engineering lead"]
+    set_filter(engine, user_id, ", ".join(phrases))
+    store_key(engine, user_id, master_key)
+
+    page = client.get("/jobs").text
+    assert "Add your API key" not in page
+    assert "3 title phrases" in page and "have no suggested titles yet" in page
+    assert page.count('action="/jobs/filter/titles/suggest"') == 1
+
+    response = client.post(
+        "/jobs/filter/titles/suggest", data={"csrf_token": csrf(client)}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert len(enqueued_suggest_tasks(engine, user_id)) == 3
+
+    # Asking again enqueues nothing new: every phrase now has a row.
+    client.post(
+        "/jobs/filter/titles/suggest", data={"csrf_token": csrf(client)}, follow_redirects=False
+    )
+    assert len(enqueued_suggest_tasks(engine, user_id)) == 3
+    assert "have no suggested titles yet" not in client.get("/jobs").text
+
+
+def test_suggest_all_without_a_key_enqueues_nothing_and_says_so_once(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    user_id = sign_in(client, google, subs, engine)
+    set_filter(engine, user_id, "engineering manager, tech lead, engineering lead")
+
+    assert client.get("/jobs").text.count("Add your API key") == 1
+    response = client.post(
+        "/jobs/filter/titles/suggest", data={"csrf_token": csrf(client)}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert enqueued_suggest_tasks(engine, user_id) == []
+
+
+def test_suggest_all_needs_csrf(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
+) -> None:
+    user_id = sign_in(client, google, subs, engine)
+    set_filter(engine, user_id, "engineering manager")
+    store_key(engine, user_id, master_key)
+    response = client.post("/jobs/filter/titles/suggest", data={}, follow_redirects=False)
+    assert response.status_code == 403
+    assert enqueued_suggest_tasks(engine, user_id) == []
+
+
+def test_a_suggestion_already_covered_by_the_filter_is_not_offered(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    user_id = sign_in(client, google, subs, engine)
+    set_filter(engine, user_id, "engineering manager, technical lead")
+    seed_done_suggestion(
+        engine,
+        user_id,
+        "engineering manager",
+        [
+            SuggestedTitle(
+                title="Technical Lead Manager", gloss="Already in filter; equivalent seniority"
+            ),
+            SuggestedTitle(title="Lead Engineer", gloss=""),
+        ],
+    )
+    page = client.get("/jobs").text
+    assert "Technical Lead Manager" not in page
+    assert 'value="Lead Engineer"' in page
+
+
 # --------------------------------------------------------------------------
 # Accepting suggestions
 # --------------------------------------------------------------------------

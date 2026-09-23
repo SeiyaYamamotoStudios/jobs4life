@@ -15,10 +15,10 @@
 <div class="note workplace-evidence">The posting says Remote-Friendly</div>
 {% endif %}
 {% if match.workplace_exception and match.reason != "exception" %}
-<div class="note inclusion">hybrid, per your {{ board.label or board.board_url }} exception: {{ match.workplace_exception.note }}</div>
+<div class="note inclusion">hybrid, per your {% if board.label %}{{ board.label }}{% else %}<span class="url-text">{{ board.board_url }}</span>{% endif %} exception: {{ match.workplace_exception.note }}</div>
 {% endif %}
 {% if match.reason == "exception" %}
-<div class="note inclusion">included by your {{ board.label or board.board_url }} exception{% if match.exception.note %}: {{ match.exception.note }}{% endif %}</div>
+<div class="note inclusion">included by your {% if board.label %}{{ board.label }}{% else %}<span class="url-text">{{ board.board_url }}</span>{% endif %} exception{% if match.exception.note %}: {{ match.exception.note }}{% endif %}</div>
 {% elif match.reason == "unstated" %}
 <div class="note inclusion">included because this board is set to include jobs whose workplace isn't stated</div>
 {% endif %}

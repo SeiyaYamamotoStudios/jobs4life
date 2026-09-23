@@ -70,7 +70,7 @@ def _ctx(api_key: str | None = "test-key") -> RequestContext:
 _TITLES_PAYLOAD = {
     "titles": [
         {"title": "Engineering Manager", "gloss": ""},
-        {"title": "Senior Engineering Manager", "gloss": "a step up"},
+        {"title": "Head of Engineering", "gloss": "a step up"},
     ]
 }
 
@@ -242,7 +242,7 @@ def test_successful_call_parses_result_and_records_an_ok_run(
 
     result = suggest_titles(ctx, runs, phrase="engineering manager", now=NOW)
 
-    assert [s.title for s in result] == ["Senior Engineering Manager"]  # "Engineering
+    assert [s.title for s in result] == ["Head of Engineering"]  # "Engineering
     # Manager" itself is dropped: it matches the phrase's own key.
 
     assert len(runs.recorded) == 1
@@ -429,6 +429,39 @@ class TestSanitisation:
             now=NOW,
         )
         assert result == []
+
+    def test_a_suggestion_the_filter_already_matches_is_dropped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shape the owner saw offered: "Technical Lead Manager", glossed
+        by the model itself as "already in filter", with "technical lead"
+        saved. The filter matches a title when all of an alternative's words
+        are in it, so every Technical Lead Manager posting already matches
+        "technical lead" -- keys compared only for equality let it through.
+        Likewise "Senior Engineering Manager" under "engineering manager".
+        A title that merely shares words ("Lead Engineer") is still offered.
+        """
+        payload = {
+            "titles": [
+                {
+                    "title": "Technical Lead Manager",
+                    "gloss": "Already in filter; equivalent seniority",
+                },
+                {"title": "Senior Engineering Manager", "gloss": "a step up"},
+                {"title": "Lead Engineer", "gloss": ""},
+            ]
+        }
+        client = _FakeAnthropicClient(response=_response(payload))
+        _patch_client(monkeypatch, client)
+
+        result = suggest_titles(
+            _ctx(),
+            _FakeRunRepo(),
+            phrase="engineering manager",
+            other_includes=["tech lead", "technical lead"],
+            now=NOW,
+        )
+        assert [s.title for s in result] == ["Lead Engineer"]
 
     def test_duplicate_suggestions_within_one_response_are_deduped(
         self, monkeypatch: pytest.MonkeyPatch

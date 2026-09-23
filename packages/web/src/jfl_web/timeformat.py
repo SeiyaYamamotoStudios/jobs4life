@@ -16,6 +16,8 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
+from markupsafe import Markup
+
 LONDON = ZoneInfo("Europe/London")
 
 _MINUTE = 60
@@ -73,3 +75,52 @@ def humanize(value: dt.datetime, *, now: dt.datetime | None = None) -> str:
     event or record timestamp is shown.
     """
     return f"{absolute(value)}, {relative(value, now=now)}"
+
+
+# The compact form's short units. Only minutes, hours, months and years get
+# abbreviated -- "days" is already short, and "yesterday" reads better than
+# any abbreviation of it.
+_COMPACT_UNITS = {
+    "minute": "min",
+    "minutes": "min",
+    "hour": "hr",
+    "hours": "hr",
+    "month": "mo",
+    "months": "mo",
+    "year": "yr",
+    "years": "yr",
+}
+
+
+def compact_relative(value: dt.datetime, *, now: dt.datetime | None = None) -> str:
+    """ "13 min ago" / "3 hr ago" / "yesterday" / "8 days ago" / "2 mo ago".
+
+    The same thresholds as `relative`, with the long units shortened. For a
+    table cell, where the full "Wed 23 Sep 2026, 13 minutes ago" repeated in
+    two columns was most of /boards' width. It is never shown alone: the
+    `time_compact` filter puts the full `humanize` form in the element's
+    `title`, so the absolute date is one hover away, and the instant itself in
+    `datetime`.
+    """
+    words = relative(value, now=now).split(" ")
+    return " ".join(_COMPACT_UNITS.get(word, word) for word in words)
+
+
+def absolute_with_time(value: dt.datetime) -> str:
+    """ "Wed 23 Sep 2026, 13:04" in Europe/London."""
+    local = value.astimezone(LONDON)
+    return f"{absolute(value)}, {local:%H:%M}"
+
+
+def time_compact(value: dt.datetime, *, now: dt.datetime | None = None) -> Markup:
+    """`<time datetime="…" title="Wed 23 Sep 2026, 13:04 · 13 minutes ago">13 min ago</time>`.
+
+    The compact cell form of A6's pairing: the relative half is what the cell
+    shows, the absolute half is in the `title` (with the minute, which the
+    visible form never had room for), and the machine-readable instant is in
+    `datetime`. Neither half is dropped -- one moved out of the column's way.
+    """
+    title = f"{absolute_with_time(value)} · {relative(value, now=now)}"
+    return Markup('<time datetime="{}" title="{}">{}</time>').format(
+        value.isoformat(), title, compact_relative(value, now=now)
+    )

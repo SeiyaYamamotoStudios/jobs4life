@@ -13,6 +13,7 @@ suggestion call is a side effect of saving the filter, not its own screen.
 Screens:
 
   GET  /jobs/filter/titles/{id}          -- one row, for htmx to poll while pending
+  POST /jobs/filter/titles/suggest       -- ask for every phrase that has never had any
   POST /jobs/filter/titles/{id}/accept   -- add ticked titles to title_includes
   POST /jobs/filter/titles/{id}/dismiss  -- hide the row
 """
@@ -24,9 +25,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 
-from jfl_web.deps import CsrfDep, JobFilterRepoDep, SessionDep, TitleSuggestionRepoDep
+from jfl_web.deps import (
+    CredentialRepoDep,
+    CsrfDep,
+    JobFilterRepoDep,
+    SessionDep,
+    TaskRepoDep,
+    TitleSuggestionRepoDep,
+)
 from jfl_web.jobfilter import MAX_FILTER_TEXT, FormTooLongError, checked_text
+from jfl_web.routes.jobs import enqueue_title_suggestions
 from jfl_web.templating import render
 from jfl_web.titlesuggestions import split_phrases, suggestion_row_view
 
@@ -42,6 +52,27 @@ def _error(request: Request, session: SessionDep, message: str, status_code: int
         {"session": session, "user": session.user, "message": message},
         status_code=status_code,
     )
+
+
+@router.post("/jobs/filter/titles/suggest")
+def suggest_missing_titles(
+    session: SessionDep,
+    filters: JobFilterRepoDep,
+    suggestions: TitleSuggestionRepoDep,
+    credentials: CredentialRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """The panel's one "Suggest titles for all" action: one call per saved
+    include phrase that has never had a suggestion row -- typically phrases
+    saved before the API key was. A dismissed phrase is not asked again.
+    Nothing is enqueued without a stored key; the panel then says so once.
+    """
+    if credentials.summary(ANTHROPIC_API_KEY) is None:
+        return RedirectResponse("/jobs", status_code=303)
+    saved = filters.get_filter()
+    enqueue_title_suggestions(split_phrases(saved.title_includes), suggestions, tasks)
+    return RedirectResponse("/jobs?status=titles_requested", status_code=303)
 
 
 @router.get("/jobs/filter/titles/{suggestion_id}")

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from jfl_web.timeformat import absolute, humanize, relative
+from jfl_web.timeformat import absolute, compact_relative, humanize, relative, time_compact
 
 NOW = dt.datetime(2026, 9, 8, 12, 0, 0, tzinfo=dt.UTC)  # a Tuesday
 
@@ -68,3 +68,27 @@ def test_relative_defaults_to_the_real_now_when_not_given() -> None:
     """
     ancient = dt.datetime(2000, 1, 1, tzinfo=dt.UTC)
     assert "ago" in relative(ancient)
+
+
+def test_compact_relative_shortens_only_the_long_units() -> None:
+    assert compact_relative(NOW - dt.timedelta(minutes=13), now=NOW) == "13 min ago"
+    assert compact_relative(NOW - dt.timedelta(minutes=1), now=NOW) == "1 min ago"
+    assert compact_relative(NOW - dt.timedelta(hours=3), now=NOW) == "3 hr ago"
+    assert compact_relative(NOW - dt.timedelta(hours=30), now=NOW) == "yesterday"
+    assert compact_relative(NOW - dt.timedelta(days=8), now=NOW) == "8 days ago"
+    assert compact_relative(NOW - dt.timedelta(days=60), now=NOW) == "2 mo ago"
+    assert compact_relative(NOW - dt.timedelta(days=800), now=NOW) == "2 yr ago"
+    assert compact_relative(NOW + dt.timedelta(minutes=5), now=NOW) == "in 5 min"
+    assert compact_relative(NOW - dt.timedelta(seconds=10), now=NOW) == "just now"
+
+
+def test_time_compact_keeps_both_halves_one_in_the_title() -> None:
+    """The cell shows the short relative form; the absolute date (with the
+    minute) and the long relative form move into `title`, and the instant into
+    `datetime` -- A6's pairing moved out of the column's way, not dropped."""
+    value = dt.datetime(2026, 9, 8, 11, 47, tzinfo=dt.UTC)
+    html = str(time_compact(value, now=NOW))
+    assert html == (
+        '<time datetime="2026-09-08T11:47:00+00:00" '
+        'title="Tue 8 Sep 2026, 12:47 · 13 minutes ago">13 min ago</time>'
+    )

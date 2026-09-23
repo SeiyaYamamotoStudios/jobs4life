@@ -62,7 +62,7 @@ from jfl_web.jobfilter import (
     parse_workplaces,
 )
 from jfl_web.templating import render
-from jfl_web.titlesuggestions import split_phrases, suggestion_rows
+from jfl_web.titlesuggestions import split_phrases, suggestion_panel
 
 router = APIRouter()
 
@@ -92,6 +92,7 @@ def list_jobs(
     filters: JobFilterRepoDep,
     suggestions: TitleSuggestionRepoDep,
     applications: ApplicationRepoDep,
+    credentials: CredentialRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -130,12 +131,15 @@ def list_jobs(
             "platform_label": platform_label,
             "checked_status": request.query_params.get("status"),
             "max_filter_text": MAX_FILTER_TEXT,
-            # C7a: one row per current include phrase, for the panel below the
-            # filter form. See jfl_web.titlesuggestions.suggestion_rows.
-            "title_suggestion_rows": suggestion_rows(
+            # C7a: the panel below the filter form. "No key" is read from the
+            # credential store, never inferred from a phrase having no row --
+            # phrases saved before the key have none. See
+            # jfl_web.titlesuggestions.suggestion_panel.
+            "title_suggestions": suggestion_panel(
                 split_phrases(saved.title_includes),
                 suggestions.get_by_phrase_key,
                 saved.title_includes,
+                has_key=credentials.summary(ANTHROPIC_API_KEY) is not None,
             ),
             # Slice C7: "Track as application" renders as "Tracked" for a job
             # that already has a live application from it.
@@ -176,16 +180,30 @@ def save_filter(
 
     # C7a: a cheap suggestion call per NEW include phrase, through the queue, on
     # the user's own key, only if one is stored -- otherwise nothing is
-    # enqueued and the panel says to add one. `create_pending` is a no-op for a
-    # phrase already seen (by `phrase_key`), so re-saving the same phrase never
-    # enqueues a second call, and removing a phrase leaves its cached row alone.
+    # enqueued and the panel says to add one.
     if credentials.summary(ANTHROPIC_API_KEY) is not None:
-        for phrase in split_phrases(checked_includes):
-            row = suggestions.create_pending(phrase=phrase, phrase_key=normalise(phrase))
-            if row is not None:
-                tasks.enqueue(kind=SUGGEST_TITLES_KIND, payload={"suggestion_id": str(row.id)})
+        enqueue_title_suggestions(split_phrases(checked_includes), suggestions, tasks)
 
     return RedirectResponse("/jobs?status=saved", status_code=303)
+
+
+def enqueue_title_suggestions(
+    phrases: list[str], suggestions: TitleSuggestionRepoDep, tasks: TaskRepoDep
+) -> int:
+    """Create a pending row and enqueue one call for each phrase never seen
+    before; returns how many were enqueued. The caller has checked a key is
+    stored. `create_pending` is a no-op for a phrase already seen (by
+    `phrase_key`) -- including a dismissed one -- so re-saving the same phrase
+    never enqueues a second call, and removing a phrase leaves its cached row
+    alone.
+    """
+    enqueued = 0
+    for phrase in phrases:
+        row = suggestions.create_pending(phrase=phrase, phrase_key=normalise(phrase))
+        if row is not None:
+            tasks.enqueue(kind=SUGGEST_TITLES_KIND, payload={"suggestion_id": str(row.id)})
+            enqueued += 1
+    return enqueued
 
 
 @router.post("/boards/{board_id}/unstated")

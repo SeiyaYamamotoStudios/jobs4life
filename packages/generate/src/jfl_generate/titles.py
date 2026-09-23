@@ -27,7 +27,7 @@ from jfl_core.context import RequestContext
 from jfl_core.models import RunRecord, SuggestedTitle
 from jfl_core.repositories import RunRepository
 from jfl_gate.pricing import compute_cost_usd
-from jfl_intake.filtering import parse_terms
+from jfl_intake.filtering import already_covered, parse_terms
 
 from jfl_generate.errors import GenerateError
 from jfl_generate.prompts import TITLE_SUGGESTIONS_OUTPUT_SCHEMA, build_title_suggestion_prompt
@@ -226,16 +226,17 @@ def suggest_titles(
     return _sanitise(parsed.titles, phrase, other_includes)
 
 
-def _excluded_keys(phrase: str, other_includes: Sequence[str]) -> set[frozenset[str]]:
-    """The word-set keys (`jfl_intake.filtering.parse_terms`) that already match
-    something in the filter -- the phrase just typed, and every other include
-    phrase already saved. A suggestion matching one of these would not widen
-    anything, so it is dropped rather than offered as if it were new.
+def _excluded_keys(phrase: str, other_includes: Sequence[str]) -> tuple[frozenset[str], ...]:
+    """The word-set keys (`jfl_intake.filtering.parse_terms`) already in the
+    filter -- the phrase just typed, and every other include phrase already
+    saved. A suggestion one of these already covers (`already_covered`: its
+    words are a superset of an existing key's) would not widen anything, so it
+    is dropped rather than offered as if it were new.
     """
-    keys: set[frozenset[str]] = set()
+    keys: list[frozenset[str]] = []
     for text in (phrase, *other_includes):
-        keys.update(parse_terms(text))
-    return keys
+        keys.extend(k for k in parse_terms(text) if k not in keys)
+    return tuple(keys)
 
 
 def _sanitise(
@@ -243,10 +244,11 @@ def _sanitise(
 ) -> list[SuggestedTitle]:
     """Trim, drop empties and anything implausibly long, replace commas (a
     comma would silently split one suggested title into two filter
-    alternatives -- see `jfl_intake.filtering.parse_terms`), and dedupe by the
-    same word-set key the filter itself matches on, against the phrase and
-    every existing include phrase and against earlier items in this same
-    response.
+    alternatives -- see `jfl_intake.filtering.parse_terms`), and drop anything
+    the filter already matches -- by the filter's own rule, all of an
+    alternative's words present, so "Senior Engineering Manager" is dropped
+    when "engineering manager" is there -- and exact repeats of earlier items
+    in this same response.
     """
     excluded = _excluded_keys(phrase, other_includes)
     seen: set[frozenset[str]] = set()
@@ -259,7 +261,7 @@ def _sanitise(
         if not keys:
             continue
         key = keys[0]
-        if key in excluded or key in seen:
+        if already_covered(key, excluded) or key in seen:
             continue
         seen.add(key)
         gloss = " ".join(item.gloss.replace(",", " ").split())

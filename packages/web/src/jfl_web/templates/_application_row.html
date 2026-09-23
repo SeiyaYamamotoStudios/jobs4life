@@ -4,7 +4,7 @@
    from what a full page load would have shown.
    Needs in context: session, application, statuses. #}
 <tr id="application-{{ application.id }}">
-  <td class="col-title" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+  <td class="col-title col-primary" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
   <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
   <td class="col-status" data-label="Status">
     <form class="status-form">
@@ -19,7 +19,5 @@
       </select>
     </form>
   </td>
-  <td class="col-updated" data-label="Updated" title="{{ application.updated_at.isoformat() }}">
-    {{ application.updated_at | humanize_dt }}
-  </td>
+  <td class="col-updated" data-label="Updated">{{ application.updated_at | time_compact }}</td>
 </tr>
