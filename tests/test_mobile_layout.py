@@ -103,9 +103,11 @@ def test_every_table_sits_in_a_scroll_wrapper(path: pathlib.Path) -> None:
 def test_stacked_cells_carry_their_column_label(table: str, files: tuple[str, ...]) -> None:
     headers = set()
     for name in files:
+        # A header may carry attributes (`aria-sort` on a sortable one) and
+        # Jinja inside it (the sort arrow); neither is part of its label.
         headers |= {
-            re.sub(r"<[^>]+>", "", text).strip()
-            for text in re.findall(r'<th scope="col">(.*?)</th>', _read(name))
+            re.sub(r"<[^>]+>|\{\{.*?\}\}", "", text).strip()
+            for text in re.findall(r'<th scope="col"[^>]*>(.*?)</th>', _read(name))
         }
     headers.discard("")
     assert headers, f"{table}: no column headers found"

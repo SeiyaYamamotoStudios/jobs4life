@@ -23,10 +23,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
+from urllib.parse import urlencode
 
 from jfl_core.fit import want_it_basis
-from jfl_core.models import Application, ApplicationScore, FitVerdict, ScoreErrorCode
+from jfl_core.models import (
+    Application,
+    ApplicationScore,
+    ApplicationStatus,
+    FitVerdict,
+    ScoreErrorCode,
+)
 
 UNMEASURED = (
     "These two scores are unmeasured. There is no golden set for fit, so unlike "
@@ -206,14 +213,118 @@ def score_failure(code: ScoreErrorCode | None) -> ScoreFailure:
 # and will not get and one they would dislike and would walk into must never
 # land on the same rung of one ranking.
 
+# The pipeline's own order, so sorting by status reads interested -> offer,
+# then the two outcomes.
+_STATUS_ORDER: dict[str, int] = {s: i for i, s in enumerate(get_args(ApplicationStatus))}
+
 RowScoreState = Literal["unscored", "scoring", "retrying", "failed", "done"]
 
-# The sort orders the list offers. Each names exactly one axis, or none.
-SORTS: dict[str, str] = {
-    "updated": "Recently updated",
+# The columns the list can be sorted by -- every column header except the
+# actions -- and the direction a first click on each one gives. Each key names
+# exactly one column; for the two score columns that means exactly one axis.
+# There is no "best match" key: ranking by a blend of the two scores would be
+# the composite this product refuses to compute, hidden inside a sort.
+SortKey = Literal["title", "employer", "status", "could_get", "want_it", "updated"]
+SortDirection = Literal["asc", "desc"]
+
+SORT_COLUMNS: dict[SortKey, str] = {
+    "title": "Title",
+    "employer": "Employer",
+    "status": "Status",
     "could_get": COULD_GET_LABEL,
     "want_it": WANT_IT_LABEL,
+    "updated": "Updated",
 }
+
+# Words read A to Z and the pipeline reads in its own order on a first click;
+# scores and recency lead with the highest and the newest.
+DEFAULT_DIRECTION: dict[SortKey, SortDirection] = {
+    "title": "asc",
+    "employer": "asc",
+    "status": "asc",
+    "could_get": "desc",
+    "want_it": "desc",
+    "updated": "desc",
+}
+
+DEFAULT_SORT: SortKey = "updated"
+
+
+def parse_sort(raw_key: str | None, raw_direction: str | None) -> tuple[SortKey, SortDirection]:
+    """The sort a query string asks for, from a closed set.
+
+    An unknown key falls back to the default sort *and* its default direction
+    -- a direction means nothing without the column it was chosen for. An
+    unknown direction falls back to the chosen column's default.
+    """
+    key: SortKey = DEFAULT_SORT
+    for candidate in SORT_COLUMNS:
+        if raw_key == candidate:
+            key = candidate
+            break
+    else:
+        return DEFAULT_SORT, DEFAULT_DIRECTION[DEFAULT_SORT]
+    direction: SortDirection = DEFAULT_DIRECTION[key]
+    if raw_direction == "asc":
+        direction = "asc"
+    elif raw_direction == "desc":
+        direction = "desc"
+    return key, direction
+
+
+def sort_query(key: SortKey, direction: SortDirection) -> dict[str, str]:
+    """The query parameters that name this sort, and nothing redundant: the
+    default sort is no parameters at all, a column's default direction is no
+    `dir`. So the plain `/applications` URL is the default order, and a
+    first-click link reads `?sort=could_get`."""
+    if key == DEFAULT_SORT and direction == DEFAULT_DIRECTION[key]:
+        return {}
+    params: dict[str, str] = {"sort": key}
+    if direction != DEFAULT_DIRECTION[key]:
+        params["dir"] = direction
+    return params
+
+
+@dataclass(frozen=True, slots=True)
+class SortHeader:
+    """One sortable column header: where its link goes, and what it says about
+    the current order. `aria_sort` is None on every header but the active one
+    -- ARIA puts `aria-sort` on one header at a time."""
+
+    key: SortKey
+    label: str
+    href: str
+    active: bool
+    direction: SortDirection | None
+    aria_sort: Literal["ascending", "descending"] | None
+    next_direction: SortDirection
+
+
+def sort_headers(
+    key: SortKey, direction: SortDirection, *, status: str | None
+) -> dict[SortKey, SortHeader]:
+    """A link per column. Clicking the active column reverses it; clicking any
+    other starts that column at its default direction. The status filter rides
+    along, so sorting never drops it."""
+    headers: dict[SortKey, SortHeader] = {}
+    for column, label in SORT_COLUMNS.items():
+        active = column == key
+        if active:
+            next_direction: SortDirection = "asc" if direction == "desc" else "desc"
+        else:
+            next_direction = DEFAULT_DIRECTION[column]
+        params: dict[str, str] = {"status": status} if status else {}
+        params.update(sort_query(column, next_direction))
+        headers[column] = SortHeader(
+            key=column,
+            label=label,
+            href="/applications" + ("?" + urlencode(params) if params else ""),
+            active=active,
+            direction=direction if active else None,
+            aria_sort=("ascending" if direction == "asc" else "descending") if active else None,
+            next_direction=next_direction,
+        )
+    return headers
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,22 +364,46 @@ def row_score(latest: ApplicationScore | None, latest_done: ApplicationScore | N
 
 
 def sort_applications(
-    applications: Sequence[Application], rows: Mapping[uuid.UUID, RowScore], sort: str
+    applications: Sequence[Application],
+    rows: Mapping[uuid.UUID, RowScore],
+    key: str,
+    direction: SortDirection | None = None,
 ) -> list[Application]:
-    """Order the list by **one** axis, highest first, or leave it as the
-    repository gave it (most recently updated first).
+    """Order the list by **one** column.
 
-    Rows with no number on the chosen axis go last, in their existing order --
-    "not scored" is not a low score, and ranking it as one would be the list
-    asserting something nothing measured. The key is one integer from one
-    axis; the other axis is never consulted, not even as a tie-break.
+    Ties -- and every row with nothing to sort on -- keep a neutral order:
+    most recently updated first, in either direction. That is the only
+    tie-break. For the two score columns it means the other axis is never
+    consulted, not even to separate two equal numbers.
+
+    Rows with nothing in the chosen column go last **in both directions**: an
+    unscored application, or one with no employer recorded. "Not scored" is not
+    a low score, and ranking it as one would be the list asserting something
+    nothing measured. A key outside the closed set sorts as the default.
     """
-    if sort not in ("could_get", "want_it"):
-        return list(applications)
+    column: SortKey = parse_sort(key, None)[0]
+    if direction is None:
+        direction = DEFAULT_DIRECTION[column]
 
-    def key(application: Application) -> tuple[int, int]:
+    # The neutral order first; Python's sort is stable, including with
+    # `reverse=True`, so every later sort leaves equal rows in this order.
+    base = sorted(applications, key=lambda a: a.updated_at, reverse=True)
+    if column == "updated":
+        return base if direction == "desc" else sorted(base, key=lambda a: a.updated_at)
+
+    def value(application: Application) -> str | int | None:
+        if column == "title":
+            return application.title.casefold()
+        if column == "employer":
+            employer = (application.employer or "").strip()
+            return employer.casefold() or None
+        if column == "status":
+            return _STATUS_ORDER.get(application.status, len(_STATUS_ORDER))
         row = rows.get(application.id)
-        value = None if row is None else getattr(row, sort)
-        return (0, -value) if value is not None else (1, 0)
+        return None if row is None else getattr(row, column)
 
-    return sorted(applications, key=key)
+    valued = [(value(a), a) for a in base]
+    present = [(v, a) for v, a in valued if v is not None]
+    missing = [a for v, a in valued if v is None]
+    present.sort(key=lambda pair: pair[0], reverse=direction == "desc")
+    return [a for _, a in present] + missing

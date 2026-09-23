@@ -13,7 +13,8 @@ Screens:
 
   GET  /applications                 -- the list, most recently updated first,
                                          optionally filtered by `?status=` and
-                                         sorted by ONE axis via `?sort=`; both
+                                         sorted by one column via `?sort=` and
+                                         `?dir=` (the column headers); both
                                          scores per row, never combined, and an
                                          "Archive..." confirm per row
   GET  /applications/new             -- the paste box
@@ -46,6 +47,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Annotated, get_args
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -101,16 +103,18 @@ from jfl_web.scores import (
     NO_WANT_IT_SCORE,
     RETRYING_NOTE,
     SILENCE_NOTE,
-    SORTS,
     STANCE_WORDING,
     UNMEASURED,
     VERDICT_WORDING,
     WANT_IT_LABEL,
     WANT_IT_SUBTITLE,
     RowScore,
+    parse_sort,
     row_score,
     score_failure,
     sort_applications,
+    sort_headers,
+    sort_query,
     want_it_summary,
 )
 from jfl_web.sections import (
@@ -196,8 +200,7 @@ def list_applications(
     show_archived = request.query_params.get("archived") == "1"
     raw_status = request.query_params.get("status")
     status = raw_status if raw_status in STATUSES else None
-    raw_sort = request.query_params.get("sort") or "updated"
-    sort = raw_sort if raw_sort in SORTS else "updated"
+    sort, direction = parse_sort(request.query_params.get("sort"), request.query_params.get("dir"))
     items = applications.list_applications(
         status=None if show_archived else status, archived=show_archived
     )
@@ -205,7 +208,7 @@ def list_applications(
     # orderings on offer are by one axis or by neither -- see `jfl_web.scores`.
     row_scores = _row_scores(scores, [a.id for a in items])
     if not show_archived:
-        items = sort_applications(items, row_scores, sort)
+        items = sort_applications(items, row_scores, sort, direction)
     # Always known, even on the live list, so the "Archived (N)" link can
     # decide whether to render itself without a second round trip.
     archived_count = len(applications.list_applications(archived=True))
@@ -222,10 +225,22 @@ def list_applications(
             "archived_count": archived_count,
             "just_archived": _just_archived_title(applications, request),
             "row_scores": row_scores,
-            "sorts": SORTS,
-            "active_sort": sort,
+            # The column headers are the sort control; the status filter
+            # carries the sort, and the headers carry the filter.
+            "sort_headers": sort_headers(sort, direction, status=status),
+            "status_links": _status_links(status, sort_query(sort, direction)),
         },
     )
+
+
+def _status_links(active: str | None, sort_params: dict[str, str]) -> list[tuple[str, str, bool]]:
+    """(label, href, active) for "All" and each status, keeping the sort."""
+    links: list[tuple[str, str, bool]] = []
+    for status in (None, *STATUSES):
+        params = ({"status": status} if status else {}) | sort_params
+        href = "/applications" + ("?" + urlencode(params) if params else "")
+        links.append((status or "All", href, status == active))
+    return links
 
 
 def _row_scores(

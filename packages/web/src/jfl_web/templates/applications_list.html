@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{% if show_archived %}Archived applications{% else %}Applications{% endif %} — jobs4life{% endblock %}
 {% block content %}
+{%- macro aria_sort(h) -%}
+  {%- if h.aria_sort %} aria-sort="{{ h.aria_sort }}"{% endif -%}
+{%- endmacro -%}
+{%- macro sort_arrow(h) -%}
+  {%- if h.active -%}
+  <span class="sort-arrow" aria-hidden="true">{{ "▲" if h.direction == "asc" else "▼" }}</span>
+  {%- else -%}
+  <span class="sort-arrow sort-arrow-idle" aria-hidden="true">↕</span>
+  {%- endif -%}
+{%- endmacro %}
 {% if show_archived %}
 <div class="page-header">
   <h1>Archived applications</h1>
@@ -59,21 +69,9 @@
 </p>
 {% endif %}
 
-{% set sort_q = '' if active_sort == 'updated' else '&sort=' ~ active_sort %}
 <nav class="status-filter" aria-label="Filter applications by status">
-  <a href="/applications{{ '?sort=' ~ active_sort if active_sort != 'updated' else '' }}" class="{{ 'active' if active_status is none else '' }}">All</a>
-  {% for s in statuses %}
-  <a href="/applications?status={{ s }}{{ sort_q }}" class="{{ 'active' if s == active_status else '' }}">{{ s }}</a>
-  {% endfor %}
-</nav>
-
-{# One axis at a time, or none. There is deliberately no "best match" order:
-   ranking by a blend of the two scores would be the composite this product
-   refuses to compute, hidden inside a sort. #}
-<nav class="status-filter sort-order" aria-label="Sort applications">
-  <span class="sort-label">Sort:</span>
-  {% for key, label in sorts.items() %}
-  <a href="/applications?{{ 'status=' ~ active_status ~ '&' if active_status else '' }}sort={{ key }}" class="{{ 'active' if key == active_sort else '' }}"{% if key == active_sort %} aria-current="true"{% endif %}>{{ label }}</a>
+  {% for label, href, active in status_links %}
+  <a href="{{ href }}" class="{{ 'active' if active else '' }}"{% if active %} aria-current="true"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
 
@@ -81,7 +79,21 @@
 <div class="table-wrap">
   <table class="applications">
     <thead>
-      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col"><span class="col-score-head">Could I get this</span></th><th scope="col"><span class="col-score-head">Do I want this</span></th><th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+      {#- The headers are the sort control: each is a link that sorts by that
+          column, and clicking the sorted one again reverses it. The labels
+          are literal so they match the cells' `data-label` word for word
+          (`tests/test_mobile_layout.py`). Each score column sorts by its own
+          axis alone -- there is no blended order, and ties fall back to most
+          recently updated, never to the other axis. #}
+      <tr>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.title) }}><a href="{{ sort_headers.title.href }}">Title{{ sort_arrow(sort_headers.title) }}</a></th>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.employer) }}><a href="{{ sort_headers.employer.href }}">Employer{{ sort_arrow(sort_headers.employer) }}</a></th>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.status) }}><a href="{{ sort_headers.status.href }}">Status{{ sort_arrow(sort_headers.status) }}</a></th>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.could_get) }}><a href="{{ sort_headers.could_get.href }}"><span class="col-score-head">Could I get this</span>{{ sort_arrow(sort_headers.could_get) }}</a></th>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.want_it) }}><a href="{{ sort_headers.want_it.href }}"><span class="col-score-head">Do I want this</span>{{ sort_arrow(sort_headers.want_it) }}</a></th>
+        <th scope="col" class="sortable"{{ aria_sort(sort_headers.updated) }}><a href="{{ sort_headers.updated.href }}">Updated{{ sort_arrow(sort_headers.updated) }}</a></th>
+        <th scope="col" class="col-actions-head"><span class="visually-hidden">Actions</span></th>
+      </tr>
     </thead>
     <tbody>
       {% for application in applications %}

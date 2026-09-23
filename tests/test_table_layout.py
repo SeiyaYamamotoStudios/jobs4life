@@ -188,7 +188,21 @@ def test_actions_keep_their_labels_whole_but_may_stack() -> None:
 
 
 def test_table_pages_get_desktop_room() -> None:
-    assert re.search(r"main:has\(table\.boards\)\s*\{\s*max-width:\s*80rem", _css())
+    """/applications is included: at the 56rem reading measure its seven
+    columns overflowed into the sideways scroll and the Archive control was
+    cut off at the table's right edge, leaving only a disclosure triangle."""
+    wide = _selectors_with(_css(), r"max-width:\s*80rem")
+    assert "main:has(table.boards)" in wide
+    assert "main:has(table.applications)" in wide
+
+
+def test_the_archive_control_is_a_labelled_button_that_never_wraps() -> None:
+    nowrap = _selectors_with(_css(), r"white-space:\s*nowrap")
+    assert "table.applications .col-actions summary" in nowrap
+    assert "table.applications .col-actions button" in nowrap
+    assert "table.applications td.col-actions" not in nowrap
+    source = (TEMPLATES / "_application_row.html").read_text()
+    assert '<summary class="row-archive-toggle">Archive…</summary>' in source
 
 
 # ----------------------------------------------------------------------

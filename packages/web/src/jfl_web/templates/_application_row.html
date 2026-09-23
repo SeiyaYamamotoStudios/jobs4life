@@ -51,9 +51,11 @@
   <td class="col-updated" data-label="Updated">{{ application.updated_at | time_compact }}</td>
   <td class="col-actions">
     {# A confirm step without JavaScript: the disclosure reveals the real
-       button, so one stray tap never archives anything. #}
+       button, so one stray tap never archives anything. The summary is drawn
+       as a small labelled button rather than a bare disclosure triangle --
+       the triangle alone was all that showed when the column was clipped. #}
     <details class="confirm-remove row-archive">
-      <summary>Archive…</summary>
+      <summary class="row-archive-toggle">Archive…</summary>
       <form method="post" action="/applications/{{ application.id }}/archive">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <button type="submit" class="secondary">Yes, archive it</button>

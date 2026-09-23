@@ -183,6 +183,9 @@ main:has(.page-header) {
 .status-filter {
   display: flex;
   flex-wrap: wrap;
+  /* The bare `nav` rule is for the header's links and right-aligns them;
+     a filter reads from the left edge its table starts at. */
+  justify-content: flex-start;
   gap: 0.25rem 0.9rem;
   margin: 1rem 0 1.5rem;
   font-size: 0.9rem;
@@ -257,13 +260,44 @@ table.applications td.col-score { white-space: nowrap; }
   font-size: 0.8rem;
   white-space: normal;
 }
-/* Sort by one axis or by none -- styled like the status filter above it. */
-.sort-order { margin-top: -0.75rem; }
-.sort-order a { text-transform: none; }
-.sort-order .sort-label { color: var(--muted); }
-table.applications td.col-actions { white-space: nowrap; }
+/* The column headers are the sort control. The link fills the header's text,
+   keeps the header's quiet uppercase look, and shows the order with an arrow
+   on the active column; the idle columns carry a faint double arrow so the
+   headers read as clickable before anyone hovers. */
+table.applications th.sortable a {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+table.applications th.sortable a:hover { color: var(--accent); }
+table.applications th.sortable a:hover .col-score-head { text-decoration: underline; }
+table.applications th[aria-sort] { color: var(--ink); }
+table.applications .sort-arrow { font-size: 0.7rem; }
+table.applications .sort-arrow-idle { opacity: 0.35; }
+table.applications th.sortable a:hover .sort-arrow-idle { opacity: 0.8; }
+
+/* Archive, behind a confirm: the summary is a small labelled button, not a
+   bare disclosure triangle, and the confirm button opens inside the cell. */
 table.applications .row-archive { margin-top: 0; }
-table.applications .row-archive summary { font-size: 0.85rem; }
+/* Restore, on the archived list: centred on its row like every other cell. */
+table.applications td.col-actions form { margin: 0; }
+table.applications td.col-actions button { margin-top: 0; }
+table.applications .row-archive-toggle {
+  list-style: none;
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+table.applications .row-archive-toggle::-webkit-details-marker { display: none; }
+table.applications .row-archive-toggle:hover { border-color: var(--muted); color: var(--ink); }
+table.applications .row-archive[open] .row-archive-toggle { color: var(--muted); }
+table.applications .row-archive button.secondary { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
 
 /* What adding or tracking sets off, said before it is pressed. */
 .add-cost { margin-top: 1rem; }
@@ -348,6 +382,9 @@ ul.timeline time {
 .quick-actions {
   display: flex;
   flex-wrap: wrap;
+  /* Baseline, so a disclosure beside a button ("Stop watching" next to
+     "Check now") sits on the button's text line, not above it. */
+  align-items: baseline;
   gap: 0.6rem;
   margin: 0.75rem 0 1rem;
 }
@@ -487,6 +524,10 @@ fieldset label.inline { display: flex; }
 
 table.jobs .col-locations { color: var(--ink-soft); font-size: 0.9rem; }
 table.jobs .col-workplace { min-width: 10rem; }
+/* The board name is a link a person reads; without a floor a ~1024px window
+   set "Northwind / Imaginary / Logistics" one word per line while the
+   locations beside it had room to spare. */
+table.jobs td.col-board { min-width: 8rem; }
 /* The employer's label is shown as written: no capitalisation applied. */
 .status-badge.workplace-badge { text-transform: none; }
 .status-badge.workplace-unstated { color: var(--warn); border-color: var(--warn); text-transform: none; }
@@ -557,6 +598,15 @@ table.jobs .col-track { white-space: nowrap; }
 .status-badge.status-tracked { color: var(--good); border-color: var(--good); }
 ul.requirements li .track-form { display: inline-block; margin-left: 0.6rem; }
 ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
+/* A board's open jobs: three parts per row, each with a fixed share, so the
+   "seen since" and Track columns line up down the list instead of every row
+   finding its own split -- and "Track as application" never wraps inside
+   its own button, which it did on a ~1024px window. */
+ul.board-jobs li > div { flex: 1 1 auto; min-width: 0; }
+ul.board-jobs li > .note { flex: 0 0 11rem; }
+ul.board-jobs li .track-form { flex: 0 0 13rem; margin-left: 0; }
+ul.board-jobs li .status-badge.status-tracked { flex: 0 0 auto; }
+.track-form button { white-space: nowrap; }
 
 /* -- profile setup (PLAN.md B3a) -- */
 
@@ -609,6 +659,11 @@ ul.requirements li .status-badge.status-tracked { margin-left: 0.6rem; }
 .cv-upload input[type="file"] { display: block; margin-bottom: 0.6rem; }
 .cv-paste textarea { width: 100%; font-family: inherit; }
 table.cvs .status-badge { white-space: nowrap; }
+/* The upload time is compact, like every other table's timestamp (the full
+   date is its hover title), and a failed read's sentence gets room to be a
+   sentence rather than one word per line beside a long filename. */
+table.cvs .col-updated { white-space: nowrap; color: var(--muted); }
+table.cvs td.col-reading { min-width: 10rem; }
 table.cvs .note { display: block; margin-top: 0.2rem; }
 .status-badge.status-done { color: var(--good); border-color: var(--good); }
 .status-badge.status-failed { color: var(--warn); border-color: var(--warn); }
@@ -1100,16 +1155,22 @@ table.boards .col-actions button,
 table.boards .col-actions summary,
 table.boards .col-track button,
 table.boards .col-track .status-badge,
-table.applications .col-actions button { white-space: nowrap; }
+table.applications .col-actions button,
+table.applications .col-actions summary { white-space: nowrap; }
 /* A note under a timestamp wraps; the timestamp itself does not. */
 table.boards .col-updated .note { white-space: normal; }
 
 /* The tables of jobs and boards get the room a desktop has. Reading pages
    stay at the 56rem measure; a seven-column table at that width needs about
    66rem of minimums and had nowhere to put them. Prose on these pages keeps a
-   readable measure. `:has(table.boards)` outranks `:has(.page-header)`. */
-main:has(table.boards) { max-width: 80rem; }
-main:has(table.boards) .lede { max-width: 56rem; }
+   readable measure. `:has(table.boards)` outranks `:has(.page-header)`.
+   /applications is the same shape -- seven columns, the last one an action --
+   and at 56rem its Archive control ran past the table's edge into the
+   sideways scroll, leaving only a disclosure triangle on screen. */
+main:has(table.boards),
+main:has(table.applications) { max-width: 80rem; }
+main:has(table.boards) .lede,
+main:has(table.applications) .note { max-width: 56rem; }
 table.cvs {
   width: 100%;
   border-collapse: collapse;
@@ -1368,6 +1429,15 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
     min-height: 2.75rem;
     padding: 0.65rem 1rem;
   }
+  /* A link drawn as a button is content-box, so the min-height above landed
+     on its content and the padding went on top: "Add application" was a
+     65px box with its label stuck to the top. */
+  .button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   /* The link-styled buttons this app uses for in-row actions -- Dismiss,
      Check now, Put it back. They stay text; they stop being 16px tall. */
   button.link {
@@ -1390,6 +1460,12 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
   p > .button { width: 100%; }
   .fact > form.fact-reject { display: block; }
 
+  /* A board's open jobs stack: title, then when, then Track. */
+  ul.board-jobs li { flex-wrap: wrap; gap: 0.35rem; }
+  ul.board-jobs li > div,
+  ul.board-jobs li > .note,
+  ul.board-jobs li .track-form { flex: 1 1 100%; }
+
   /* -- tables ----------------------------------------------------------
      Decided per table, not once.
 
@@ -1410,8 +1486,30 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
   table.applications,
   table.boards { display: block; }
 
-  table.applications thead,
   table.boards thead { display: none; }
+
+  /* /applications' headers are its sort control, so on a phone they stay,
+     as one wrapped row of sort links above the cards rather than as column
+     heads. The actions head names nothing a card needs. */
+  table.applications thead { display: block; margin: 0 0 0.75rem; }
+  table.applications thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 1rem;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+  table.applications thead tr::before {
+    content: "Sort by";
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  table.applications thead th { display: inline; padding: 0; border: none; }
+  table.applications thead th.col-actions-head { display: none; }
+  table.applications thead .col-score-head { display: inline; max-width: none; }
 
   table.applications tbody,
   table.boards tbody { display: block; }
@@ -1456,11 +1554,11 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
 
   /* The two scores sit side by side on the card, each under its own label --
      two halves of one line, never merged into one value. */
+  table.applications tbody tr { display: flex; flex-wrap: wrap; }
+  table.applications tbody td { flex: 1 1 100%; }
   table.applications td.col-score {
-    display: inline-block;
-    width: 50%;
+    flex: 1 1 50%;
     box-sizing: border-box;
-    vertical-align: top;
     padding-right: 0.5rem;
   }
 
@@ -1484,6 +1582,7 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
      column, for the desktop table; a stacked card has no columns to keep
      apart. */
   table.jobs .col-workplace,
+  table.jobs td.col-board,
   table.boards:not(.jobs) td.col-primary,
   table.boards td.col-primary,
   table.applications td.col-primary { min-width: 0; }

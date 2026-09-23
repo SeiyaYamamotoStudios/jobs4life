@@ -72,8 +72,8 @@
             {% set long_note = read_note(cv.length_chars) %}
             {% if long_note %}<span class="note">{{ long_note }}</span>{% endif %}
           </td>
-          <td>{{ cv.created_at | humanize_dt }}</td>
-          <td>
+          <td class="col-updated">{{ cv.created_at | time_compact }}</td>
+          <td class="col-reading">
             {% if cv.extraction_status == "pending" %}
               <span class="status-badge">Queued</span>
             {% elif cv.extraction_status == "done" %}

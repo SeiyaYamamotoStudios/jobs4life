@@ -6,7 +6,8 @@
   * the score panel says "scoring starts by itself" while the ad is read, and
     "retrying" -- not an error -- while a failed attempt has a retry queued;
   * the applications list shows both numbers on every row, never a third,
-    sorts by one axis at a time, and archives from the row behind a confirm.
+    sorts by one column at a time from its header -- each score by its own
+    axis alone -- and archives from the row behind a confirm.
 
 No model call anywhere: the root conftest guard would raise if one were made.
 """
@@ -14,6 +15,7 @@ No model call anywhere: the root conftest guard would raise if one were made.
 from __future__ import annotations
 
 import datetime as dt
+import html
 import os
 import re
 import uuid
@@ -400,31 +402,99 @@ def test_unscored_scoring_and_retrying_rows_say_so(
     assert "<strong>" not in row_html(page, scoring)
 
 
+def _order(client: TestClient, query: str, ids: tuple[uuid.UUID, ...]) -> list[uuid.UUID]:
+    page = client.get(f"/applications{query}").text
+    return [i for _, i in sorted((page.index(f'id="application-{i}"'), i) for i in ids)]
+
+
+def _headers(page: str) -> dict[str, tuple[str | None, str]]:
+    """{header label: (aria-sort or None, the header link's href)}."""
+    thead = page[page.index("<thead>") : page.index("</thead>")]
+    found = {}
+    for attrs, href, inner in re.findall(
+        r'<th scope="col" class="sortable"([^>]*)><a href="([^"]+)">(.*?)</a></th>', thead, re.S
+    ):
+        label = re.sub(r"<[^>]+>|[▲▼↕]", "", inner).strip()
+        aria = re.search(r'aria-sort="([^"]+)"', attrs)
+        found[label] = (aria.group(1) if aria else None, html.unescape(href))
+    return found
+
+
 def test_the_list_sorts_by_one_axis_at_a_time(
     client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
 ) -> None:
     """Love it, will not get it (a) against would get it, dislike it (b): the
-    two orders are opposite, which is exactly what a blend would hide."""
+    two orders are opposite, which is exactly what a blend would hide -- and
+    unscored stays last whichever way either axis runs."""
     user_id = sign_in(client, google, subs, engine)
     a = add_application(client, "Role A\n\nA.")
     b = add_application(client, "Role B\n\nB.")
     unscored = add_application(client, "Role C\n\nC.")
     finish_score(engine, user_id, a, could=3, want=9)
     finish_score(engine, user_id, b, could=8, want=1)
+    ids = (a, b, unscored)
 
-    def order(query: str) -> list[uuid.UUID]:
-        page = client.get(f"/applications{query}").text
-        return [
-            i for _, i in sorted((page.index(f'id="application-{i}"'), i) for i in (a, b, unscored))
-        ]
+    assert _order(client, "?sort=could_get", ids) == [b, a, unscored]
+    assert _order(client, "?sort=want_it", ids) == [a, b, unscored]
+    assert _order(client, "?sort=could_get&dir=asc", ids) == [a, b, unscored]
+    assert _order(client, "?sort=want_it&dir=asc", ids) == [b, a, unscored]
+    # An unknown order is ignored rather than invented: the default, newest first.
+    response = client.get("/applications?sort=overall&dir=asc")
+    assert response.status_code == 200
+    assert _order(client, "?sort=overall&dir=asc", ids) == [unscored, b, a]
 
-    assert order("?sort=could_get") == [b, a, unscored]
-    assert order("?sort=want_it") == [a, b, unscored]
+
+def test_every_column_header_is_a_sort_link_that_reverses_when_active(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs, engine)
+    add_application(client, "Role A\n\nA.")
+
+    default = _headers(client.get("/applications").text)
+    assert list(default) == [
+        "Title",
+        "Employer",
+        "Status",
+        "Could I get this",
+        "Do I want this",
+        "Updated",
+    ]
+    # One header carries aria-sort: the active one.
+    assert [k for k, (aria, _) in default.items() if aria] == ["Updated"]
+    assert default["Updated"] == ("descending", "/applications?sort=updated&dir=asc")
+    assert default["Title"] == (None, "/applications?sort=title")
+    assert default["Could I get this"] == (None, "/applications?sort=could_get")
+    assert default["Do I want this"] == (None, "/applications?sort=want_it")
+
+    by_could = _headers(client.get("/applications?sort=could_get").text)
+    assert by_could["Could I get this"] == ("descending", "/applications?sort=could_get&dir=asc")
+    assert by_could["Updated"] == (None, "/applications")
+    reversed_ = _headers(client.get("/applications?sort=could_get&dir=asc").text)
+    assert reversed_["Could I get this"] == ("ascending", "/applications?sort=could_get")
+
+    # The separate "Sort:" row is gone; the headers are the control.
     page = client.get("/applications").text
-    assert 'href="/applications?sort=could_get"' in page
-    assert 'href="/applications?sort=want_it"' in page
-    # An unknown order is ignored rather than invented.
-    assert client.get("/applications?sort=overall").status_code == 200
+    assert "Sort:" not in page and 'aria-label="Sort applications"' not in page
+    assert page.count('class="sort-arrow"') == 1  # the visible arrow, on the active column
+
+
+def test_sorting_keeps_the_status_filter_and_filtering_keeps_the_sort(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs, engine)
+    add_application(client, "Role A\n\nA.")
+
+    page = client.get("/applications?status=interested&sort=want_it&dir=asc").text
+    headers = _headers(page)
+    assert headers["Do I want this"] == (
+        "ascending",
+        "/applications?status=interested&sort=want_it",
+    )
+    assert headers["Title"][1] == "/applications?status=interested&sort=title"
+    nav = page[page.index('aria-label="Filter applications by status"') :]
+    nav = html.unescape(nav[: nav.index("</nav>")])
+    assert 'href="/applications?status=applied&sort=want_it&dir=asc"' in nav
+    assert 'href="/applications?sort=want_it&dir=asc"' in nav  # "All" keeps it too
 
 
 def test_a_status_change_over_htmx_returns_the_row_with_both_scores(
@@ -457,7 +527,12 @@ def test_archive_on_the_list_sits_behind_a_confirm_disclosure(
     row = row_html(client.get("/applications").text, application_id)
     details = re.search(r'<details class="confirm-remove row-archive">(.*?)</details>', row, re.S)
     assert details is not None, "the archive control is not inside a disclosure"
-    assert "<summary>Archive…</summary>" in details.group(1)
+    # A visible label, not a bare disclosure triangle, and the confirm
+    # button inside the same cell.
+    assert '<summary class="row-archive-toggle">Archive…</summary>' in details.group(1)
+    assert "Yes, archive it" in details.group(1)
+    actions = re.search(r'<td class="col-actions">(.*?)</td>', row, re.S)
+    assert actions is not None and details.group(0) in actions.group(1)
     assert f'action="/applications/{application_id}/archive"' in details.group(1)
     # The only archive form on the row is the one inside the disclosure.
     assert row.count(f'action="/applications/{application_id}/archive"') == 1

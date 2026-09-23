@@ -236,10 +236,31 @@ action cells kept their full width and ran off the container edge.
   `| humanize_dt` form ("Wed 23 Sep 2026, 13 minutes ago") stays where there is
   room and the date matters — detail pages, fact lists, timelines — but
   repeated per column it was most of /boards' width.
-- Pages with a `table.boards` (jobs, changes, boards) get `main` up to 80rem;
-  reading pages keep the 56rem measure, and those pages' `.lede` keeps it too.
-  /changes needs roughly 66rem of column minimums, so it fits without
-  scrolling from a ~1100px window upward.
+- Pages with a `table.boards` (jobs, changes, boards) **or a
+  `table.applications`** get `main` up to 80rem; reading pages keep the 56rem
+  measure, and those pages' `.lede` / `.note` keeps it too. /changes needs
+  roughly 66rem of column minimums, so it fits without scrolling from a
+  ~1100px window upward. /applications was left at 56rem until 2026-09-23,
+  and its seven columns overflowed into the sideways scroll at an ordinary
+  desktop width: the Archive control sat past the table's edge with only its
+  disclosure triangle on screen.
+- A per-row confirm (`Archive…` on /applications) is a `<details>` whose
+  `<summary>` is drawn as a small labelled button (`.row-archive-toggle`), not
+  a bare triangle; the confirm button opens inside the same cell.
+
+**A sortable table sorts from its column headers.** Each `<th>` holds one link;
+clicking the active column reverses it, any other column starts at its own
+default direction (words A to Z, scores and recency highest/newest first). The
+active header carries `aria-sort` and a visible ▲/▼; the others carry no
+`aria-sort` (ARIA: one header at a time) and a faint ↕ so they read as
+clickable. The key and direction come from a closed set
+(`jfl_web.scores.parse_sort`); anything else is the default order. Filters
+carry the sort and the headers carry the filters. A separate "Sort:" row of
+links above the table was tried first and the owner never found it. On a phone
+the header row is kept, as one wrapped "Sort by" row above the cards. For the
+two score columns the standing rule applies: each sorts by its own axis alone,
+ties fall back to most recently updated (never to the other axis), and rows
+with nothing to sort on go last in both directions.
 
 **Every table scrolls inside `.table-wrap`** — at narrow widths only. It
 keeps `min-width: 34rem` so a narrow window scrolls it rather than crushing
@@ -285,3 +306,11 @@ content, and that the element carries no `hidden` and no `hx-` trigger. What is
 **not** proved here: that a browser paints the disclosure triangle, that the
 capture-phase `toggle` listener fires, or that the htmx post goes out. Those
 need a browser and have not been verified.
+
+**Looking at it.** `scripts/screenshot_pages.py` renders every main page for a
+throwaway user seeded with fictional layout data (long titles, a URL-only
+title, both scores and none, long board names, many jobs, a changes feed) and
+screenshots each with headless Firefox at 1440, 1024 and 390 px. It is a dev
+tool, not a test -- nothing in pytest runs a browser -- and the command is in
+its docstring. Run it after any change to a table or a page's width, and look
+at the pictures: every overflow bug before it was found by the owner.
