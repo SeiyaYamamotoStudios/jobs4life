@@ -189,3 +189,69 @@ class PostgresScoreRepository(TenantScopedRepository):
             .where(table.c.id == score_id, table.c.user_id == self._user_id)
             .values(status="failed", error_code=code)
         )
+
+    def note_retry(self, score_id: uuid.UUID, code: ScoreErrorCode) -> None:
+        """An attempt failed and the queue will try again: the row stays
+        `pending`, and carries the code of the attempt that failed.
+
+        `pending` with an `error_code` is how the panel tells "retrying" from
+        "failed" without reading the task queue. Marking the row `failed` here
+        -- what this used to do -- was wrong twice over: the page said "failed"
+        while a retry was still queued, and the retry then found a row that was
+        no longer `pending` and skipped itself, so it could never succeed.
+        Guarded on `pending` so a late note can never reopen a finished run.
+        """
+        self._conn.execute(
+            update(table)
+            .where(
+                table.c.id == score_id,
+                table.c.user_id == self._user_id,
+                table.c.status == "pending",
+            )
+            .values(error_code=code)
+        )
+
+    def latest_for_applications(
+        self, application_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[ApplicationScore | None, ApplicationScore | None]]:
+        """For each application: (the latest run of any state, the latest
+        finished run). One query for the whole list screen.
+
+        Two, because the list shows the last numbers the tool actually produced
+        *and* whether a run is in flight -- a re-score in progress must not blank
+        the numbers the previous run gave, nor hide that it is running.
+        Applications with no run at all are simply absent from the result.
+        """
+        if not application_ids:
+            return {}
+        rows = self._conn.execute(
+            select(*_COLUMNS)
+            .where(
+                table.c.user_id == self._user_id,
+                table.c.application_id.in_(application_ids),
+            )
+            .order_by(table.c.application_id, table.c.created_at.desc())
+        ).all()
+        result: dict[uuid.UUID, tuple[ApplicationScore | None, ApplicationScore | None]] = {}
+        for row in rows:
+            score = _from_row(row)
+            latest, latest_done = result.get(score.application_id, (None, None))
+            if latest is None:
+                latest = score
+            if latest_done is None and score.status == "done":
+                latest_done = score
+            result[score.application_id] = (latest, latest_done)
+        return result
+
+    def has_any(self, application_id: uuid.UUID) -> bool:
+        """Whether this application has ever had a scoring run, in any state --
+        what keeps the automatic first score to exactly one.
+        """
+        return (
+            self._conn.execute(
+                select(table.c.id)
+                .where(table.c.application_id == application_id, table.c.user_id == self._user_id)
+                .limit(1)
+            ).first()
+            is not None
+        )

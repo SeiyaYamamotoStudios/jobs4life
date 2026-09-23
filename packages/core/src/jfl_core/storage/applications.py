@@ -520,6 +520,24 @@ class PostgresApplicationRepository(TenantScopedRepository):
             .values(extraction_status="failed", extraction_error_code=code)
         )
 
+    def note_extraction_retry(self, application_id: uuid.UUID, code: ExtractionErrorCode) -> None:
+        """An attempt failed and the queue will try again: the application
+        stays `pending`, carrying the code of the attempt that failed, so the
+        panel says "retrying" rather than "failed" while a retry is queued.
+
+        Guarded on `pending`, so a late note never reopens a finished read.
+        `claim_extraction` hands out anything not `done`, so the retry proceeds.
+        """
+        self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id == application_id,
+                applications_table.c.user_id == self._user_id,
+                applications_table.c.extraction_status == "pending",
+            )
+            .values(extraction_error_code=code)
+        )
+
     def get_extraction(self, application_id: uuid.UUID) -> ApplicationExtraction | None:
         """Everything the extraction panel renders, in one call. None if the
         application is not this user's -- same answer as "does not exist".

@@ -245,6 +245,38 @@ select {
 }
 table.applications select { width: auto; }
 
+/* The two scores on a list row: two cells under two labels, never one number.
+   The headers are the full axis names, so they wrap onto two lines rather
+   than widening the table. */
+table.applications .col-score-head { display: inline-block; white-space: normal; max-width: 7rem; line-height: 1.3; }
+table.applications td.col-score { white-space: nowrap; }
+.row-score-number strong { font-size: 1.05rem; }
+.row-score-number .score-of { color: var(--ink-soft); font-size: 0.8rem; margin-left: 0.05rem; }
+.row-score-state {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: normal;
+}
+/* Sort by one axis or by none -- styled like the status filter above it. */
+.sort-order { margin-top: -0.75rem; }
+.sort-order a { text-transform: none; }
+.sort-order .sort-label { color: var(--muted); }
+table.applications td.col-actions { white-space: nowrap; }
+table.applications .row-archive { margin-top: 0; }
+table.applications .row-archive summary { font-size: 0.85rem; }
+
+/* What adding or tracking sets off, said before it is pressed. */
+.add-cost { margin-top: 1rem; }
+.add-cost-no-key { color: var(--ink); }
+.track-form .track-cost {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  white-space: normal;
+  max-width: 14rem;
+}
+
 /* A quiet colour hint on the status control -- not the only signal (the
    text label is always there too), just a faster scan. */
 select[data-status="offer"] { color: var(--good); border-color: var(--good); }
@@ -1365,6 +1397,16 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
 
   /* The status picker is the whole point of an applications row. */
   table.applications td select { width: 100%; }
+
+  /* The two scores sit side by side on the card, each under its own label --
+     two halves of one line, never merged into one value. */
+  table.applications td.col-score {
+    display: inline-block;
+    width: 50%;
+    box-sizing: border-box;
+    vertical-align: top;
+    padding-right: 0.5rem;
+  }
 
   /* The self-naming controls, ruled off from the data above them. */
   table.applications td.col-actions,

@@ -21,12 +21,12 @@ can be run again on work that already finished -- a redelivery, or the user
 pasting an ad by hand while the fetch was still in flight -- and finding
 `job_id` already set is what tells it there is nothing left to do.
 
-**Every attempt records its own failure, not only the last one.** Mirrors
-`extraction.py`'s `_fail`: a transient failure is written to the application as
-`failed` / `description_unavailable` before the ordinary exception is
-re-raised for the queue's retry ladder. So if every attempt is exhausted, the
-application is already sitting in exactly that terminal state instead of
-`pending` forever with nobody retrying it -- see `jfl_worker.queue`'s
+**Every attempt records its own outcome, and only the last one says
+"failed".** A transient failure with attempts left is noted on the application
+(`pending`, `description_unavailable`) so the panel says "retrying"; the last
+attempt, or a permanent failure, writes `failed` before the exception goes to
+the queue. So an exhausted ladder leaves the application in exactly that
+terminal state instead of `pending` forever -- see `jfl_worker.queue`'s
 `mark_failed` for where the ladder itself gives up.
 """
 
@@ -38,6 +38,7 @@ from collections.abc import Mapping
 from jfl_core.models import BoardJob, WatchedBoard
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_intake.descriptions import fetch_description
 
@@ -147,7 +148,16 @@ def _fetch_job_description(
         )
 
     if result.text is None:
-        _fail(ctx, application_id)
+        if result.is_transient and not ctx.is_last_attempt:
+            # A retry is coming: stay `pending` with the code noted, so the
+            # panel says "retrying" rather than offering a paste box the next
+            # attempt may make unnecessary.
+            with ctx.engine.begin() as conn:
+                PostgresApplicationRepository(conn, ctx.user_id).note_extraction_retry(
+                    application_id, "description_unavailable"
+                )
+        else:
+            _fail(ctx, application_id)
         if result.is_transient:
             # An ordinary exception, not `PermanentTaskError`: the queue's
             # backoff ladder rides this out, same as `check_board`'s
@@ -161,14 +171,25 @@ def _fetch_job_description(
     with ctx.engine.begin() as conn:
         apps = PostgresApplicationRepository(conn, ctx.user_id)
         apps.attach_job_ad(application_id, ad_text)
-        PostgresTaskRepository(conn, ctx.user_id).enqueue(
-            kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)}
-        )
+        if PostgresCredentialRepository(conn, ctx.user_id).summary(ANTHROPIC_API_KEY) is None:
+            # No key, so the read could only fail -- and the score chained
+            # from it could never be queued. Nothing is enqueued; the
+            # application says why, the same as a pasted ad added without a
+            # key. The fetched ad is kept, so "Read the job ad" after adding a
+            # key starts read and score without fetching again.
+            apps.fail_extraction(application_id, "no_api_key")
+            queued = False
+        else:
+            PostgresTaskRepository(conn, ctx.user_id).enqueue(
+                kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)}
+            )
+            queued = True
 
     return {
         "application_id": str(application_id),
         "job_id": str(job.id),
         "requests": result.requests,
+        "extraction_queued": queued,
     }
 
 

@@ -28,7 +28,7 @@ from typing import Any
 
 import jfl_worker.handlers.description as description_module
 import pytest
-from jfl_core.crypto.envelope import MasterKey
+from jfl_core.crypto.envelope import MasterKey, seal
 from jfl_core.db.tables import applications as applications_table
 from jfl_core.db.tables import jobs as jobs_table
 from jfl_core.db.tables import tasks as tasks_table
@@ -36,6 +36,7 @@ from jfl_core.db.tables import users
 from jfl_core.models import CheckPlan, ObservedJob, Task
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_intake.adapters.base import FetchResult
 from jfl_intake.engine import REPOST_WINDOW, plan_check
@@ -95,6 +96,19 @@ def master_key() -> MasterKey:
 @pytest.fixture
 def log_stream() -> io.StringIO:
     return io.StringIO()
+
+
+def store_key(engine: Engine, owner: uuid.UUID, master_key: MasterKey) -> None:
+    """A key on file: without one the fetched ad is attached but no read is
+    queued (nothing could run it), which is its own test below.
+    """
+    key = "sk-ant-api03-NEVERLEAKTHISVALUE-0123456789abcdef"
+    with engine.begin() as conn:
+        PostgresCredentialRepository(conn, owner).store(
+            provider=ANTHROPIC_API_KEY,
+            sealed=seal(master_key, key, user_id=owner, provider=ANTHROPIC_API_KEY),
+            key_hint=key[-4:],
+        )
 
 
 def add_board_job(engine: Engine, owner: uuid.UUID, *, label: str = "Acme") -> Any:
@@ -245,6 +259,7 @@ def test_a_successful_fetch_attaches_the_ad_and_queues_extraction_held_by_the_sw
 ) -> None:
     from jfl_intake.descriptions import DescriptionResult
 
+    store_key(engine, user, master_key)
     job = add_board_job(engine, user)
     application_id = add_tracked_application(engine, user, job)
     task_id = enqueue(engine, user, application_id)
@@ -310,7 +325,9 @@ def test_a_transient_failure_is_retried_and_records_description_unavailable(
 
     row = application_row(engine, application_id)
     assert row.job_id is None  # nothing was attached
-    assert row.extraction_status == "failed"
+    # Retrying, not failed: a retry is queued, so the panel says so rather
+    # than offering a paste box the next attempt may make unnecessary.
+    assert row.extraction_status == "pending"
     assert row.extraction_error_code == "description_unavailable"
 
 
@@ -397,10 +414,11 @@ def test_a_permanent_failure_fails_the_task_and_the_application_at_once(
 
 
 def test_a_redelivered_task_does_not_fetch_or_enqueue_a_second_time(
-    engine: Engine, user: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    engine: Engine, user: uuid.UUID, master_key: MasterKey, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from jfl_intake.descriptions import DescriptionResult
 
+    store_key(engine, user, master_key)
     job = add_board_job(engine, user)
     application_id = add_tracked_application(engine, user, job)
 
@@ -472,3 +490,38 @@ def test_no_board_job_id_fails_permanently(engine: Engine, user: uuid.UUID) -> N
     row = application_row(engine, application.id)
     assert row.extraction_status == "failed"
     assert row.extraction_error_code == "description_unavailable"
+
+
+def test_with_no_key_the_ad_is_attached_and_nothing_is_queued(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fetch is free, so it runs; the read and the score chained from it
+    are model calls, so with no key neither is queued and the application says
+    why. The ad is kept, so adding a key and pressing "Read the job ad" works
+    without fetching again.
+    """
+    from jfl_intake.descriptions import DescriptionResult
+
+    job = add_board_job(engine, user)
+    application_id = add_tracked_application(engine, user, job)
+    enqueue(engine, user, application_id)
+    install_fake_description(
+        monkeypatch, DescriptionResult(text="We need Python.", error_code=None, requests=1)
+    )
+    build_worker(engine, user, master_key, log_stream).run_once()
+
+    row = application_row(engine, application_id)
+    assert row.job_id is not None
+    assert row.extraction_status == "failed"
+    assert row.extraction_error_code == "no_api_key"
+    with engine.begin() as conn:
+        queued = conn.execute(
+            select(tasks_table).where(
+                tasks_table.c.user_id == user, tasks_table.c.kind == EXTRACT_JOB_AD
+            )
+        ).all()
+    assert queued == []

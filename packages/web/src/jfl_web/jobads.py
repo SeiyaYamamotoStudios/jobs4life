@@ -124,5 +124,17 @@ _FAILURES: dict[ExtractionErrorCode, ExtractionFailure] = {
 _UNKNOWN = ExtractionFailure("Reading the ad failed. Trying again is worth a go.")
 
 
+# A pending read or fetch that carries an error code: one attempt failed and
+# the queue will try again. Not an error yet -- see `note_extraction_retry`.
+EXTRACTION_RETRYING_NOTE = (
+    "Reading the ad hit a temporary problem and is trying again by itself -- "
+    "nothing for you to do. If it keeps failing it stops and says so here."
+)
+FETCH_RETRYING_NOTE = (
+    "Couldn't reach the board just now -- trying again by itself. If it keeps "
+    "failing you will be asked to paste the ad."
+)
+
+
 def extraction_failure(code: ExtractionErrorCode | None) -> ExtractionFailure:
     return _UNKNOWN if code is None else _FAILURES.get(code, _UNKNOWN)

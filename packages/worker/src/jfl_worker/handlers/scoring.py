@@ -7,7 +7,8 @@ its own connection. What differs follows from what this call needs.
 **Scoring is spent only on a job the user chose.** CLAUDE.md's 2026-09-15
 decision: users pay for model calls with their own key, so nothing scores a job
 on arrival or because a page was refreshed. A task exists here because a person
-pressed "Score this application".
+added the application (the first score is chained from `extract_job_ad`, see
+that module) or pressed "Re-score".
 
 **Coverage first, if it is missing, and the user was told.** "Could I get this"
 is judged from the job's requirements and the corpus coverage recorded for
@@ -35,6 +36,12 @@ dropped. Never in the task payload (one id), never in a log line, never in
 **Not scoring twice for one press.** Delivery is at-least-once, so a
 redelivered task finds its row already `done` or `failed` and returns without
 calling anything. A re-score is a button, which mints a new row.
+
+**Retrying is not failing.** A transient failure with attempts left keeps the
+row `pending` and notes the code (`note_retry`); only a permanent failure or
+the last attempt marks it `failed`. Marking it `failed` on every attempt used to
+make the page show an error while a retry was queued -- and made that retry
+find a finished row and skip itself.
 
 **One `runs` row per model call, always** -- see `_RunRecorder`, duplicated
 from `extraction.py`'s for the reason `jfl_worker.credentials` gives. It also
@@ -261,7 +268,13 @@ def _score_application(
         )
     except GenerateError as exc:
         code, permanent = _classify(str(exc))
-        _fail(ctx, score_id, code)
+        if permanent or ctx.is_last_attempt:
+            _fail(ctx, score_id, code)
+        else:
+            # A retry is coming. The row stays `pending` -- so the retry is not
+            # skipped as already finished -- and carries this attempt's code, so
+            # the panel says "retrying" instead of an error. See `note_retry`.
+            _note_retry(ctx, score_id, code)
         if permanent:
             # The code, not the message: `last_error` must not carry SDK text
             # from a call that was authenticated with the user's key.
@@ -305,3 +318,11 @@ def _fail(ctx: TaskContext, score_id: uuid.UUID, code: ScoreErrorCode) -> None:
     """
     with ctx.engine.begin() as conn:
         PostgresScoreRepository(conn, ctx.user_id).mark_failed(score_id, code)
+
+
+def _note_retry(ctx: TaskContext, score_id: uuid.UUID, code: ScoreErrorCode) -> None:
+    """Record a failed attempt that the queue will retry, in its own
+    transaction for the reason `_fail` gives.
+    """
+    with ctx.engine.begin() as conn:
+        PostgresScoreRepository(conn, ctx.user_id).note_retry(score_id, code)

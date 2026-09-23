@@ -469,6 +469,10 @@ def check_text(
     # this function writes on success -- never a second row of its own.
     result = apply_rules(result, spans)
     rule_escalations = sum(1 for sentence in result.sentences if sentence.rule_flags)
+    # Citations that were not uuids at all, set aside rather than failing the
+    # run. Counted on the `runs` row so a model that starts garbling ids is a
+    # query, not a surprise.
+    unparseable_citations = sum(len(s.unparseable_citations) for s in result.sentences)
 
     record(
         "ok",
@@ -478,6 +482,9 @@ def check_text(
         cache_read_tokens,
         cache_write_tokens,
         cost_usd,
-        attributes={"rule_escalations": rule_escalations},
+        attributes={
+            "rule_escalations": rule_escalations,
+            "unparseable_citations": unparseable_citations,
+        },
     )
     return result

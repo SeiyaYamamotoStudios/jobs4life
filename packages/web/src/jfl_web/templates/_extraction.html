@@ -14,7 +14,11 @@
          {% endif %}>
 {% call sections.section(ad_section) %}
 
-  {% if extraction and extraction.status == "pending" and not extraction.has_job_ad %}
+  {% if extraction and extraction.status == "pending" and not extraction.has_job_ad and extraction.error_code %}
+  {# A fetch attempt failed and the queue will try again -- not an error yet. #}
+  <p class="note extraction-retrying" role="status">{{ fetch_retrying_note }}</p>
+
+  {% elif extraction and extraction.status == "pending" and not extraction.has_job_ad %}
   {# Slice C7: "Track as application" fetches a description before there is
      any ad text to extract from, and uses the same `pending` status a paste
      does -- see `jfl_web.routes.tracking`. Without this branch, the
@@ -34,6 +38,10 @@
 
   {% elif not extraction or not extraction.has_job_ad %}
   <p class="note">No job ad stored against this application.</p>
+
+  {% elif extraction.status == "pending" and extraction.error_code %}
+  {# A read attempt failed and the queue will try again -- not an error yet. #}
+  <p class="note extraction-retrying" role="status">{{ extraction_retrying_note }}</p>
 
   {% elif extraction.status == "pending" %}
   <p class="note" role="status">Reading the job ad… this takes about half a minute.</p>

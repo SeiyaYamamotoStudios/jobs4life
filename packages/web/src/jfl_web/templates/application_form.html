@@ -24,6 +24,16 @@
   <input type="url" id="url" name="url" placeholder="https://…"
          value="{{ values.url if values else '' }}">
 
-  <button type="submit">Add application</button>
+  {# Said before the button is pressed: adding now reads the ad and scores it,
+     on the user's own key. With no key stored, nothing will run at all. #}
+  {% if has_api_key %}
+  <p class="note add-cost" id="add-cost">{{ add_cost_note }}</p>
+  {% else %}
+  <p class="note add-cost add-cost-no-key" id="add-cost" role="note">
+    {{ no_key_add_note }} <a href="/settings">Add an API key</a>.
+  </p>
+  {% endif %}
+
+  <button type="submit" aria-describedby="add-cost">Add application</button>
 </form>
 {% endblock %}

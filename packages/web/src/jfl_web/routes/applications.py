@@ -12,7 +12,10 @@ and the work happens in the worker. Fast input, slow processing.
 Screens:
 
   GET  /applications                 -- the list, most recently updated first,
-                                         optionally filtered by `?status=`
+                                         optionally filtered by `?status=` and
+                                         sorted by ONE axis via `?sort=`; both
+                                         scores per row, never combined, and an
+                                         "Archive..." confirm per row
   GET  /applications/new             -- the paste box
   POST /applications                 -- create, enqueue the read, redirect
   GET  /applications/{id}            -- one application: fields, full timeline,
@@ -21,8 +24,9 @@ Screens:
   POST /applications/{id}/notes      -- replace the notes field
   GET  /applications/{id}/extraction -- the extraction panel, for htmx polling
   GET  /applications/{id}/score      -- the scoring panel, for htmx polling
-  POST /applications/{id}/score      -- score it: two axes, never composited;
-                                         explicit, because it costs the user
+  POST /applications/{id}/score      -- Re-score: two axes, never composited.
+                                         The first score is chained from the
+                                         read of the ad; this is the button
   POST /applications/{id}/extract    -- read the ad again; explicit, never
                                          automatic, because it costs the user
   POST /applications/{id}/archive    -- soft delete: off the lists, status and
@@ -53,12 +57,14 @@ from jfl_core.models import (
 )
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_core.storage.ui_sections import SectionState
 
 from jfl_web.applicationanswers import question_views
 from jfl_web.deps import (
     ApplicationQuestionRepoDep,
     ApplicationRepoDep,
+    CredentialRepoDep,
     CsrfDep,
     PushbackRepoDep,
     ScoreOverrideRepoDep,
@@ -68,6 +74,8 @@ from jfl_web.deps import (
     TaskRepoDep,
 )
 from jfl_web.jobads import (
+    EXTRACTION_RETRYING_NOTE,
+    FETCH_RETRYING_NOTE,
     MAX_AD_CHARS,
     extraction_failure,
     normalise_url,
@@ -109,16 +117,24 @@ from jfl_web.pushbacks import (
 )
 from jfl_web.routes.pushbacks import pushback_context
 from jfl_web.scores import (
+    ADD_COST_NOTE,
+    AWAITS_AD_NOTE,
     COST_NOTE,
     COULD_GET_LABEL,
+    NO_KEY_ADD_NOTE,
     NO_WANT_IT_SCORE,
+    RETRYING_NOTE,
     SILENCE_NOTE,
+    SORTS,
     STANCE_WORDING,
     UNMEASURED,
     VERDICT_WORDING,
     WANT_IT_LABEL,
     WANT_IT_SUBTITLE,
+    RowScore,
+    row_score,
     score_failure,
+    sort_applications,
     want_it_summary,
 )
 from jfl_web.sections import (
@@ -195,6 +211,7 @@ def list_applications(
     request: Request,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
 ) -> Response:
     # `archived=1` swaps the whole screen for the archived list rather than
     # combining with the status filter -- the archived list is not another
@@ -203,9 +220,16 @@ def list_applications(
     show_archived = request.query_params.get("archived") == "1"
     raw_status = request.query_params.get("status")
     status = raw_status if raw_status in STATUSES else None
+    raw_sort = request.query_params.get("sort") or "updated"
+    sort = raw_sort if raw_sort in SORTS else "updated"
     items = applications.list_applications(
         status=None if show_archived else status, archived=show_archived
     )
+    # Both axes per row, from one query. Two numbers, two cells, and the only
+    # orderings on offer are by one axis or by neither -- see `jfl_web.scores`.
+    row_scores = _row_scores(scores, [a.id for a in items])
+    if not show_archived:
+        items = sort_applications(items, row_scores, sort)
     # Always known, even on the live list, so the "Archived (N)" link can
     # decide whether to render itself without a second round trip.
     archived_count = len(applications.list_applications(archived=True))
@@ -221,8 +245,18 @@ def list_applications(
             "show_archived": show_archived,
             "archived_count": archived_count,
             "just_archived": _just_archived_title(applications, request),
+            "row_scores": row_scores,
+            "sorts": SORTS,
+            "active_sort": sort,
         },
     )
+
+
+def _row_scores(
+    scores: ScoreRepoDep, application_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, RowScore]:
+    pairs = scores.latest_for_applications(application_ids)
+    return {app_id: row_score(*pairs.get(app_id, (None, None))) for app_id in application_ids}
 
 
 def _just_archived_title(applications: ApplicationRepoDep, request: Request) -> str | None:
@@ -249,12 +283,26 @@ def _just_archived_title(applications: ApplicationRepoDep, request: Request) -> 
 
 
 @router.get("/applications/new")
-def new_application_form(request: Request, session: SessionDep) -> Response:
+def new_application_form(
+    request: Request, session: SessionDep, credentials: CredentialRepoDep
+) -> Response:
     return render(
         request,
         "application_form.html",
-        {"session": session, "user": session.user},
+        {"session": session, "user": session.user, **_cost_context(credentials)},
     )
+
+
+def _cost_context(credentials: CredentialRepoDep) -> dict[str, object]:
+    """What adding sets off, said before the user presses anything: the calls
+    it triggers on their key, or -- with no key stored -- that nothing will be
+    read or scored, and why.
+    """
+    return {
+        "has_api_key": credentials.summary(ANTHROPIC_API_KEY) is not None,
+        "add_cost_note": ADD_COST_NOTE,
+        "no_key_add_note": NO_KEY_ADD_NOTE,
+    }
 
 
 @router.post("/applications")
@@ -263,6 +311,7 @@ def create_application(
     session: SessionDep,
     applications: ApplicationRepoDep,
     tasks: TaskRepoDep,
+    credentials: CredentialRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
     url: Annotated[str, Form()] = "",
@@ -278,6 +327,13 @@ def create_application(
     application and its task are committed together: there is no state where a
     row sits `pending` with nothing queued to move it, or a task names an
     application that was rolled back.
+
+    A successful read queues the first score by itself (see
+    `jfl_worker.handlers.extraction._chain_first_score`), and the form said so
+    before this was pressed. **With no API key stored nothing is queued at
+    all**: the read could only fail, so the application is saved with its read
+    marked `no_api_key` -- the panel then says why and links to Settings, and
+    "Try reading it again" after adding a key is what starts read and score.
     """
     ad = job_ad.strip()
     if not ad or len(ad) > MAX_AD_CHARS:
@@ -286,12 +342,12 @@ def create_application(
             if not ad
             else "That is much longer than a job ad -- paste just the role and its requirements."
         )
-        return _form(request, session, error=message, job_ad=job_ad, url=url)
+        return _form(request, session, credentials, error=message, job_ad=job_ad, url=url)
 
     try:
         link = normalise_url(url)
     except ValueError as exc:
-        return _form(request, session, error=str(exc), job_ad=job_ad, url=url)
+        return _form(request, session, credentials, error=str(exc), job_ad=job_ad, url=url)
 
     application = applications.create_application(
         # A placeholder, and the row says so: extraction may replace a
@@ -302,6 +358,9 @@ def create_application(
         title_is_provisional=True,
         extraction_status="pending",
     )
+    if credentials.summary(ANTHROPIC_API_KEY) is None:
+        applications.fail_extraction(application.id, "no_api_key")
+        return RedirectResponse(f"/applications/{application.id}", status_code=303)
     tasks.enqueue(
         kind=EXTRACT_JOB_AD_KIND,
         # Ids only. The ad text is already stored once in `jobs.raw_text` and
@@ -315,7 +374,13 @@ def create_application(
 
 
 def _form(
-    request: Request, session: AuthenticatedSession, *, error: str, job_ad: str, url: str
+    request: Request,
+    session: AuthenticatedSession,
+    credentials: CredentialRepoDep,
+    *,
+    error: str,
+    job_ad: str,
+    url: str,
 ) -> Response:
     """Re-render the paste box with what was typed still in it. Losing a pasted
     ad to a validation error is the kind of small insult that stops a tool being
@@ -329,6 +394,7 @@ def _form(
             "user": session.user,
             "error": error,
             "values": {"job_ad": job_ad, "url": url},
+            **_cost_context(credentials),
         },
         status_code=400,
     )
@@ -592,12 +658,13 @@ def score_application(
     tasks: TaskRepoDep,
     _csrf: CsrfDep,
 ) -> Response:
-    """Score this application. A button, never automatic.
+    """Re-score this application -- or score one that has no run yet.
 
     CLAUDE.md's 2026-09-15 decision: a job is scored only when the user turns
-    it into an application and asks, never on arrival and never for a job they
-    merely browsed -- they pay for the call with their own key. So this row and
-    this task exist because a person pressed something.
+    it into an application, never on arrival and never for a job they merely
+    browsed -- they pay for the call with their own key. The first score is
+    chained from the read of the ad, because adding the application *is* that
+    choice; every later one is this button, because a person pressed it.
 
     A run already in flight is not duplicated: pressing twice while the panel
     says "scoring" would buy a second charge for the same answer. A finished
@@ -647,6 +714,9 @@ def _score_context(
     """
     failed = score is not None and score.status == "failed"
     failure = score_failure(score.error_code) if score is not None and failed else None
+    # No run yet, and the ad is still being read (or fetched): the first score
+    # is chained from that read, so the panel says so and polls for it.
+    awaits_ad = score is None and detail.application.extraction_status == "pending"
     live_overrides = overrides.current(detail.application.id)
     panel = pushback_context(detail, score, pushbacks, states)
     displays = axis_displays(
@@ -700,6 +770,9 @@ def _score_context(
         "score_failure": failure,
         "score_unmeasured": UNMEASURED,
         "score_cost_note": COST_NOTE,
+        "score_awaits_ad": awaits_ad,
+        "score_awaits_ad_note": AWAITS_AD_NOTE,
+        "score_retrying_note": RETRYING_NOTE,
         "could_get_label": COULD_GET_LABEL,
         "want_it_label": WANT_IT_LABEL,
         "want_it_subtitle": WANT_IT_SUBTITLE,
@@ -722,10 +795,14 @@ def _extraction_context(
     once on the page and once again in the poll.
     """
     section = ad_section(states, extraction)
+    notes = {
+        "extraction_retrying_note": EXTRACTION_RETRYING_NOTE,
+        "fetch_retrying_note": FETCH_RETRYING_NOTE,
+    }
     if extraction is None:
-        return {"extraction": None, "failure": None, "ad_section": section}
+        return {"extraction": None, "failure": None, "ad_section": section, **notes}
     failure = extraction_failure(extraction.error_code) if extraction.status == "failed" else None
-    return {"extraction": extraction, "failure": failure, "ad_section": section}
+    return {"extraction": extraction, "failure": failure, "ad_section": section, **notes}
 
 
 @router.post("/applications/{application_id}/status")
@@ -734,6 +811,7 @@ def change_status(
     application_id: uuid.UUID,
     session: SessionDep,
     applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
     _csrf: CsrfDep,
     to_status: Annotated[str, Form()],
     note: Annotated[str, Form()] = "",
@@ -766,6 +844,9 @@ def change_status(
                 "statuses": STATUSES,
                 "next_status": next_status(application.status),
                 "next_labels": _NEXT_LABEL,
+                # The swapped row carries both scores exactly as the full list
+                # rendered them -- same partial, same context.
+                "row_scores": _row_scores(scores, [application.id]),
             },
         )
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
