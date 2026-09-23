@@ -824,10 +824,16 @@ what a candidate's corpus documents and what is claimed on their behalf. The nex
 gives the job and the candidate's roles, numbered, each with the confirmed facts filed \
 under it. Each role's title, employer and dates are already fixed; do not write them.
 
+The CV speaks as the candidate, in the first person. The corpus is written about them in the \
+third person; the CV is not. The summary uses "I" ("I lead a distributed team…"). Skill \
+lines and bullets start with a verb and leave the "I" implied ("Led…", "Built…", \
+"Introduced…"). Never refer to the candidate by name, as "he", "she" or "they", or as "the \
+candidate".
+
 Return:
-- summary: one to three short paragraphs introducing the candidate for this job
-- skills: six to eight entries, each a short label and one line on what the candidate \
-brings there
+- summary: one to three short paragraphs, in the candidate's own voice, on why they fit \
+this job
+- skills: six to eight entries, each a short label and one line on what they bring there
 - roles: for each role you write about, its number, a one-line descriptor of what the \
 employer does, and bullets chosen and compressed from that role's facts toward this job's \
 requirements

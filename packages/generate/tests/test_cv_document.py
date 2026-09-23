@@ -500,3 +500,16 @@ def test_the_header_falls_back_to_the_corpus_title(monkeypatch: pytest.MonkeyPat
     document = generate_cv_document(_ctx(), jobs, grounding, runs, job.id, now=NOW).document
     assert document.header.name == "Morgan Fictional"
     assert document.header.contact == [] and document.header.links == []
+
+
+def test_the_cv_speaks_in_the_first_person() -> None:
+    """The owner's CVs speak as him: "I" in the summary, verb-led bullets with the
+    "I" implied. The corpus is written about him in the third person, and a model
+    left to itself mirrors that -- so the instruction says whose voice it is, and
+    never frames the task as describing "the candidate" from outside."""
+    from jfl_generate.prompts import _CV_DOCUMENT_INSTRUCTIONS
+
+    text = _CV_DOCUMENT_INSTRUCTIONS
+    assert "first person" in text
+    assert "Never refer to the candidate by name" in text
+    assert "introducing the candidate" not in text
