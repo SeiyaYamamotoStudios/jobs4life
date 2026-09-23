@@ -1,65 +1,141 @@
 {% import "_sections.html" as sections %}
-{# One stored draft, in full: kind, timestamp, per-run cost, its claim-gate
-   verdicts, and a copyable text box. Expects `entry` = {"draft": Draft,
-   "cost": Decimal|None, "section": Section} in context.
+{# One stored draft, CV first: the headline count, the text itself (copyable
+   and downloadable), and beside it the sentence-by-sentence check -- flagged
+   sentences first, each with what to do about it. Expects `entry` =
+   {"draft": Draft, "check": jfl_web.drafts.DraftCheck, "cost": Decimal|None,
+   "section": Section}, plus `application_id`, `cited_facts`, `next_action`
+   and `sentence_meaning` in context.
 
    The newest draft is open and the ones behind it are folded, each behind its
-   own date and sentence count -- `jfl_web.sections.draft_section` decides that,
-   and a draft the user has opened or closed themselves keeps whatever they
-   chose.
+   own date and count -- `jfl_web.sections.draft_section` decides that.
 
-   Framing and the document title render as NOT CHECKED, never as supported --
-   see jfl_web.drafts.sentence_label, which is the one place that rule is
+   Framing and the document title render as "Not checked", never as
+   supported -- see jfl_web.drafts.verdict_key, the one place that rule is
    expressed for this screen. A flagged draft is still shown here in full: the
-   claim gate informs, it never blocks (CLAUDE.md). #}
+   claim gate informs, it never blocks (CLAUDE.md).
+
+   `evidence_note` is the checking model's own words, shown verbatim and
+   labelled as such; it can use this codebase's vocabulary, and rewording it
+   would put words in its mouth. #}
+{% set draft = entry.draft %}
+{% set check = entry.check %}
+{% set text_id = "draft-text-" ~ draft.id %}
 <article class="draft">
 {% call sections.section(entry.section) %}
+  <p class="draft-headline">{{ check.headline }}</p>
   <p class="draft-meta">
-    {% if entry.draft.created_at %}
-    <time title="{{ entry.draft.created_at.isoformat() }}">{{ entry.draft.created_at | humanize_dt }}</time>
+    {% if draft.created_at %}
+    Written <time title="{{ draft.created_at.isoformat() }}">{{ draft.created_at | humanize_dt }}</time>
     &middot;
     {% endif %}
     cost {{ entry.cost | usd }}
   </p>
 
-  <details class="draft-verdicts">
-    <summary>Sentence-by-sentence check ({{ entry.draft.gate_result.sentences | length }} sentences)</summary>
-    <p class="note">
-      SUPPORTED traces cleanly to facts you have confirmed. REVIEW and
-      UNSUPPORTED do not, partly or at all. NOT CHECKED is framing or a document
-      title -- neither is ever compared against your facts, so neither is ever
-      shown as supported.
-    </p>
-    <ul class="draft-sentences">
-      {% for sentence in entry.draft.gate_result.sentences %}
-      <li>
-        <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
-        {{ sentence.text }}
-        {% if sentence.cited_span_ids %}
-        {#- The fact's own words, never its id: a UUID tells the reader nothing
-            about whether the sentence is actually supported. A fact that has
-            since been changed or removed is named as that, not guessed at. -#}
-        <ul class="draft-citations">
-          {% for span_id in sentence.cited_span_ids %}
-          <li class="note">
-            {% if cited_facts.get(span_id | string) %}
-            based on: “{{ cited_facts[span_id | string] }}”
-            {% else %}
-            based on a fact you have since changed
+  <div class="draft-layout">
+    <div class="draft-document">
+      <label for="{{ text_id }}">The {{ draft.kind | kind_label }}, ready to copy</label>
+      {#- Readonly, and the no-JavaScript way to copy: click in, select all,
+          copy. The button below only appears when the script is there to
+          make it work. -#}
+      <textarea id="{{ text_id }}" class="draft-text" readonly rows="18">{{ draft.text }}</textarea>
+      <div class="quick-actions draft-actions">
+        <button type="button" class="copy-draft" data-copy-from="{{ text_id }}" hidden>Copy to clipboard</button>
+        <a class="button secondary" href="/applications/{{ application_id }}/drafts/{{ draft.id }}/download">Download as a text file</a>
+        <span class="note copy-status" role="status" aria-live="polite"></span>
+      </div>
+      <noscript><p class="note">To copy it: click in the box, select all, and copy.</p></noscript>
+    </div>
+
+    <div class="draft-checks">
+      <ul class="verdict-key" aria-label="What the marks mean">
+        <li><span class="status-badge verdict-supported">Supported</span> traces to a fact you confirmed</li>
+        <li><span class="status-badge verdict-review">Check this</span> only partly traces, or says more</li>
+        <li><span class="status-badge verdict-unsupported">Not supported</span> nothing you confirmed backs it</li>
+        <li><span class="status-badge verdict-not-checked">Not checked</span> framing or a heading, never compared</li>
+      </ul>
+
+      {% if check.flagged %}
+      <h4>Needs your attention ({{ check.flagged | length }})</h4>
+      <p class="note">
+        Each of these is either a claim to reword or something true that your
+        facts don't record yet. Only you know which.
+      </p>
+      <ul class="draft-sentences flagged">
+        {% for sentence in check.flagged %}
+        {% set action = next_action(sentence) %}
+        <li>
+          <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
+          <q>{{ sentence.text }}</q>
+          <p class="note">{{ action.why if action and action.why else sentence_meaning(sentence) }}</p>
+          {% if sentence.cited_span_ids %}
+          <ul class="draft-citations">
+            {% for span_id in sentence.cited_span_ids %}
+            <li class="note">
+              {% if cited_facts.get(span_id | string) %}partly based on: “{{ cited_facts[span_id | string] }}”{% else %}based on a fact you have since changed{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          {% if sentence.evidence_note %}
+          <p class="note checker-note">The check's own note: {{ sentence.evidence_note }}</p>
+          {% endif %}
+          {% if action %}
+          <p class="next-action">
+            <strong>What to do:</strong> {{ action.reword }}
+            {% if action.add_fact %}
+            If it is true and your facts just don't say so yet, add it --
+            <a href="/background/facts">confirm it from one of your CVs</a>, or
+            <a href="/background">add a CV that says it</a> -- then write the CV again.
+            {% endif %}
+          </p>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif check.claims %}
+      <p class="note">Nothing needs your attention: every claim traces to a fact you confirmed.</p>
+      {% endif %}
+
+      {% if check.backed %}
+      <details class="draft-verdicts">
+        <summary>Supported ({{ check.backed | length }}) -- and the facts behind each</summary>
+        <ul class="draft-sentences">
+          {% for sentence in check.backed %}
+          <li>
+            <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
+            {{ sentence.text }}
+            {% if sentence.cited_span_ids %}
+            {#- The fact's own words, never its id: a UUID tells the reader nothing
+                about whether the sentence is actually supported. A fact that has
+                since been changed or removed is named as that, not guessed at. -#}
+            <ul class="draft-citations">
+              {% for span_id in sentence.cited_span_ids %}
+              <li class="note">
+                {% if cited_facts.get(span_id | string) %}based on: “{{ cited_facts[span_id | string] }}”{% else %}based on a fact you have since changed{% endif %}
+              </li>
+              {% endfor %}
+            </ul>
             {% endif %}
           </li>
           {% endfor %}
         </ul>
-        {% endif %}
-        {% if sentence.evidence_note %}
-        <div class="note">{{ sentence.evidence_note }}</div>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-  </details>
+      </details>
+      {% endif %}
 
-  <label>Copy the text</label>
-  <textarea class="draft-text" readonly rows="12">{{ entry.draft.text }}</textarea>
+      {% if check.unchecked %}
+      <details class="draft-verdicts">
+        <summary>Not checked ({{ check.unchecked | length }}) -- framing and headings, yours to stand behind</summary>
+        <ul class="draft-sentences">
+          {% for sentence in check.unchecked %}
+          <li>
+            <span class="status-badge {{ sentence | sentence_style }}">{{ sentence | sentence_label }}</span>
+            {{ sentence.text }}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </div>
+  </div>
 {% endcall %}
 </article>

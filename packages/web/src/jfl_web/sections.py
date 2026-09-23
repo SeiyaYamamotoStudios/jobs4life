@@ -40,7 +40,7 @@ from typing import Any
 
 from jfl_core.storage.ui_sections import SectionState
 
-from jfl_web.drafts import kind_label
+from jfl_web.drafts import check_summary, kind_label
 from jfl_web.timeformat import humanize
 
 # The marker's words when something changed but there is nothing countable to
@@ -334,43 +334,70 @@ def timeline_section(states: dict[str, SectionState], events: Sequence[object]) 
 def requirements_section(
     states: dict[str, SectionState], requirements: Sequence[object], coverage: Sequence[object]
 ) -> Section:
-    """ "Requirements", with each one's coverage status.
+    """ "What the ad asks for", with how each requirement stands against your facts.
 
-    Folded behind its counts once coverage has been checked; forced open before
-    that, because an unchecked list is a prompt to press the button rather than
-    a result to read.
+    Folded by default, and no longer forced open before the check has run: the
+    steps panel above it is where a missing check is now said and started, so
+    the list is reference material rather than a prompt.
     """
     statuses = [getattr(row, "status", None) for row in coverage]
     evidenced = sum(1 for status in statuses if status == "evidenced")
     return resolve(
         "drafts.requirements",
-        "Requirements",
+        "What the ad asks for",
         state=states.get("drafts.requirements"),
         default_open=False,
-        forced_open=not coverage,
         summary=joined(
             counted(len(requirements), "requirement"),
-            f"{evidenced} evidenced" if coverage else "",
+            f"{evidenced} evidenced" if coverage else "not checked yet",
         ),
     )
 
 
-def generate_section(states: dict[str, SectionState]) -> Section:
-    """ "Generate" -- the action, so it is open."""
+def generate_section(states: dict[str, SectionState], *, pending: bool = False) -> Section:
+    """The steps to a CV and the button that runs them -- the action, so open,
+    and forced open while a press is being worked on.
+    """
     return resolve(
         "drafts.generate",
-        "Generate",
+        "Write a CV",
         state=states.get("drafts.generate"),
         default_open=True,
+        forced_open=pending,
+    )
+
+
+def cv_section(
+    states: dict[str, SectionState], latest: Mapping[str, Any] | None, *, pending: bool = False
+) -> Section:
+    """ "CV for this job" on the application page: the main thing a person does
+    with an application, so open by default, and forced open while one is
+    being written.
+    """
+    summary = ""
+    if latest is not None:
+        created_at = getattr(latest["draft"], "created_at", None)
+        summary = joined(
+            f"latest {humanize(created_at)}" if created_at is not None else "",
+        )
+    return resolve(
+        "application.cv",
+        "CV for this job",
+        state=states.get("application.cv"),
+        default_open=True,
+        forced_open=pending,
+        summary=summary,
     )
 
 
 def draft_history_section(states: dict[str, SectionState], entries: Sequence[object]) -> Section:
-    """ "Draft history" -- open, with the newest draft inside it open and the rest folded."""
+    """ "Earlier versions" -- every draft before the newest, each folded behind
+    its date and count. The newest is shown on its own, above, open.
+    """
     times = [getattr(entry["draft"], "created_at", None) for entry in entries]  # type: ignore[index]
     return resolve(
         "drafts.history",
-        "Draft history",
+        "Earlier versions",
         state=states.get("drafts.history"),
         default_open=True,
         summary=counted(len(entries), "draft"),
@@ -388,12 +415,13 @@ def draft_section(
 
     The summary carries the absolute date *and* the relative one, because A6's
     rule holds wherever a record's timestamp is shown and a folded draft is
-    still showing one.
+    still showing one -- and how many of its claims traced, so an older version
+    can be compared without opening it.
     """
     draft = entry["draft"]
     key = f"draft.{draft.id}"
     created_at = draft.created_at
-    sentences = (draft.gate_result or {}).get("sentences", [])
+    check = check_summary(draft.gate_result)
     return resolve(
         key,
         kind_label(draft.kind).capitalize(),
@@ -401,7 +429,7 @@ def draft_section(
         default_open=newest,
         summary=joined(
             humanize(created_at) if created_at is not None else "",
-            counted(len(sentences), "sentence"),
+            f"{check.supported} of {counted(check.claims, 'claim')} traced" if check.claims else "",
         ),
         level=3,
     )

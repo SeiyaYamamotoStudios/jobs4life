@@ -63,6 +63,7 @@ from jfl_generate.errors import GenerateError
 from jfl_generate.jobs import add_job
 from sqlalchemy.engine import Connection, Engine
 
+from jfl_worker.chain import queue_next
 from jfl_worker.credentials import load_api_key
 from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION_KIND
 from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
@@ -154,7 +155,10 @@ def _extract_job_ad(
     if claimed is None:
         # No such application for this user, no ad against it, or an extraction
         # that already succeeded. All three mean "do not call the model", and
-        # none of them is a failure worth retrying.
+        # none of them is a failure worth retrying. A chained next step is
+        # still queued: an ad that was already read is a prerequisite met, and
+        # anything else makes the next step fail with its own plain reason.
+        queue_next(ctx)
         return {"application_id": str(application_id), "skipped": "nothing to extract"}
 
     if master_key is None:
@@ -228,6 +232,8 @@ def _extract_job_ad(
             raise PermanentTaskError(f"extraction failed permanently: {code}") from None
         raise
 
+    # "Write the CV" pressed before the ad was read: the next step, if any.
+    queue_next(ctx)
     return {
         "application_id": str(application_id),
         "job_id": str(job.id),

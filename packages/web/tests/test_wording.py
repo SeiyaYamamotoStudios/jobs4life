@@ -105,3 +105,76 @@ def test_the_old_paths_redirect_permanently(client: TestClient, old: str, new: s
     response = client.get(old, follow_redirects=False)
     assert response.status_code == 301
     assert response.headers["location"] == new
+
+
+# --------------------------------------------------------------------------
+# Writing a CV: a stricter list, for one feature
+# --------------------------------------------------------------------------
+
+# The drafting screens had the most internal vocabulary on them -- "check
+# coverage", a legend about the gate -- and the owner's complaint was that
+# generating a CV was unclear. These words name parts of the machine, not
+# anything the reader has. Checked on these screens only: "coverage" is fine in
+# a stylesheet class, and other screens have their own history.
+DRAFTING_JARGON = re.compile(
+    r"\b(gate|span|spans|grounded|grounding|coverage|corpus|draft kind)\b", re.I
+)
+DRAFTING_TEMPLATES = (
+    "application_drafts.html",
+    "_draft.html",
+    "_cv_steps.html",
+)
+
+_JINJA_TAG = re.compile(r"\{%.*?%\}|\{\{.*?\}\}", re.S)
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def _visible(text: str) -> str:
+    """What a template would show, minus anything computed: comments, Jinja
+    tags and expressions, and HTML tags (so a class name is not read as
+    words). What the Python puts on screen is swept separately below."""
+    return _HTML_TAG.sub(
+        " ", _JINJA_TAG.sub(" ", _HTML_COMMENT.sub("", _JINJA_COMMENT.sub("", text)))
+    )
+
+
+@pytest.mark.parametrize("name", DRAFTING_TEMPLATES)
+def test_the_drafting_templates_use_the_readers_words(name: str) -> None:
+    found = DRAFTING_JARGON.findall(_visible((TEMPLATE_DIR / name).read_text()))
+    assert not found, f"{name} shows {found}"
+
+
+def test_the_cv_panel_on_the_application_page_uses_the_readers_words() -> None:
+    text = (TEMPLATE_DIR / "application_detail.html").read_text()
+    start = text.index("{% call sections.section(cv_section) %}")
+    panel = text[start : text.index("{% endcall %}", start)]
+    assert not DRAFTING_JARGON.findall(_visible(panel))
+
+
+def test_what_the_drafting_helpers_put_on_screen_uses_the_readers_words() -> None:
+    """Every string `jfl_web.drafts` renders: the marks and what they mean, each
+    step, the running lines, the next actions and every failure sentence."""
+    from jfl_web import drafts
+
+    said: list[str] = [
+        *drafts.VERDICT_WORDS.values(),
+        *drafts.VERDICT_MEANINGS.values(),
+        *drafts.STEP_LABELS.values(),
+        *drafts._RUNNING.values(),
+        *drafts._WHY.values(),
+        drafts._REWORD,
+        drafts._REWORD_TO_MATCH,
+        *(f.message for f in drafts._COVERAGE_FAILURES.values()),
+        *(f.message for f in drafts._DRAFT_FAILURES.values()),
+        *(drafts.generate_label(kind) for kind in drafts.GENERATE_LABELS),
+    ]
+    for has_ad, ad_read, checked in [(True, False, False), (True, True, False), (True, True, True)]:
+        plan = drafts.plan_steps(has_ad=has_ad, ad_read=ad_read, ad_reading=False, checked=checked)
+        said.append(plan.cost_line)
+    said.append(
+        drafts.plan_steps(
+            has_ad=False, ad_read=False, ad_reading=False, checked=False
+        ).blocked_message
+    )
+    offenders = [line for line in said if DRAFTING_JARGON.search(line)]
+    assert not offenders, offenders

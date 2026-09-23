@@ -468,3 +468,105 @@ def test_the_kill_switch_leaves_the_task_pending_and_calls_nothing(
     assert task is not None
     assert task.status == "pending"
     assert task.attempts == 0
+
+
+# --------------------------------------------------------------------------
+# One press, several steps: the check queues the CV behind it, once
+# --------------------------------------------------------------------------
+
+
+def test_a_chained_check_queues_the_next_step_once_even_when_redelivered(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "Write the CV" pressed before the check had run queues the check with
+    the draft named in `then` (`jfl_web.routes.drafts.request_draft`). The
+    handler queues the draft when it succeeds -- and a redelivered task, which
+    skips the model, still queues nothing more: one press, one of each step.
+    """
+    from jfl_worker.handlers.coverage_generation import build_generate_coverage
+
+    store_key(engine, user, master_key, FAKE_KEY)
+    job_id = add_job(engine, user, requirements=["5+ years of Python"])
+    application_id = str(uuid.uuid4())
+    draft_step = {
+        "kind": "generate_cv_draft",
+        "payload": {"application_id": application_id, "kind": "cv_bullets"},
+    }
+    with engine.begin() as conn:
+        task = PostgresTaskRepository(conn, user).enqueue(
+            kind=GENERATE_COVERAGE, payload={"job_id": str(job_id), "then": [draft_step]}
+        )
+    ctx = TaskContext(task=task, engine=engine, now=dt.datetime.now(dt.UTC))
+    handler = build_generate_coverage(master_key=master_key, model="claude-opus-5")
+
+    install_fake_client(monkeypatch, payload=COVERAGE_PAYLOAD)
+    handler(ctx)
+    monkeypatch.undo()
+    handler(ctx)  # redelivery: skips the model, and must not queue a second draft
+
+    with engine.begin() as conn:
+        drafts = PostgresTaskRepository(conn, user).list_tasks(kind="generate_cv_draft")
+    assert len(drafts) == 1
+    assert drafts[0].payload == {
+        "application_id": application_id,
+        "kind": "cv_bullets",
+        "after": str(task.id),
+    }
+
+
+def test_a_chain_only_continues_into_the_drafting_steps(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A task payload is not a place to take instructions from: a `then` naming
+    any other kind queues nothing."""
+    from jfl_worker.handlers.coverage_generation import build_generate_coverage
+
+    store_key(engine, user, master_key, FAKE_KEY)
+    job_id = add_job(engine, user, requirements=["5+ years of Python"])
+    with engine.begin() as conn:
+        task = PostgresTaskRepository(conn, user).enqueue(
+            kind=GENERATE_COVERAGE,
+            payload={"job_id": str(job_id), "then": [{"kind": "check_board", "payload": {}}]},
+        )
+    ctx = TaskContext(task=task, engine=engine, now=dt.datetime.now(dt.UTC))
+    install_fake_client(monkeypatch, payload=COVERAGE_PAYLOAD)
+    build_generate_coverage(master_key=master_key, model="claude-opus-5")(ctx)
+
+    with engine.begin() as conn:
+        assert PostgresTaskRepository(conn, user).follow_up(task.id) is None
+
+
+def test_a_read_that_finds_nothing_to_do_still_hands_on_to_the_check(
+    engine: Engine, user: uuid.UUID, master_key: MasterKey
+) -> None:
+    """The extraction handler's "nothing to extract" path -- an ad already read,
+    here simply no such application -- calls no model and still queues the
+    chained check, which then says for itself whether there is anything to
+    check. No fake client: the root guard would raise on any model call.
+    """
+    from jfl_worker.handlers.extraction import build_extract_job_ad
+
+    job_id = uuid.uuid4()
+    with engine.begin() as conn:
+        task = PostgresTaskRepository(conn, user).enqueue(
+            kind="extract_job_ad",
+            payload={
+                "application_id": str(uuid.uuid4()),
+                "then": [{"kind": GENERATE_COVERAGE, "payload": {"job_id": str(job_id)}}],
+            },
+        )
+    ctx = TaskContext(task=task, engine=engine, now=dt.datetime.now(dt.UTC))
+    result = build_extract_job_ad(master_key=master_key, model="claude-opus-5")(ctx)
+    assert result is not None and "skipped" in result
+
+    with engine.begin() as conn:
+        follow_up = PostgresTaskRepository(conn, user).follow_up(task.id)
+    assert follow_up is not None
+    assert follow_up.kind == GENERATE_COVERAGE
+    assert follow_up.payload == {"job_id": str(job_id), "after": str(task.id)}
