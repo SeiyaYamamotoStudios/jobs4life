@@ -228,8 +228,12 @@ the published number true of the running code again.
 
 **The Python identifiers stay `jfl_*` / `JFL_*`.** The abbreviation expands to "jobs for
 life" as readily as it did to "job for life", so renaming ~100 identifiers, the CLI entry
-point, and every environment variable would be churn with no reader-facing gain. The
-GitHub repo stays `job-for-life` for the same reason.
+point, and every environment variable would be churn with no reader-facing gain.
+**Amended 2026-09-23:** the GitHub repo *was* renamed, to `SeiyaYamamotoStudios/jobs4life`
+— a URL is reader-facing where an identifier is not. GitHub redirects the old name, so
+existing clones keep working; point one at the new name with
+`git remote set-url origin https://github.com/SeiyaYamamotoStudios/jobs4life.git`. The
+local directory name and the Python identifiers are unaffected.
 
 **2026-09-05 — The product model is Opus 5, and the reason is not accuracy.** Both
 models were run over the whole 210-item tier-1 set and compared **paired**, item by
