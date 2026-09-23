@@ -9,6 +9,7 @@ from jfl_core.crypto.envelope import MasterKey
 from jfl_worker.handlers import (
     CHECK_APPLICATION_ANSWER,
     CHECK_BOARD,
+    CHECK_CV_EDITS,
     CLASSIFY_PUSHBACK,
     CLUSTER_CAPABILITIES,
     DRAFT_APPLICATION_ANSWER,
@@ -80,6 +81,7 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
             (
                 CHECK_APPLICATION_ANSWER,
                 CHECK_BOARD,
+                CHECK_CV_EDITS,
                 CLASSIFY_PUSHBACK,
                 CLUSTER_CAPABILITIES,
                 DRAFT_APPLICATION_ANSWER,
@@ -122,6 +124,10 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
     # key, same shape as title suggestion -- the kill switch must stop it too.
     classify = registry.get(CLASSIFY_PUSHBACK)
     assert classify is not None and classify.calls_model is True
+
+    # "Check my edits" on a generated CV: one claim-gate call on the user's key.
+    check_cv = registry.get(CHECK_CV_EDITS)
+    assert check_cv is not None and check_cv.calls_model is True
 
     # Grouping confirmed facts into capabilities: one Anthropic call on the
     # user's own key. Held by the kill switch like every other one -- and that

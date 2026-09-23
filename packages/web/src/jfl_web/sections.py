@@ -435,6 +435,42 @@ def draft_section(
     )
 
 
+def cv_document_section(
+    states: dict[str, SectionState], version: object, check: object, *, pending: bool = False
+) -> Section:
+    """The generated CV document on the CV page: what the person came for, so
+    open, and forced open while a check of their edits is running."""
+    created_at = getattr(version, "created_at", None)
+    claims = int(getattr(check, "claims", 0) or 0)
+    supported = int(getattr(check, "supported", 0) or 0)
+    return resolve(
+        "cv.document",
+        "Your CV",
+        state=states.get("cv.document"),
+        default_open=True,
+        forced_open=pending,
+        summary=joined(
+            f"version {getattr(version, 'version', '')}",
+            humanize(created_at) if created_at is not None else "",
+            f"{supported} of {counted(claims, 'line')} traced" if claims else "",
+        ),
+    )
+
+
+def cv_versions_section(states: dict[str, SectionState], versions: Sequence[object]) -> Section:
+    """Every earlier version of the CV document, folded behind a count, like
+    older drafts. Each stays downloadable."""
+    return resolve(
+        "cv.versions",
+        "Earlier versions of this CV",
+        state=states.get("cv.versions"),
+        default_open=False,
+        summary=counted(len(versions), "version"),
+        item_times=[getattr(v, "created_at", None) for v in versions],
+        level=3,
+    )
+
+
 # --------------------------------------------------------------------------
 # The profile
 # --------------------------------------------------------------------------
@@ -478,6 +514,14 @@ def profile_sections(
         (getattr(self_assessment, "depth_genuine", "") or "").strip()
         or (getattr(self_assessment, "recurring_gaps", "") or "").strip()
     )
+    cv_header = getattr(profile, "cv_header", None)
+    header_stated = sum(
+        1
+        for name in ("name", "tagline", "phone", "email", "location")
+        if (getattr(cv_header, name, "") or "").strip()
+    )
+    links = list(getattr(cv_header, "links", None) or [])
+    interests = list(getattr(profile, "interests", None) or [])
     unevidenced = sum(1 for item in capabilities if not getattr(item, "evidence", None))
     proposed = sum(
         1 for item in capabilities if getattr(item, "key", "") not in saved_capability_keys
@@ -532,6 +576,20 @@ def profile_sections(
             default_open=not stated_self,
             summary="on the record" if stated_self else "not stated",
         ),
+        # Settings, not claims: how the top of a CV reads, and interests.
+        "cv_header": resolve(
+            "profile.cv-header",
+            "The top of your CV, and your interests",
+            state=states.get("profile.cv-header"),
+            forced_open=force_open == "cv-header",
+            default_open=not header_stated and not links and not interests,
+            summary=joined(
+                counted(header_stated, "detail") if header_stated else "",
+                counted(len(links), "link") if links else "",
+                counted(len(interests), "interest") if interests else "",
+            )
+            or "not stated",
+        ),
     }
 
 
@@ -540,6 +598,8 @@ __all__ = [
     "Section",
     "ad_section",
     "counted",
+    "cv_document_section",
+    "cv_versions_section",
     "draft_history_section",
     "draft_section",
     "generate_section",

@@ -1,0 +1,221 @@
+{% import "_sections.html" as sections %}
+{# The generated CV document: the CV as it reads, its check beside it, the
+   downloads, the template switch and the earlier versions. Expects `cvdoc`
+   (built by jfl_web.routes.cv_documents.cv_document_context), `cv_message`,
+   `application_id` and `session`.
+
+   The preview is `render_cv_html` of the stored version, in an iframe, so what
+   is on screen is the document the PDF is made from -- and the CV's own styles
+   never touch this page's. Both templates are rendered up front; the radio
+   buttons swap which one is visible with CSS alone, so switching previews
+   immediately with or without JavaScript. "Use this template" saves it.
+
+   A flagged line is shown in full and still downloads: the claim gate
+   informs, it never blocks (CLAUDE.md). Framing and anything never checked
+   read "Not checked", never supported. #}
+{% set version = cvdoc.version %}
+{% set doc = cvdoc.doc %}
+{% set check = cvdoc.check %}
+{% set text_id = "cv-text-" ~ version.id %}
+{% set base = "/applications/" ~ application_id ~ "/cv" %}
+<article class="draft cvdoc" id="cv-document">
+{% call sections.section(cvdoc.section) %}
+  {% if cv_message %}<p class="{{ cv_message[0] }}" role="status">{{ cv_message[1] }}</p>{% endif %}
+  <p class="draft-headline">{{ check.headline }}</p>
+  <p class="draft-meta">
+    Version {{ version.version }}
+    &middot; {{ cvdoc.status_words.get(version.status, version.status) }}
+    &middot; saved <time title="{{ version.created_at.isoformat() }}">{{ version.created_at | humanize_dt }}</time>
+  </p>
+
+  <div class="cv-export">
+    {% if cvdoc.warning %}
+    <p class="cv-export-warning">
+      <strong>{{ cvdoc.warning }}</strong>
+      It still downloads — what you send is your call.
+    </p>
+    {% endif %}
+    <div class="quick-actions draft-actions">
+      <a class="button" href="{{ base }}/{{ version.id }}/pdf">Download PDF</a>
+      <a class="button secondary" href="{{ base }}/{{ version.id }}/text">Download as text</a>
+      <button type="button" class="copy-draft secondary" data-copy-from="{{ text_id }}" hidden>Copy to clipboard</button>
+      <span class="note copy-status" role="status" aria-live="polite"></span>
+    </div>
+    <p class="note">
+      The download is exactly this version, as previewed below, without the marks.
+    </p>
+    <details class="cv-plain">
+      <summary>The text, ready to copy</summary>
+      <label class="visually-hidden" for="{{ text_id }}">The CV as plain text</label>
+      <textarea id="{{ text_id }}" class="draft-text" readonly rows="14">{{ cvdoc.text }}</textarea>
+    </details>
+  </div>
+
+  <div class="cv-layout">
+    <div class="cv-preview">
+      <form method="post" action="{{ base }}/template" class="cv-templates">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <input type="hidden" name="base_version" value="{{ version.id }}">
+        <fieldset>
+          <legend>Template</legend>
+          {% for value, label in cvdoc.templates.items() %}
+          <label class="cv-template-choice">
+            <input type="radio" name="template" value="{{ value }}"{% if doc.template == value %} checked{% endif %}>
+            {{ label }}{% if doc.template == value %} <span class="note">(in use)</span>{% endif %}
+          </label>
+          {% endfor %}
+        </fieldset>
+        <button type="submit" class="secondary">Use this template</button>
+      </form>
+      {% for value, html in cvdoc.previews.items() %}
+      <iframe class="cv-frame cv-frame-{{ value }}{% if doc.template == value %} is-current{% endif %}"
+              title="Your CV in the {{ cvdoc.templates[value] }} template"
+              srcdoc="{{ html }}"></iframe>
+      {% endfor %}
+    </div>
+
+    <div class="draft-checks">
+      <ul class="verdict-key" aria-label="What the marks mean">
+        <li><span class="status-badge verdict-supported">Supported</span> traces to a fact you confirmed</li>
+        <li><span class="status-badge verdict-review">Check this</span> only partly traces, or says more</li>
+        <li><span class="status-badge verdict-unsupported">Not supported</span> nothing you confirmed backs it</li>
+        <li><span class="status-badge verdict-not-checked">Not checked</span> framing, or edited since the check</li>
+      </ul>
+
+      {% if check.edited_unchecked or cvdoc.check_pending %}
+      <h4>Your edits ({{ check.edited_unchecked | length }})</h4>
+      {% if cvdoc.check_pending %}
+      <p class="note" role="status">Checking your edits now. Reload the page in a minute to see the result.</p>
+      {% endif %}
+      <ul class="draft-sentences">
+        {% for view in check.edited_unchecked %}
+        <li>
+          <span class="status-badge {{ view.style }}">{{ view.label }}</span>
+          <q>{{ view.line.text }}</q>
+          <p class="note">{{ view.where }} · {{ view.meaning }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if cvdoc.check_failed %}
+      <p class="error" role="alert">
+        {{ cvdoc.check_failed.message }}
+        {% if cvdoc.check_failed.fix_url %}<a href="{{ cvdoc.check_failed.fix_url }}">{{ cvdoc.check_failed.fix_label }}</a>.{% endif %}
+      </p>
+      {% endif %}
+      {% if check.edited_unchecked and not cvdoc.check_pending %}
+      <form method="post" action="{{ base }}/check">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit">Check my edits</button>
+      </form>
+      <p class="note">
+        Checks only the lines you changed against your confirmed facts —
+        {{ cvdoc.check_cost }} on your own API key, much the same for one line
+        as for ten.
+      </p>
+      {% endif %}
+      {% endif %}
+
+      {% if check.flagged %}
+      <h4>Needs your attention ({{ check.flagged | length }})</h4>
+      <p class="note">
+        Each of these is either a claim to reword or something true that your
+        facts don't record yet. Only you know which.
+      </p>
+      <ul class="draft-sentences flagged">
+        {% for view in check.flagged %}
+        <li>
+          <span class="status-badge {{ view.style }}">{{ view.label }}</span>
+          <q>{{ view.line.text }}</q>
+          <p class="note">{{ view.where }} · {{ view.meaning }}</p>
+          {% if view.line.note %}
+          <p class="note checker-note">The check's own note: {{ view.line.note }}</p>
+          {% endif %}
+          {% if view.action %}
+          <p class="next-action">
+            <strong>What to do:</strong> {{ view.action.reword }}
+            <a href="{{ base }}/edit#field-{{ view.path }}">Edit this line</a>.
+            {% if view.action.add_fact %}
+            If it is true and your facts just don't say so yet, add it —
+            <a href="/background/facts">confirm it from one of your CVs</a>, or
+            <a href="/background">add a CV that says it</a>.
+            {% endif %}
+          </p>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif check.claims and not check.edited_unchecked %}
+      <p class="note">Nothing needs your attention: every checked line traces to a fact you confirmed.</p>
+      {% endif %}
+
+      {% if check.backed %}
+      <details class="draft-verdicts">
+        <summary>Supported ({{ check.backed | length }})</summary>
+        <ul class="draft-sentences">
+          {% for view in check.backed %}
+          <li>
+            <span class="status-badge {{ view.style }}">{{ view.label }}</span>
+            {{ view.line.text }}
+            {% if view.line.note %}<p class="note checker-note">The check's own note: {{ view.line.note }}</p>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      {% if check.unchecked %}
+      <details class="draft-verdicts">
+        <summary>Not checked ({{ check.unchecked | length }}) — framing, yours to stand behind</summary>
+        <ul class="draft-sentences">
+          {% for view in check.unchecked %}
+          <li>
+            <span class="status-badge {{ view.style }}">{{ view.label }}</span>
+            {{ view.line.text }}
+            <p class="note">{{ view.meaning }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="quick-actions cv-edit-actions">
+    <a class="button secondary" href="{{ base }}/edit">Edit the wording</a>
+    <form method="post" action="{{ base }}/header">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="base_version" value="{{ version.id }}">
+      <button type="submit" class="secondary">Update the top from your profile</button>
+    </form>
+  </div>
+  <p class="note">
+    Job titles, employers, dates and education come from
+    <a href="/background/facts">the facts you confirmed</a> and are changed there.
+    Your name, contact details, links and interests come from
+    <a href="/profile#cv-header">your profile</a>.
+  </p>
+
+  {% if cvdoc.older %}
+  {% call sections.section(cvdoc.versions_section) %}
+    <p class="note">Newest first. Every version stays, and each downloads exactly as it was saved.</p>
+    <ul class="cv-versions">
+      {% for entry in cvdoc.older %}
+      {% set old = entry.version %}
+      <li>
+        <span class="cv-version-name">Version {{ old.version }}</span>
+        <span class="note">
+          {{ cvdoc.status_words.get(old.status, old.status) }} ·
+          <time title="{{ old.created_at.isoformat() }}">{{ old.created_at | humanize_dt }}</time>
+          {% if entry.warning %}· {{ entry.warning }}{% endif %}
+        </span>
+        <span class="cv-version-links">
+          <a href="{{ base }}/{{ old.id }}/pdf">PDF</a>
+          <a href="{{ base }}/{{ old.id }}/text">Text</a>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+</article>

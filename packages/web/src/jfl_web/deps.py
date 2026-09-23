@@ -25,6 +25,7 @@ from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
 from jfl_core.storage.capability_clusters import PostgresCapabilityClusterRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
+from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.postgres import (
@@ -210,6 +211,14 @@ def profile_repo(session: SessionDep, conn: ConnDep) -> PostgresProfileRepositor
 
 
 ProfileRepoDep = Annotated[PostgresProfileRepository, Depends(profile_repo)]
+
+
+def cv_document_repo(session: SessionDep, conn: ConnDep) -> PostgresCvDocumentRepository:
+    """The generated CV documents, bound to the signed-in user."""
+    return PostgresCvDocumentRepository(conn, session.user.id)
+
+
+CvDocumentRepoDep = Annotated[PostgresCvDocumentRepository, Depends(cv_document_repo)]
 
 
 def pushback_repo(session: SessionDep, conn: ConnDep) -> PostgresPushbackRepository:

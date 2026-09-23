@@ -32,12 +32,15 @@ from jfl_core.profile import (
     CAPABILITY_TIERS,
     CONSTRAINT_KINDS,
     INTERESTS,
+    MAX_CV_LINKS,
     MAX_OBJECTIVES,
     STANCES,
     Capability,
     CapabilityTier,
     Constraint,
     ConstraintKind,
+    CvHeaderLink,
+    CvHeaderSettings,
     Disciplines,
     Interest,
     Objective,
@@ -45,7 +48,9 @@ from jfl_core.profile import (
     comp_value,
     location_value,
     text_value,
+    valid_link_url,
 )
+from pydantic import ValidationError
 
 # Generous limits. They bound a row, not what anyone is allowed to say.
 MAX_NOTE = 2000
@@ -93,6 +98,13 @@ class InvalidAmountError(ValueError):
 
 class InvalidYearError(ValueError):
     """A "last used" year is not a plausible four-digit year."""
+
+
+class InvalidCvHeaderError(ValueError):
+    """A CV header setting or interest did not validate -- an email without an
+    `@`, a link that is not a web address. The message is the model's own,
+    which is written for the person reading it.
+    """
 
 
 # -- the words on the page ----------------------------------------------------
@@ -488,6 +500,10 @@ def merge_capabilities(
 # Re-exported so the template context has one import site for the page's words.
 __all__ = [
     "CAPABILITY_TIERS",
+    "CV_LINK_SLOTS",
+    "InvalidCvHeaderError",
+    "parse_cv_header",
+    "parse_interests",
     "COMP_COPY",
     "CONSTRAINT_FIELDS",
     "CONSTRAINT_FIELDS_BY_KIND",
@@ -524,3 +540,65 @@ __all__ = [
     "parse_year",
     "tier_from_answers",
 ]
+
+
+# -- CV header settings and interests -----------------------------------------
+
+# How many link rows the form offers. The model allows the same number.
+CV_LINK_SLOTS = MAX_CV_LINKS
+
+
+def _first_error(exc: ValidationError) -> str:
+    message = str(exc.errors()[0].get("msg", "That did not look right."))
+    message = message.removeprefix("Value error, ")
+    return message[:1].upper() + message[1:] + ("" if message.endswith(".") else ".")
+
+
+def parse_cv_header(
+    *,
+    name: str,
+    tagline: str,
+    phone: str,
+    email: str,
+    location: str,
+    links: Sequence[tuple[str, str]],
+) -> CvHeaderSettings:
+    """The header form, validated by the model rather than trusted.
+
+    A link row with both boxes blank is skipped. A URL with no label is shown
+    as its own address without the scheme -- what people would type as a label
+    anyway. A label with no URL is refused: a link that goes nowhere is a typo.
+    """
+    parsed_links: list[CvHeaderLink] = []
+    try:
+        for label, url in links:
+            label, url = label.strip(), url.strip()
+            if not label and not url:
+                continue
+            if not url:
+                raise InvalidCvHeaderError(f"The link “{label}” needs a URL.")
+            if not label:
+                label = valid_link_url(url).split("://", 1)[1].rstrip("/")
+            parsed_links.append(CvHeaderLink(label=label, url=url))
+        return CvHeaderSettings(
+            name=name,
+            tagline=tagline,
+            phone=phone.strip(),
+            email=email,
+            location=location,
+            links=parsed_links,
+        )
+    except ValidationError as exc:
+        raise InvalidCvHeaderError(_first_error(exc)) from None
+    except ValueError as exc:
+        if isinstance(exc, InvalidCvHeaderError):
+            raise
+        raise InvalidCvHeaderError(str(exc)[:1].upper() + str(exc)[1:] + ".") from None
+
+
+def parse_interests(value: str) -> list[str]:
+    """One per line, in the user's words. Length and count are the model's
+    rule (`jfl_core.profile.Profile.interests`), checked on save."""
+    if len(value) > MAX_TEXT:
+        raise FormTooLongError(f"That list is longer than {MAX_TEXT} characters.")
+    return [line.strip() for line in value.splitlines() if line.strip()]

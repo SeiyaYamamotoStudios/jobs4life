@@ -72,6 +72,7 @@ from jfl_core.storage.ui_sections import SectionState
 from jfl_web.deps import (
     ApplicationRepoDep,
     CsrfDep,
+    CvDocumentRepoDep,
     GroundingRepoDep,
     JobRepoDep,
     RunRepoDep,
@@ -89,6 +90,7 @@ from jfl_web.drafts import (
     sentence_meaning,
     step_failure,
 )
+from jfl_web.routes.cv_documents import cv_document_context
 from jfl_web.sections import (
     cv_section,
     draft_history_section,
@@ -429,10 +431,12 @@ def drafting_screen(
     run_repo: RunRepoDep,
     grounding: GroundingRepoDep,
     ui_sections: SectionRepoDep,
+    cv_documents: CvDocumentRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
         return _not_found(request, session)
+    states = ui_sections.states()
     context = _page_context(
         session,
         applications,
@@ -440,10 +444,17 @@ def drafting_screen(
         run_repo,
         grounding,
         tasks,
-        ui_sections.states(),
+        states,
         application_id,
         detail,
         _parse_task_id(request.query_params.get("task")),
+    )
+    # The generated CV document, when there is one -- its preview, its check,
+    # its versions and its downloads (`jfl_web.routes.cv_documents`).
+    context.update(
+        cv_document_context(
+            cv_documents, tasks, states, application_id, request.query_params.get("cv")
+        )
     )
     return render(request, "application_drafts.html", context)
 

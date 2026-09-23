@@ -15,7 +15,9 @@ from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from jfl_web.boards import check_error_message
+from jfl_web.cvdocs import line_key
 from jfl_web.drafts import (
+    VERDICT_WORDS,
     coverage_failure,
     draft_failure,
     generate_label,
@@ -60,6 +62,10 @@ _templates.env.filters["usd"] = usd
 # a GenerationFailure for a failed generate_coverage / generate_cv_draft task.
 _templates.env.filters["coverage_failure"] = coverage_failure
 _templates.env.filters["draft_failure"] = draft_failure
+# `{{ line | cv_line_key }}` / `{{ line | cv_line_label }}` -> one CV document
+# line's mark, in the same four words. See jfl_web.cvdocs.
+_templates.env.filters["cv_line_key"] = line_key
+_templates.env.filters["cv_line_label"] = lambda line: VERDICT_WORDS[line_key(line)]
 
 
 def _asset_url(name: str) -> str:

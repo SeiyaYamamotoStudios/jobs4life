@@ -42,6 +42,7 @@ from jfl_web.routes import (
     candidate_facts,
     changes,
     corpus,
+    cv_documents,
     drafts,
     jobs,
     pages,
@@ -108,6 +109,7 @@ def create_app(
     app.include_router(applications.router)
     app.include_router(application_questions.router)
     app.include_router(drafts.router)
+    app.include_router(cv_documents.router)
     app.include_router(boards.router)
     app.include_router(jobs.router)
     app.include_router(changes.router)

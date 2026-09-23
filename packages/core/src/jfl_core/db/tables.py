@@ -2029,3 +2029,31 @@ ui_section_states = Table(
     _ts("updated_at", nullable=False, server_default=text("now()")),
     UniqueConstraint("user_id", "section_key"),
 )
+
+# --------------------------------------------------------------------------
+# PLACEHOLDER (cvedit branch) -- cv_documents. The generation branch owns the
+# real table and its migration; at merge that one wins and this definition and
+# `migrations/versions/c9e0d1a2b3f4_cv_documents_placeholder_cvedit.py` are
+# dropped. Append-only: every edit, template switch and check is a new row.
+# --------------------------------------------------------------------------
+
+cv_documents = Table(
+    "cv_documents",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("version", Integer, nullable=False),
+    Column("doc", JSONB, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("trace_id", UUID(as_uuid=True)),
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    UniqueConstraint("application_id", "version"),
+)

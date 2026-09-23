@@ -11,7 +11,7 @@
     failure: that is what the person is waiting to see. Otherwise the newest
     CV leads -- it is what they came for -- and the steps sit under it as
     "write another". -#}
-{% set steps_first = plan.in_progress or not latest or plan.steps | selectattr("state", "equalto", "failed") | list %}
+{% set steps_first = plan.in_progress or (not latest and not cvdoc) or plan.steps | selectattr("state", "equalto", "failed") | list %}
 
 {% set steps_panel %}
 {% call sections.section(generate_section) %}
@@ -20,6 +20,10 @@
 {% endset %}
 
 {% if steps_first %}{{ steps_panel }}{% endif %}
+
+{#- The generated CV document, once there is one: previewed as it reads, its
+    check beside it, downloadable. It leads over the text drafts below. -#}
+{% if cvdoc %}{% include "_cv_document.html" %}{% endif %}
 
 {% if latest %}
 {% with entry = latest %}
