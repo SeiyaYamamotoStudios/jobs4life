@@ -336,7 +336,7 @@ select[data-status="withdrawn"] { color: var(--muted); }
 .status-badge.status-incomplete,
 .status-badge.status-truncated { color: var(--warn); border-color: var(--warn); }
 
-input[type="text"], input[type="url"], textarea {
+input[type="text"], input[type="url"], input[type="email"], input[type="tel"], textarea {
   width: 100%;
   padding: 0.55rem 0.7rem;
   font: inherit;
@@ -1211,7 +1211,8 @@ table.cvs td {
 /* A read-only draft and a wide textarea both used to overflow their panel on a
    narrow window, because `rows`/`cols` set a width the box model then refused
    to give back. */
-textarea, input[type="text"], input[type="url"], input[type="password"], select {
+textarea, input[type="text"], input[type="url"], input[type="password"],
+input[type="email"], input[type="tel"], select {
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -1410,6 +1411,7 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
   input[type="url"],
   input[type="password"],
   input[type="email"],
+  input[type="tel"],
   input[type="search"],
   input[type="number"],
   select,
@@ -1418,6 +1420,8 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
   input[type="text"],
   input[type="url"],
   input[type="password"],
+  input[type="email"],
+  input[type="tel"],
   select {
     min-height: 2.75rem;
     padding: 0.6rem 0.7rem;
@@ -1738,4 +1742,102 @@ ul.verdict-key .status-badge { margin-right: 0.35rem; }
   ol.steps .step { flex-basis: auto; padding-right: 0; }
   ol.steps .step + .step::before { content: none; }
   .draft-document .draft-text { font-size: 16px; max-height: 60vh; }
+}
+
+/* -- the generated CV: preview, check, export, edit ---------------------
+   The preview is the renderer's own HTML in an iframe, so the CV's styles
+   never touch this page and what is on screen is the document the PDF is
+   made from. The page gets desktop room for it; the check sits beside the
+   preview where there is space and under it where there is not. */
+main:has(.cvdoc) { max-width: 80rem; }
+main:has(.cvdoc) .page-header { max-width: none; }
+
+.cv-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+}
+.cv-preview { min-width: 0; }
+.cv-templates { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; margin: 0 0 0.6rem; }
+.cv-templates fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 1rem; }
+.cv-templates legend { float: left; font-weight: 650; margin-right: 0.8rem; padding: 0; }
+.cv-templates button { margin-top: 0; }
+.cv-template-choice { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* Both templates are in the page; the checked radio decides which shows.
+   Without :has() the saved template shows, which is still the truth. */
+.cv-frame {
+  display: none;
+  width: 100%;
+  height: 72rem;
+  max-height: 85vh;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.cv-frame.is-current { display: block; }
+.cv-preview:has(input[value="classic"]:checked) .cv-frame { display: none; }
+.cv-preview:has(input[value="classic"]:checked) .cv-frame-classic { display: block; }
+.cv-preview:has(input[value="modern"]:checked) .cv-frame { display: none; }
+.cv-preview:has(input[value="modern"]:checked) .cv-frame-modern { display: block; }
+
+.cvdoc > details.section { margin-top: 0; }
+.cv-export { margin: 0.6rem 0 0.4rem; }
+.cv-export-warning {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--warn);
+  color: var(--ink);
+}
+.cv-plain summary { cursor: pointer; color: var(--ink-soft); font-size: 0.9rem; }
+.cv-plain textarea { margin-top: 0.4rem; }
+.cv-edit-actions { align-items: center; margin-top: 1rem; }
+.cv-edit-actions form { margin: 0; }
+.cv-edit-actions button,
+.cv-edit-actions .button { margin-top: 0; }
+
+ul.cv-versions { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+ul.cv-versions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.8rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--rule);
+}
+.cv-version-name { font-weight: 650; }
+.cv-version-links { display: inline-flex; gap: 0.8rem; margin-left: auto; }
+
+/* The edit form: facts are shown as text, never as fields. */
+.cv-edit-section { margin-top: var(--space-4); }
+.cv-edit-section > h2 { margin-top: 0; }
+.cv-edit-line { margin: 0.6rem 0; }
+.cv-edit-line label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-weight: 600; }
+.cv-edit-role,
+.cv-edit-skill { margin: 0.8rem 0; min-width: 0; }
+.cv-edit-fact { color: var(--ink-soft); }
+
+/* The CV header settings on /profile. */
+.cv-header-contact,
+.cv-header-link {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0 1rem;
+}
+.cv-header-contact > div,
+.cv-header-link > div { min-width: 0; }
+
+@media (max-width: 64rem) {
+  .cv-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 40rem) {
+  .cvdoc { padding-left: 1rem; padding-right: 1rem; }
+  .cv-frame { height: 70vh; }
+  .cv-templates legend { float: none; display: block; }
+  .cv-version-links { margin-left: 0; }
+  .cv-header-contact,
+  .cv-header-link { grid-template-columns: minmax(0, 1fr); }
 }

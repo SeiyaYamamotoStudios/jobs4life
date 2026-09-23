@@ -42,9 +42,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import re
 import uuid
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AliasChoices,
@@ -57,9 +59,12 @@ from pydantic import (
 
 from jfl_core.models import CandidateFact
 
-# Bumped when a stored shape stops being readable by the model below. Written on
-# every row so a later reader can tell what it is looking at rather than guess.
-SCHEMA_VERSION = 1
+# Bumped when the stored shape changes. Written on every row so a later reader
+# can tell what it is looking at rather than guess.
+#
+# 2 -- `cv_header` and `interests` added (2026-09-23). Both default to empty, so
+# a version-1 row still reads as a version-2 profile with nothing stated there.
+SCHEMA_VERSION = 2
 
 
 # -- closed sets -------------------------------------------------------------
@@ -306,6 +311,128 @@ class SelfAssessment(_Section):
     recurring_gaps: str = ""
 
 
+# -- CV header settings and interests ----------------------------------------
+#
+# **Settings, not claims.** How your name should read on a CV, a phone number, a
+# link to your GitHub: none of it is a statement about what you have done, so
+# none of it is ever sent to the claim gate and none of it is written to the
+# corpus. `save_profile` reaches the corpus only through `CORPUS_SECTIONS`, which
+# names the self-assessment and nothing else -- so these fields cannot get
+# there by accident. Interests are the same: the user's own words, listed on the
+# CV verbatim, never checked.
+#
+# Validated here rather than trusted from a form, because this module is the
+# only write path into `profiles.data` and the values end up in a PDF someone
+# sends to an employer.
+
+MAX_CV_HEADER_TEXT = 200
+MAX_CV_LINKS = 5
+MAX_INTERESTS = 12
+MAX_INTEREST_TEXT = 120
+
+# Deliberately loose: one `@`, no spaces, a dot in the domain. Anything
+# stricter rejects real addresses; anything looser lets a typo through.
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s.]+$")
+
+
+def _short(value: str, what: str) -> str:
+    value = " ".join(value.split())
+    if len(value) > MAX_CV_HEADER_TEXT:
+        raise ValueError(f"{what} is longer than {MAX_CV_HEADER_TEXT} characters")
+    return value
+
+
+def valid_link_url(url: str) -> str:
+    """An `http(s)` URL with a host, or ValueError. A bare `github.com/me` is
+    read as `https://`, because that is what people type and what they mean;
+    any other scheme (`javascript:`, `data:`, `mailto:`) is refused, since the
+    URL is rendered as a link in a document and a PDF.
+    """
+    url = url.strip()
+    if not url:
+        raise ValueError("a link needs a URL")
+    if "://" not in url:
+        url = "https://" + url
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("a link has to start with http:// or https://")
+    host = parts.hostname or ""
+    if "." not in host or any(ch.isspace() for ch in url):
+        raise ValueError("that link does not look like a web address")
+    if len(url) > MAX_CV_HEADER_TEXT * 2:
+        raise ValueError("that link is too long")
+    return url
+
+
+class CvHeaderLink(_Section):
+    """One link on the CV's header: what it says, and where it goes."""
+
+    label: str
+    url: str
+
+    @field_validator("label")
+    @classmethod
+    def _label(cls, value: str) -> str:
+        value = _short(value, "A link's label")
+        if not value:
+            raise ValueError("a link needs a label")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, value: str) -> str:
+        return valid_link_url(value)
+
+
+class CvHeaderSettings(_Section):
+    """How the top of a CV should read. Every field optional; a blank one is
+    left off the CV rather than guessed at.
+    """
+
+    name: str = ""
+    tagline: str = ""
+    phone: str = ""
+    email: str = ""
+    location: str = ""
+    links: list[CvHeaderLink] = Field(default_factory=list)
+
+    @field_validator("name", "tagline", "phone", "location")
+    @classmethod
+    def _text(cls, value: str) -> str:
+        return _short(value, "That field")
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: str) -> str:
+        if value and not re.fullmatch(r"[0-9+()\-. ]{5,40}", value):
+            raise ValueError("a phone number can hold digits, spaces, +, -, ( and ) only")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        value = value.strip()
+        if value and (len(value) > MAX_CV_HEADER_TEXT or not _EMAIL.match(value)):
+            raise ValueError("that email address does not look right")
+        return value
+
+    @field_validator("links")
+    @classmethod
+    def _links(cls, value: list[CvHeaderLink]) -> list[CvHeaderLink]:
+        if len(value) > MAX_CV_LINKS:
+            raise ValueError(f"at most {MAX_CV_LINKS} links")
+        return value
+
+    @property
+    def contact(self) -> list[str]:
+        """Phone, email, location -- the stated ones, in that order."""
+        return [v for v in (self.phone, self.email, self.location) if v]
+
+    @property
+    def is_empty(self) -> bool:
+        return self == CvHeaderSettings()
+
+
 class Profile(_Section):
     """One user's profile, whole. Every section is optional and an empty one
     reports "not stated" -- never a default, never an inference.
@@ -316,6 +443,22 @@ class Profile(_Section):
     disciplines: Disciplines = Field(default_factory=Disciplines)
     objectives: list[Objective] = Field(default_factory=list)
     self_assessment: SelfAssessment = Field(default_factory=SelfAssessment)
+    # Settings, not claims -- see `CvHeaderSettings`. Never reach the corpus.
+    cv_header: CvHeaderSettings = Field(default_factory=CvHeaderSettings)
+    interests: list[str] = Field(default_factory=list)
+
+    @field_validator("interests")
+    @classmethod
+    def _interests(cls, value: list[str]) -> list[str]:
+        """The user's words, whitespace tidied and blanks dropped -- nothing
+        else is changed."""
+        cleaned = [" ".join(item.split()) for item in value]
+        cleaned = [item for item in cleaned if item]
+        if len(cleaned) > MAX_INTERESTS:
+            raise ValueError(f"at most {MAX_INTERESTS} interests")
+        if any(len(item) > MAX_INTEREST_TEXT for item in cleaned):
+            raise ValueError(f"an interest is longer than {MAX_INTEREST_TEXT} characters")
+        return cleaned
 
     @model_validator(mode="after")
     def _objective_ranks_are_distinct(self) -> Profile:
@@ -536,6 +679,13 @@ __all__ = [
     "CapabilityTier",
     "Constraint",
     "ConstraintKind",
+    "CvHeaderLink",
+    "CvHeaderSettings",
+    "MAX_CV_HEADER_TEXT",
+    "MAX_CV_LINKS",
+    "MAX_INTERESTS",
+    "MAX_INTEREST_TEXT",
+    "valid_link_url",
     "Disciplines",
     "Interest",
     "Objective",

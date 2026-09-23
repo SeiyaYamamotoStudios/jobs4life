@@ -14,7 +14,8 @@
   fifth, <a href="#self-assessment">how you would put your own depth</a>, is a
   claim about you — so it goes on the record alongside the facts you have
   confirmed, in your words, and can be cited as evidence. That section says so
-  again where you type it.
+  again where you type it. <a href="#cv-header">The top of your CV</a> — your
+  name, contact details, links and interests — is a setting, never checked.
 </p>
 
 {% if saved %}<p class="ok" role="status">Saved.</p>{% endif %}
@@ -294,6 +295,68 @@
               maxlength="{{ max_self_assessment }}">{{ profile.self_assessment.recurring_gaps }}</textarea>
     <p class="note">No model reads or rewrites this. It is stored exactly as typed.</p>
     <button type="submit">Save and put these on the record</button>
+  </form>
+{% endcall %}
+</section>
+
+{# -- 6. the top of a CV, and interests: settings, never claims ------------ #}
+<section id="cv-header">
+{% call sections.section(profile_sections.cv_header) %}
+  <p class="note">
+    <strong>These are settings, not claims.</strong> They are printed on your CV
+    exactly as you type them and are never checked against your facts or added
+    to them.
+  </p>
+  {% set header = profile.cv_header %}
+  <form method="post" action="/profile/cv-header">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="cv_name">Your name as it should appear on a CV</label>
+    <input id="cv_name" name="cv_name" type="text" autocomplete="name"
+           maxlength="{{ max_cv_header_text }}" value="{{ header.name }}">
+    <label for="cv_tagline">A line under your name</label>
+    <input id="cv_tagline" name="cv_tagline" type="text" maxlength="{{ max_cv_header_text }}"
+           placeholder="Engineering Manager | Platform | Applied AI" value="{{ header.tagline }}">
+    <div class="cv-header-contact">
+      <div>
+        <label for="cv_phone">Phone</label>
+        <input id="cv_phone" name="cv_phone" type="tel" autocomplete="tel"
+               maxlength="40" value="{{ header.phone }}">
+      </div>
+      <div>
+        <label for="cv_email">Email</label>
+        <input id="cv_email" name="cv_email" type="email" autocomplete="email"
+               maxlength="{{ max_cv_header_text }}" value="{{ header.email }}">
+      </div>
+      <div>
+        <label for="cv_location">Location</label>
+        <input id="cv_location" name="cv_location" type="text"
+               maxlength="{{ max_cv_header_text }}" placeholder="Bristol, UK" value="{{ header.location }}">
+      </div>
+    </div>
+    <fieldset class="cv-header-links">
+      <legend>Links</legend>
+      <p class="note">What the link says, and where it goes. Leave the label blank and the address is shown.</p>
+      {% for slot in range(1, cv_link_slots + 1) %}
+      {% set link = header.links[slot - 1] if header.links | length >= slot else none %}
+      <div class="cv-header-link">
+        <div>
+          <label for="link_label_{{ slot }}">Label {{ slot }}</label>
+          <input id="link_label_{{ slot }}" name="link_label_{{ slot }}" type="text"
+                 maxlength="{{ max_cv_header_text }}" value="{{ link.label if link else '' }}">
+        </div>
+        <div>
+          <label for="link_url_{{ slot }}">Address {{ slot }}</label>
+          <input id="link_url_{{ slot }}" name="link_url_{{ slot }}" type="url" inputmode="url"
+                 placeholder="https://" value="{{ link.url if link else '' }}">
+        </div>
+      </div>
+      {% endfor %}
+    </fieldset>
+    <label for="interests">Personal interests — one per line, in your words</label>
+    <textarea id="interests" name="interests" rows="4"
+              placeholder="Sea swimming&#10;Restoring old synthesisers">{{ profile.interests | join('\n') }}</textarea>
+    <p class="note">Up to {{ max_interests }}. Shown on the CV as you write them.</p>
+    <button type="submit">Save the top of your CV</button>
   </form>
 {% endcall %}
 </section>

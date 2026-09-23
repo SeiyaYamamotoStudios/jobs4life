@@ -67,6 +67,10 @@ Screens:
   POST /profile/disciplines                -- section 3
   POST /profile/objectives                 -- section 4, four ranked slots
   POST /profile/self-assessment            -- section 5, ALSO to the corpus
+  POST /profile/cv-header                  -- how the top of a CV reads, and
+                                              personal interests: settings, not
+                                              claims -- never to the corpus,
+                                              never to the claim gate
   GET  /profile/history                    -- every saved version, newest first
 """
 
@@ -78,6 +82,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.profile import (
+    MAX_CV_HEADER_TEXT,
+    MAX_INTEREST_TEXT,
+    MAX_INTERESTS,
     Capability,
     Profile,
     capability_key,
@@ -86,6 +93,7 @@ from jfl_core.profile import (
 )
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_core.storage.profile import save_profile
+from pydantic import ValidationError
 
 from jfl_web.capabilityclusters import (
     MAX_LABEL as MAX_CLUSTER_LABEL,
@@ -113,6 +121,7 @@ from jfl_web.profile import (
     CAPABILITY_TIERS,
     COMP_COPY,
     CONSTRAINT_FIELDS,
+    CV_LINK_SLOTS,
     INTEREST_CHOICES,
     MAX_ITEMS,
     MAX_LABEL,
@@ -127,6 +136,7 @@ from jfl_web.profile import (
     FormTooLongError,
     InvalidAmountError,
     InvalidChoiceError,
+    InvalidCvHeaderError,
     InvalidYearError,
     MissingStanceError,
     TooManyItemsError,
@@ -135,7 +145,9 @@ from jfl_web.profile import (
     merge_capabilities,
     parse_capability,
     parse_constraints,
+    parse_cv_header,
     parse_disciplines,
+    parse_interests,
     parse_lines,
     parse_objectives,
     parse_stance,
@@ -159,6 +171,7 @@ router = APIRouter()
 _FORM_ERRORS = (
     FormTooLongError,
     InvalidAmountError,
+    InvalidCvHeaderError,
     InvalidChoiceError,
     InvalidYearError,
     MissingStanceError,
@@ -242,6 +255,10 @@ def _context(
         "max_self_assessment": MAX_SELF_ASSESSMENT,
         "max_cluster_label": MAX_CLUSTER_LABEL,
         "max_suggestion_text": MAX_LEVEL_TEXT,
+        "cv_link_slots": CV_LINK_SLOTS,
+        "max_cv_header_text": MAX_CV_HEADER_TEXT,
+        "max_interests": MAX_INTERESTS,
+        "max_interest_text": MAX_INTEREST_TEXT,
         # Set by the routes that actually looked one up. None means "not looked
         # up", which the panel renders as the button alone -- never as "no run
         # yet", which would be a claim this context cannot make.
@@ -935,6 +952,57 @@ def save_self_assessment(
         ),
     )
     return _saved("self-assessment")
+
+
+@router.post("/profile/cv-header")
+async def save_cv_header(
+    request: Request,
+    session: SessionDep,
+    store: ProfileRepoDep,
+    facts: CandidateFactRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """How the top of a CV reads, and personal interests.
+
+    **Settings, not claims.** `store.save` and never `save_profile`: this
+    section has no corpus half, and the claim gate never sees it. A phone
+    number is not something anyone over-claims, and an interest is the user's
+    own words listed as they wrote them.
+
+    Read from the raw form because the link rows are a fixed number of numbered
+    slots; every value still goes through `jfl_web.profile.parse_cv_header`
+    and the model's own validators before anything is stored.
+    """
+    form = await request.form()
+
+    def field(name: str) -> str:
+        value = form.get(name, "")
+        return value if isinstance(value, str) else ""
+
+    try:
+        header = parse_cv_header(
+            name=field("cv_name"),
+            tagline=field("cv_tagline"),
+            phone=field("cv_phone"),
+            email=field("cv_email"),
+            location=field("cv_location"),
+            links=[
+                (field(f"link_label_{slot}"), field(f"link_url_{slot}"))
+                for slot in range(1, CV_LINK_SLOTS + 1)
+            ],
+        )
+        interests = parse_interests(field("interests"))
+        # The model's own rule for interests (count, length), applied here
+        # because `model_copy` below does not validate.
+        interests = Profile(interests=interests).interests
+    except ValidationError as exc:
+        message = str(exc.errors()[0].get("msg", "")).removeprefix("Value error, ")
+        return _error(request, session, store, facts, message[:1].upper() + message[1:] + ".", 400)
+    except _FORM_ERRORS as exc:
+        return _error(request, session, store, facts, str(exc), 400)
+    profile = store.current()
+    store.save(profile.model_copy(update={"cv_header": header, "interests": interests}))
+    return _saved("cv-header")
 
 
 @router.get("/profile/history")

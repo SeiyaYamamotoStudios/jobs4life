@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{# Edit the wording of the latest CV version. Every generated line, the
+   descriptors, the skill labels and the headings are fields, named by their
+   path (jfl_core.cv_lines). Facts -- titles, employers, dates, education --
+   and the header and interests are shown as text, never as fields; the server
+   refuses a submission that names one (`apply_edits`), so hiding them here is
+   presentation, not the protection. #}
+{% block title %}Edit the CV — jobs4life{% endblock %}
+{% block content %}
+{% macro mark(field) -%}
+{%- if field.line -%}
+{%- set key = field.line | cv_line_key -%}
+<span class="status-badge verdict-{{ key | replace('_', '-') }}">{{ field.line | cv_line_label }}</span>
+{%- endif -%}
+{%- endmacro %}
+{% macro line_field(path, label, rows=2) -%}
+{%- set field = fields[path] -%}
+<div class="cv-edit-line" id="field-{{ path }}">
+  <label for="edit-{{ path }}">{{ label }} {{ mark(field) }}</label>
+  <textarea id="edit-{{ path }}" name="{{ path }}" rows="{{ rows }}">{{ values[path] }}</textarea>
+  {% if field.line and field.line.origin == "user" and field.line.verdict is none %}
+  <p class="note">Not checked since you edited it.</p>
+  {% endif %}
+</div>
+{%- endmacro %}
+{% macro text_field(path, label) -%}
+<div class="cv-edit-line" id="field-{{ path }}">
+  <label for="edit-{{ path }}">{{ label }}</label>
+  <input id="edit-{{ path }}" name="{{ path }}" type="text" value="{{ values[path] }}">
+</div>
+{%- endmacro %}
+
+<div class="page-header">
+  <h1>Edit the CV</h1>
+  <a href="/applications/{{ application_id }}/drafts#cv-document">Back to the CV</a>
+</div>
+<p class="lede">
+  Version {{ version.version }}{% if application.employer %}, for {{ application.employer }}{% endif %}.
+  Saving makes a new version — this one stays, and still downloads.
+</p>
+
+{% if stale %}
+<p class="error" role="alert">
+  A newer version was saved while you had the page open, so your changes were
+  not saved. This is the newest version — make them again here.
+</p>
+{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<p class="note">
+  A line you change is marked <strong>not checked</strong> until you check it
+  again. Empty a line to cut it. Job titles, employers, dates and education are
+  <a href="/background/facts">facts you confirmed</a> and are changed there, not
+  here; your name, contact details and interests are
+  <a href="/profile#cv-header">settings on your profile</a>.
+</p>
+
+<form method="post" action="/applications/{{ application_id }}/cv/edit" class="cv-edit">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <input type="hidden" name="base_version" value="{{ version.id }}">
+
+  <section class="cv-edit-section">
+    <h2>{{ doc.header.name }}</h2>
+    {% if doc.header.tagline %}<p>{{ doc.header.tagline }}</p>{% endif %}
+    <p class="note">{{ (doc.header.contact + (doc.header.links | map(attribute="label") | list)) | join(" · ") }}</p>
+  </section>
+
+  {% if doc.summary %}
+  <section class="cv-edit-section">
+    <h2>Summary</h2>
+    {% for line in doc.summary %}
+    {{ line_field("summary." ~ loop.index0, "Paragraph " ~ loop.index, rows=4) }}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="cv-edit-section">
+    {{ text_field("skills_heading", "Skills heading") }}
+    {% for skill in doc.skills %}
+    <fieldset class="cv-edit-skill">
+      <legend>Skill {{ loop.index }}</legend>
+      {{ text_field("skills." ~ loop.index0 ~ ".label", "Label") }}
+      {{ line_field("skills." ~ loop.index0 ~ ".text", "What it says", rows=3) }}
+    </fieldset>
+    {% endfor %}
+  </section>
+
+  <section class="cv-edit-section">
+    {{ text_field("experience_heading", "Experience heading") }}
+    {% for role in doc.roles %}
+    {% set r = loop.index0 %}
+    <fieldset class="cv-edit-role">
+      <legend>{{ role.title }}, {{ role.employer }}</legend>
+      <p class="cv-edit-fact">
+        <span>{{ role.title }}</span> · <span>{{ role.employer }}</span>{% if role.location %} · <span>{{ role.location }}</span>{% endif %} · <span>{{ role.dates }}</span>
+        <span class="note">— from your confirmed facts, not editable here</span>
+      </p>
+      {{ text_field("roles." ~ r ~ ".descriptor", "What the company does") }}
+      {% for bullet in role.bullets %}
+      {{ line_field("roles." ~ r ~ ".bullets." ~ loop.index0, "Bullet " ~ loop.index) }}
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+  </section>
+
+  <section class="cv-edit-section">
+    {{ text_field("education_heading", "Education heading") }}
+    <ul class="cv-edit-fact">
+      {% for line in doc.education %}<li>{{ line.text }}</li>{% endfor %}
+    </ul>
+    <p class="note">From your confirmed facts, not editable here.</p>
+  </section>
+
+  <section class="cv-edit-section">
+    {{ text_field("interests_heading", "Interests heading") }}
+    <p>{{ doc.interests | join(", ") if doc.interests else "None listed." }}</p>
+    <p class="note">Your interests are <a href="/profile#cv-header">a setting on your profile</a>.</p>
+  </section>
+
+  <button type="submit">Save as a new version</button>
+</form>
+{% endblock %}

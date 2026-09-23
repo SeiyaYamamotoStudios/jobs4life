@@ -38,6 +38,8 @@ from jfl_worker.handlers.capability_clusters import KIND as CLUSTER_CAPABILITIES
 from jfl_worker.handlers.capability_clusters import build_cluster_capabilities
 from jfl_worker.handlers.coverage_generation import KIND as GENERATE_COVERAGE
 from jfl_worker.handlers.coverage_generation import build_generate_coverage
+from jfl_worker.handlers.cv_edits_check import KIND as CHECK_CV_EDITS
+from jfl_worker.handlers.cv_edits_check import build_check_cv_edits
 from jfl_worker.handlers.cv_facts import KIND as EXTRACT_CV_FACTS
 from jfl_worker.handlers.cv_facts import build_extract_cv_facts
 from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
@@ -64,6 +66,7 @@ from jfl_worker.settings import WorkerSettings
 __all__ = [
     "CHECK_APPLICATION_ANSWER",
     "CHECK_BOARD",
+    "CHECK_CV_EDITS",
     "CLASSIFY_PUSHBACK",
     "CLUSTER_CAPABILITIES",
     "DRAFT_APPLICATION_ANSWER",
@@ -80,6 +83,7 @@ __all__ = [
     "SUGGEST_TITLES",
     "build_check_application_answer",
     "build_check_board",
+    "build_check_cv_edits",
     "build_classify_pushback",
     "build_cluster_capabilities",
     "build_draft_application_answer",
@@ -235,6 +239,17 @@ def build_registry(
         ),
         # True: two Anthropic calls on the user's own key -- the draft, then
         # the automatic claim-gate pass (see jfl_generate.draft).
+        calls_model=True,
+    )
+    registry.register(
+        CHECK_CV_EDITS,
+        build_check_cv_edits(
+            master_key=settings.master_key,
+            model=settings.model,
+            gate_model=settings.gate_model,
+        ),
+        # True: one claim-gate call on the user's own key, over the CV lines
+        # they rewrote and asked to have checked.
         calls_model=True,
     )
     registry.register(
