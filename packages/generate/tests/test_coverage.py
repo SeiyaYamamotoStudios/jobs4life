@@ -398,3 +398,113 @@ def test_malformed_json_records_an_error_run_and_raises_generate_error(
         check_coverage(_ctx(), grounding, runs, ["Python"])
 
     assert runs.recorded[0].outcome == "error"
+
+
+# --- one bad citation never voids a run (production, 2026-09-23) -------------
+
+
+def _result(
+    status: str, cited: list[str], note: str = "note", question: str = ""
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "cited_span_ids": cited,
+        "evidence_note": note,
+        "question": question,
+    }
+
+
+def test_a_malformed_citation_is_dropped_and_the_rest_of_the_run_survives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production failure, reproduced: `results.4.cited_span_ids.1` was not
+    a uuid and strict parsing threw away every requirement's verdict. Now the
+    one id is dropped, the requirement keeps its status on the citation that
+    does check out, and every other result is untouched.
+    """
+    span = _span()
+    results = [_result("evidenced", [str(span.id)]) for _ in range(4)]
+    results.append(_result("evidenced", [str(span.id), "span-12"]))
+    _patch_client(monkeypatch, _FakeAnthropicClient(response=_response(results)))
+    runs = _FakeRunRepo()
+
+    output = check_coverage(_ctx(), _FakeGroundingRepo([span]), runs, [f"r{i}" for i in range(5)])
+
+    assert [r.status for r in output.results] == ["evidenced"] * 5
+    assert output.results[4].cited_span_ids == [span.id]
+    assert output.results[4].unparseable_citations == []
+    assert output.dropped_citations == 1
+    assert output.downgraded_requirements == 0
+    (run,) = runs.recorded
+    assert run.outcome == "ok"
+    assert run.attributes == {"dropped_citations": 1, "downgraded_requirements": 0}
+
+
+def test_a_citation_naming_no_span_in_the_corpus_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    span = _span()
+    stranger = uuid.uuid4()
+    results = [_result("evidenced", [str(span.id), str(stranger)])]
+    _patch_client(monkeypatch, _FakeAnthropicClient(response=_response(results)))
+    runs = _FakeRunRepo()
+
+    output = check_coverage(_ctx(), _FakeGroundingRepo([span]), runs, ["Python"])
+
+    assert output.results[0].cited_span_ids == [span.id]
+    assert output.results[0].status == "evidenced"
+    assert output.dropped_citations == 1
+    assert runs.recorded[0].attributes == {"dropped_citations": 1, "downgraded_requirements": 0}
+
+
+def test_a_status_left_resting_on_nothing_is_downgraded_one_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """evidenced -> partial, partial -> absent, never to contradicted -- a
+    citation that could not be checked is an absence of evidence, not evidence
+    of the opposite. The note says why, and the model's own words stay.
+    """
+    span = _span()
+    results = [
+        _result("evidenced", ["not-a-uuid"], note="Corpus documents Python."),
+        _result("partial", [str(uuid.uuid4())], note="Some Kubernetes.", question="More?"),
+        _result("contradicted", ["bogus"], note="Corpus says otherwise."),
+        _result("absent", [], note="Silent.", question="Have you?"),
+    ]
+    _patch_client(monkeypatch, _FakeAnthropicClient(response=_response(results)))
+    runs = _FakeRunRepo()
+
+    output = check_coverage(
+        _ctx(), _FakeGroundingRepo([span]), runs, ["Python", "K8s", "Go", "Rust"]
+    )
+
+    evidenced, partial, contradicted, absent = output.results
+    assert evidenced.status == "partial"
+    assert evidenced.cited_span_ids == []
+    assert evidenced.evidence_note.startswith("Corpus documents Python.")
+    assert "could not be checked" in evidenced.evidence_note
+    assert partial.status == "absent"
+    assert partial.question == "More?"
+    assert "could not be checked" in partial.evidence_note
+    # Not a status that rests on a citation, so dropping one leaves it be.
+    assert contradicted.status == "contradicted"
+    assert absent.status == "absent"
+    assert absent.evidence_note == "Silent."
+    assert output.dropped_citations == 3
+    assert output.downgraded_requirements == 2
+    assert runs.recorded[0].attributes == {"dropped_citations": 3, "downgraded_requirements": 2}
+
+
+def test_an_evidenced_result_the_model_left_uncited_is_not_touched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The downgrade fires only when dropping emptied the list -- a run with no
+    bad citation must come out exactly as the model gave it."""
+    _patch_client(monkeypatch, _FakeAnthropicClient(response=_response([_EVIDENCED_RESULT])))
+    runs = _FakeRunRepo()
+
+    output = check_coverage(_ctx(), _FakeGroundingRepo([_span()]), runs, ["Python"])
+
+    assert output.results[0].status == "evidenced"
+    assert output.dropped_citations == 0
+    assert runs.recorded[0].attributes == {"dropped_citations": 0, "downgraded_requirements": 0}

@@ -34,6 +34,12 @@ Those raise `PermanentTaskError`. Transient trouble -- a 429, a 5xx, a dropped
 connection -- falls through to the ordinary backoff ladder, which is also the
 default for anything unrecognised.
 
+**A successful read queues the first score.** Adding an application is the
+user choosing the job, so the score is chained here, in the transaction that
+records the read, exactly once -- see `_chain_first_score`. A transient failure
+with attempts left is noted (`note_extraction_retry`) rather than written as
+`failed`, so the page says "retrying" until the attempts run out.
+
 **One `runs` row per model call, always.** `extract_requirements` writes it on
 every path including failure, and it is given a recorder that commits on its own
 connection, so the cost is attributed even if the writes that follow are rolled
@@ -51,11 +57,14 @@ from jfl_core.models import ExtractionErrorCode, RunRecord
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository, PostgresRunRepository
+from jfl_core.storage.scores import PostgresScoreRepository
+from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_generate.errors import GenerateError
 from jfl_generate.jobs import add_job
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from jfl_worker.credentials import load_api_key
+from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION_KIND
 from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
 KIND = "extract_job_ad"
@@ -204,9 +213,15 @@ def _extract_job_ad(
             PostgresApplicationRepository(conn, ctx.user_id).finish_extraction(
                 application_id, title=job.title, employer=job.employer
             )
+            scored = _chain_first_score(conn, ctx, application_id)
     except GenerateError as exc:
         code, permanent = _classify(str(exc))
-        _fail(ctx, application_id, code)
+        if permanent or ctx.is_last_attempt:
+            _fail(ctx, application_id, code)
+        else:
+            # A retry is coming: stay `pending`, note the code, and let the
+            # panel say "retrying" rather than show an error it may not keep.
+            _note_retry(ctx, application_id, code)
         if permanent:
             # The code, not the message: `last_error` must not carry SDK text
             # from a call that was authenticated with the user's key.
@@ -217,7 +232,57 @@ def _extract_job_ad(
         "application_id": str(application_id),
         "job_id": str(job.id),
         "requirements": len(requirements),
+        "score_id": None if scored is None else str(scored),
     }
+
+
+def _chain_first_score(
+    conn: Connection, ctx: TaskContext, application_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Queue the application's first score, in the transaction that records
+    the read. Returns the new score's id, or None if nothing was queued.
+
+    **Adding an application is the user choosing the job** -- CLAUDE.md's
+    2026-09-15 rule is that a job is scored when it becomes an application,
+    never on arrival -- so the owner's "scoring needs to kick off instantly
+    with the application being added" is that rule, applied without a second
+    button press. It covers both doors in: a pasted ad, and "Track as
+    application" (fetch -> this read -> score). The add form and the track
+    button say so, and name the calls, before anyone presses them.
+
+    **Exactly once, structurally.** Three things hold it:
+
+      * Same transaction as `finish_extraction`: the score row, its task and
+        the `done` extraction commit together or not at all. A redelivered
+        extraction finds `done` in `claim_extraction` and never reaches here.
+      * Only if the application has **no scoring run at all**. A re-read of the
+        ad (a button) or a run the user already started does not queue another
+        -- re-scoring after a re-read is the Re-score button, explicitly.
+      * Ordered after `finish_extraction`'s UPDATE, which row-locks the
+        application: a second extraction racing this one blocks on that lock
+        until this commits, and its `has_any` (a fresh READ COMMITTED
+        statement) then sees the row written here.
+
+    No key, no chain: the key was needed to reach this point at all, so an
+    application added without one fails its read with `no_api_key` and the
+    page says so; nothing is queued behind it.
+    """
+    scores = PostgresScoreRepository(conn, ctx.user_id)
+    if scores.has_any(application_id):
+        return None
+    row = scores.create_pending(application_id)
+    PostgresTaskRepository(conn, ctx.user_id).enqueue(
+        kind=SCORE_APPLICATION_KIND,
+        # Ids only -- same rule as every payload in this app.
+        payload={"score_id": str(row.id)},
+    )
+    return row.id
+
+
+def _note_retry(ctx: TaskContext, application_id: uuid.UUID, code: ExtractionErrorCode) -> None:
+    """Record a failed attempt the queue will retry, in its own transaction."""
+    with ctx.engine.begin() as conn:
+        PostgresApplicationRepository(conn, ctx.user_id).note_extraction_retry(application_id, code)
 
 
 def _fail(ctx: TaskContext, application_id: uuid.UUID, code: ExtractionErrorCode) -> None:

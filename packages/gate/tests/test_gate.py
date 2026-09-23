@@ -576,7 +576,57 @@ def test_rule_tier_runs_after_parsing_and_records_escalations_on_the_same_run(
     assert len(runs.recorded) == 1  # still exactly one row, not two
     run = runs.recorded[0]
     assert run.outcome == "ok"
-    assert run.attributes == {"rule_escalations": 1}
+    assert run.attributes == {"rule_escalations": 1, "unparseable_citations": 0}
+
+
+def test_a_malformed_citation_is_set_aside_not_fatal_and_counted_on_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production 2026-09-23: one citation that was not a uuid failed a whole
+    structured-output parse. A citation names a span or it does not, so a
+    malformed one is dropped per id, the sentence it was attached to is flagged
+    exactly like an unknown citation (supported -> review), every other
+    sentence survives, and the count lands on the one `runs` row.
+    """
+    span = _span("Led the platform team")
+    items = [
+        {
+            "index": 1,
+            "kind": "claim",
+            "verdict": "supported",
+            "drift_label": "supported",
+            "cited_span_ids": [str(span.id), "span-7"],
+            "evidence_note": "Matches the corpus.",
+        },
+        {
+            "index": 2,
+            "kind": "claim",
+            "verdict": "supported",
+            "drift_label": "supported",
+            "cited_span_ids": [str(span.id)],
+            "evidence_note": "Matches the corpus.",
+        },
+    ]
+    client = _FakeAnthropicClient(response=_response(items))
+    _patch_client(monkeypatch, client)
+    runs = _FakeRunRepo()
+
+    result = check_text(
+        _ctx(), _FakeGroundingRepo([span]), runs, "Led the platform team. Led it well."
+    )
+
+    first, second = result.sentences
+    assert first.cited_span_ids == [span.id]
+    assert first.unparseable_citations == ["span-7"]
+    assert first.verdict == "review"
+    assert "unknown-citation:span-7" in first.rule_flags
+    assert first.drift_label == "supported"
+    assert second.verdict == "supported"
+    assert second.rule_flags == []
+
+    (run,) = runs.recorded
+    assert run.outcome == "ok"
+    assert run.attributes == {"rule_escalations": 1, "unparseable_citations": 1}
 
 
 class TestAlignment:

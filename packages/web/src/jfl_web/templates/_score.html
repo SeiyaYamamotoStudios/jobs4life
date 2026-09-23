@@ -11,7 +11,7 @@
    `pending`, so a finished run stops the poll by virtue of what came back --
    same shape as `_extraction.html`. #}
 <section id="score"
-         {% if score and score.status == "pending" %}
+         {% if (score and score.status == "pending") or (not score and score_awaits_ad) %}
          hx-get="/applications/{{ application_id }}/score"
          hx-trigger="every 5s"
          hx-swap="outerHTML"
@@ -20,13 +20,23 @@
 
   <p class="note unmeasured" role="note">{{ score_unmeasured }}</p>
 
-  {% if not score %}
+  {% if not score and score_awaits_ad %}
+  {# The first score is chained from the read of the ad -- adding the
+     application is the user choosing the job (CLAUDE.md, 2026-09-15). #}
+  <p class="note" role="status">{{ score_awaits_ad_note }}</p>
+
+  {% elif not score %}
   <p class="note">Not scored yet.</p>
   <p class="note">{{ score_cost_note }}</p>
   <form method="post" action="/applications/{{ application_id }}/score">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <button type="submit">Score this application</button>
   </form>
+
+  {% elif score.status == "pending" and score.error_code %}
+  {# An attempt failed and the queue will try again. Not an error yet: the
+     row only becomes `failed` when the attempts run out. #}
+  <p class="note score-retrying" role="status">{{ score_retrying_note }}</p>
 
   {% elif score.status == "pending" %}
   <p class="note" role="status">Scoring… this takes a minute or two, and longer
@@ -39,7 +49,7 @@
   </p>
   <form method="post" action="/applications/{{ application_id }}/score">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit" class="secondary">Try scoring it again</button>
+    <button type="submit" class="secondary">Re-score</button>
   </form>
 
   {% else %}
@@ -240,14 +250,15 @@
     <dd>{% if score.cost_usd is not none %}${{ "%.4f" | format(score.cost_usd) }}{% else %}—{% endif %}</dd>
   </dl>
 
-  {# Explicit, never automatic: a re-score is another model call on the user's
-     own key, so it happens because they pressed something. #}
+  {# Explicit, never automatic: only the first score is chained from the read
+     of the ad. A re-score is another model call on the user's own key, so it
+     happens because they pressed something. #}
   <details class="status-more">
-    <summary>Score it again</summary>
+    <summary>Re-score</summary>
     <p class="note">{{ score_cost_note }} The score you have now is kept either way.</p>
     <form method="post" action="/applications/{{ application_id }}/score">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-      <button type="submit" class="secondary">Score it again</button>
+      <button type="submit" class="secondary">Re-score</button>
     </form>
   </details>
   {% endif %}

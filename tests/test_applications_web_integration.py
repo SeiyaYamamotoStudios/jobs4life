@@ -22,9 +22,10 @@ import pytest
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.testclient import TestClient
-from jfl_core.crypto.envelope import MasterKey
+from jfl_core.crypto.envelope import MasterKey, seal
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity, OAuthError
 from jfl_web.settings import WebSettings
@@ -126,6 +127,23 @@ def sign_in(
     response = client.get("/auth/google/callback")
     assert response.status_code == 200, response.text
     return identity
+
+
+def _store_key(engine: Engine, master_key: MasterKey, identity: GoogleIdentity) -> None:
+    """A key on file for the signed-in user. Without one, adding an application
+    saves it and queues nothing -- the read could only fail -- so the tests
+    about the queued read store one first.
+    """
+    key = "sk-ant-api03-NEVERLEAKTHISVALUE-0123456789abcdef"
+    with engine.begin() as conn:
+        user_id = conn.execute(
+            select(users_table.c.id).where(users_table.c.google_sub == identity.sub)
+        ).scalar_one()
+        PostgresCredentialRepository(conn, user_id).store(
+            provider=ANTHROPIC_API_KEY,
+            sealed=seal(master_key, key, user_id=user_id, provider=ANTHROPIC_API_KEY),
+            key_hint=key[-4:],
+        )
 
 
 def _csrf(client: TestClient, path: str = "/applications/new") -> str:
@@ -232,12 +250,12 @@ def test_a_rejected_submission_keeps_what_was_typed(
 
 
 def test_the_pasted_ad_gives_a_provisional_title_that_says_it_is_provisional(
-    client: TestClient, google: StubGoogle, subs: list[str]
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
 ) -> None:
     """No model has run at this point, so the title is a line off the top of
     the ad -- and the page says so rather than presenting it as read.
     """
-    sign_in(client, google, subs)
+    _store_key(engine, master_key, sign_in(client, google, subs))
     app_id = _add_application(
         client,
         job_ad="# Senior Platform Engineer\n\nAcme. Own the deployment pipeline.",
@@ -271,7 +289,7 @@ def _extraction_tasks(engine: Engine, application_id: str) -> list[Any]:
 
 
 def test_pasting_an_ad_enqueues_the_read_and_calls_no_model(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
 ) -> None:
     """Fast input, slow processing. The POST returns a redirect, so nothing in
     the request path constructed an Anthropic client -- the root conftest guard
@@ -281,7 +299,7 @@ def test_pasting_an_ad_enqueues_the_read_and_calls_no_model(
     The payload carries one id. Not the ad text, which is already stored once in
     `jobs.raw_text`, and above all not a credential.
     """
-    sign_in(client, google, subs)
+    _store_key(engine, master_key, sign_in(client, google, subs))
     app_id = _add_application(client, job_ad="Staff Engineer\n\nAcme. Build things.")
 
     tasks = _extraction_tasks(engine, app_id)
@@ -298,12 +316,12 @@ def test_pasting_an_ad_enqueues_the_read_and_calls_no_model(
 
 
 def test_the_extraction_fragment_stops_polling_once_it_is_no_longer_pending(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
 ) -> None:
     """The poll stops by virtue of what came back, not by anything cancelling
     it: the trigger is on the fragment and only while it is pending.
     """
-    sign_in(client, google, subs)
+    _store_key(engine, master_key, sign_in(client, google, subs))
     app_id = _add_application(client, job_ad="Staff Engineer\n\nAcme.")
 
     pending = client.get(f"/applications/{app_id}/extraction")
@@ -415,12 +433,12 @@ def test_a_second_user_cannot_enqueue_extraction_on_the_first_users_application(
 
 
 def test_a_re_read_is_explicit_and_requires_a_csrf_token(
-    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine, master_key: MasterKey
 ) -> None:
     """Extraction is billed to the user's own key, so a re-run happens because
     a person pressed something -- never because a page was loaded.
     """
-    sign_in(client, google, subs)
+    _store_key(engine, master_key, sign_in(client, google, subs))
     app_id = _add_application(client, job_ad="Staff Engineer\n\nAcme.")
 
     # Loading the detail page repeatedly enqueues nothing.

@@ -10,10 +10,11 @@ one from the other would be one abstraction for one caller.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from jfl_core.models import FitVerdict
-from pydantic import BaseModel, Field, field_validator
+from jfl_gate.schema import split_unparseable_citations
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Necessity = Literal["essential", "desirable", "unstated"]
 
@@ -53,6 +54,16 @@ class RequirementCoverageResult(BaseModel):
     evidence_note: str
     # Non-empty only when status is "absent" or "partial" -- see prompts.py.
     question: str | None = None
+    # Anything the model put in `cited_span_ids` that was not a uuid, set aside
+    # at parse time rather than failing the whole run -- see
+    # `jfl_gate.schema.partition_citation_ids`. Never on the wire schema;
+    # `jfl_generate.coverage` drops these and counts them.
+    unparseable_citations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _set_aside_unparseable_citations(cls, data: Any) -> Any:
+        return split_unparseable_citations(data)
 
     @field_validator("question", mode="before")
     @classmethod
@@ -62,6 +73,12 @@ class RequirementCoverageResult(BaseModel):
 
 class CoverageOutput(BaseModel):
     results: list[RequirementCoverageResult]
+    # Filled in by `jfl_generate.coverage.check_coverage` after parsing, never by
+    # the model: how many citations named no span in the user's corpus (or were
+    # not uuids at all) and were dropped, and how many requirements lost their
+    # status because of it. Both also land on the run's `runs` row.
+    dropped_citations: int = 0
+    downgraded_requirements: int = 0
 
 
 class DraftOutput(BaseModel):

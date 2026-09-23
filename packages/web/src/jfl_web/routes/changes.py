@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.models import BoardJob, BoardJobEvent, JobFeedMark
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_intake.feed import (
     FIRST_VISIT_LOOKBACK,
     VISIBLE_FOR,
@@ -51,12 +52,14 @@ from jfl_web.boards import platform_label
 from jfl_web.deps import (
     ApplicationRepoDep,
     BoardRepoDep,
+    CredentialRepoDep,
     CsrfDep,
     JobFeedRepoDep,
     JobFilterRepoDep,
     SessionDep,
 )
 from jfl_web.jobfilter import filter_open_jobs
+from jfl_web.scores import track_context
 from jfl_web.templating import render
 
 router = APIRouter()
@@ -87,6 +90,7 @@ def list_changes(
     filters: JobFilterRepoDep,
     feed: JobFeedRepoDep,
     applications: ApplicationRepoDep,
+    credentials: CredentialRepoDep,
 ) -> Response:
     now = dt.datetime.now(dt.UTC)
     show_unstated = request.query_params.get("show_unstated") == "1"
@@ -142,6 +146,7 @@ def list_changes(
             # Slice C7: the same "Track as application" button /jobs shows, so a
             # change is actionable where it is read.
             "tracked": applications.tracked_board_jobs([r.event.job.id for r in rows]),
+            **track_context(credentials.summary(ANTHROPIC_API_KEY) is not None),
             "board_by_id": {b.id: b for b in all_boards},
             "board_count": len(all_boards),
             "platform_label": platform_label,

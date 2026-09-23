@@ -52,6 +52,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.models import BoardCheck, WatchedBoard
 from jfl_core.storage.boards import PostgresBoardRepository
+from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_intake.detect import BoardRef, BoardUrlError, detect_board
 from jfl_intake.scheduling import CHECK_BOARD_KIND, enqueue_all_board_checks, enqueue_board_check
 
@@ -59,6 +60,7 @@ from jfl_web.boards import default_label, platform_label
 from jfl_web.deps import (
     ApplicationRepoDep,
     BoardRepoDep,
+    CredentialRepoDep,
     CsrfDep,
     JobFilterRepoDep,
     SessionDep,
@@ -72,6 +74,7 @@ from jfl_web.jobfilter import (
     match_counts_by_board,
     unstated_setting_view,
 )
+from jfl_web.scores import track_context
 from jfl_web.templating import render
 
 router = APIRouter()
@@ -263,6 +266,7 @@ def board_detail(
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
     applications: ApplicationRepoDep,
+    credentials: CredentialRepoDep,
 ) -> Response:
     board = boards.get_board(board_id)
     if board is None:
@@ -298,6 +302,7 @@ def board_detail(
             "tracked": applications.tracked_board_jobs(
                 [j.id for j in open_jobs] if open_jobs else []
             ),
+            **track_context(credentials.summary(ANTHROPIC_API_KEY) is not None),
         },
     )
 

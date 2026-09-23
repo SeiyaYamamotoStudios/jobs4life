@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import os
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -38,9 +39,10 @@ from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_intake.http import Transport
-from jfl_worker.handlers import EXTRACT_JOB_AD, build_registry
+from jfl_worker.handlers import EXTRACT_JOB_AD, SCORE_APPLICATION, build_registry
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import postgres_enqueuer_scope, postgres_queue_scope
+from jfl_worker.registry import HandlerRegistry
 from jfl_worker.runner import Worker
 from jfl_worker.settings import WorkerSettings
 from sqlalchemy import create_engine, delete, insert, select
@@ -48,7 +50,7 @@ from sqlalchemy.engine import Engine
 
 pytestmark = pytest.mark.integration
 
-DATABASE_URL = "postgresql+psycopg://jfl:jfl@localhost:5433/jfl"
+DATABASE_URL = os.environ.get("JFL_DATABASE_URL", "postgresql+psycopg://jfl:jfl@localhost:5433/jfl")
 
 
 @contextmanager
@@ -227,11 +229,19 @@ def run_worker(
     settings = WorkerSettings(
         database_url=DATABASE_URL, system_user_id=user_id, master_key=master_key
     )
+    full = build_registry(settings, board_transport=_never_fetch_a_board, board_owners={user_id})
+    # Everything but the chained first score: a successful read now queues
+    # `score_application` (see `tests/test_autoscore_chain_integration.py`),
+    # and these tests are about the read -- its one call, its one `runs` row.
+    # Left unregistered, the queued score simply stays `pending`.
+    registry = HandlerRegistry()
+    for kind in full.kinds():
+        spec = full.get(kind)
+        if spec is not None and kind != SCORE_APPLICATION:
+            registry.register(kind, spec.handler, calls_model=spec.calls_model)
     worker = Worker(
         # The real registry, unable to reach a job board: see `_never_fetch_a_board`.
-        registry=build_registry(
-            settings, board_transport=_never_fetch_a_board, board_owners={user_id}
-        ),
+        registry=registry,
         settings=settings,
         queue_scope=postgres_queue_scope(engine),
         enqueuer_scope=postgres_enqueuer_scope(engine, user_id),

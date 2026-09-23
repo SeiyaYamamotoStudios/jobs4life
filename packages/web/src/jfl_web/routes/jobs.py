@@ -61,6 +61,7 @@ from jfl_web.jobfilter import (
     parse_workplace_mode,
     parse_workplaces,
 )
+from jfl_web.scores import track_context
 from jfl_web.templating import render
 from jfl_web.titlesuggestions import split_phrases, suggestion_rows
 
@@ -92,6 +93,7 @@ def list_jobs(
     filters: JobFilterRepoDep,
     suggestions: TitleSuggestionRepoDep,
     applications: ApplicationRepoDep,
+    credentials: CredentialRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -140,6 +142,7 @@ def list_jobs(
             # Slice C7: "Track as application" renders as "Tracked" for a job
             # that already has a live application from it.
             "tracked": applications.tracked_board_jobs([m.job.id for m in rows]),
+            **track_context(credentials.summary(ANTHROPIC_API_KEY) is not None),
         },
     )
 

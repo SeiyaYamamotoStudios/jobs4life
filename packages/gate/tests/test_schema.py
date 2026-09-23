@@ -103,18 +103,24 @@ def test_unknown_kind_is_rejected() -> None:
         )
 
 
-def test_non_uuid_cited_span_id_is_rejected() -> None:
-    with pytest.raises(ValidationError):
-        SentenceResult.model_validate(
-            {
-                "index": 1,
-                "kind": "claim",
-                "verdict": "supported",
-                "drift_label": "supported",
-                "cited_span_ids": ["not-a-uuid"],
-                "evidence_note": "x",
-            }
-        )
+def test_non_uuid_cited_span_id_is_set_aside_not_rejected() -> None:
+    """One malformed citation must not void the result it sits in -- it is moved
+    to `unparseable_citations`, where the rule tier treats it as an unknown
+    citation. Superseded the earlier "rejected" behaviour on 2026-09-23.
+    """
+    good = str(uuid.uuid4())
+    result = SentenceResult.model_validate(
+        {
+            "index": 1,
+            "kind": "claim",
+            "verdict": "supported",
+            "drift_label": "supported",
+            "cited_span_ids": [good, "not-a-uuid", 7],
+            "evidence_note": "x",
+        }
+    )
+    assert result.cited_span_ids == [uuid.UUID(good)]
+    assert result.unparseable_citations == ["not-a-uuid", "7"]
 
 
 def test_missing_required_field_is_rejected() -> None:

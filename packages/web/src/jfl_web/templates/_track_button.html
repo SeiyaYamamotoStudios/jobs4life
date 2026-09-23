@@ -6,8 +6,12 @@
 {% if tracked.get(job.id) %}
 <a class="status-badge status-tracked" href="/applications/{{ tracked[job.id] }}">Tracked</a>
 {% else %}
+{# Says what pressing it sets off, before it is pressed: the posting is
+   fetched, then read and scored on the user's own key. `has_api_key` and the
+   two notes come from `jfl_web.scores.track_context`. #}
 <form method="post" action="/jobs/{{ job.id }}/track" class="track-form">
   <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
   <button type="submit" class="secondary">Track as application</button>
+  <span class="note track-cost">{% if has_api_key %}{{ track_cost_note }}{% else %}{{ no_key_track_note }}{% endif %}</span>
 </form>
 {% endif %}

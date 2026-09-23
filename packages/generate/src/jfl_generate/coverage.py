@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Literal
@@ -29,11 +30,72 @@ from jfl_generate.prompts import (
     build_coverage_system_blocks,
     build_coverage_user_message,
 )
-from jfl_generate.schema import CoverageOutput
+from jfl_generate.schema import CoverageOutput, CoverageStatus, RequirementCoverageResult
 
 MAX_TOKENS = 16000
 
 Outcome = Literal["ok", "error", "refused", "skipped"]
+
+# What a status becomes when every citation behind it was dropped. One step
+# down, never to `contradicted`: a citation that could not be checked is an
+# absence of evidence, not evidence of the opposite -- and reading silence as
+# contradiction is the error CLAUDE.md's 2026-09-05 entry calls the
+# worst-tempered one available. `evidenced` keeps credit for the model having
+# found *something* relevant (it is `partial`, a gap question away from being
+# checked properly); `partial` resting on nothing checkable is `absent`, which
+# is exactly the corpus-silence status that asks the gap question.
+_DOWNGRADE: dict[CoverageStatus, CoverageStatus] = {
+    "evidenced": "partial",
+    "partial": "absent",
+}
+
+_DOWNGRADE_NOTE = (
+    "[The corpus citation given for this could not be checked -- it named no span "
+    "in your confirmed facts -- so it is recorded as {status} rather than {was}.]"
+)
+
+
+def drop_unverifiable_citations(
+    output: CoverageOutput, corpus_span_ids: frozenset[uuid.UUID]
+) -> CoverageOutput:
+    """Drop every citation that names no span in the corpus, per id, and
+    downgrade a status that is left resting on nothing.
+
+    **Definitional, the same rule `jfl_gate.rules` applies to the claim gate:**
+    a cited span id either exists in the user's corpus or it does not. Nothing
+    here estimates anything, so nothing here can be a false positive. A
+    malformed id (set aside at parse time) and a well-formed id the corpus does
+    not contain are the same miss and are treated identically.
+
+    The downgrade fires only when dropping is what emptied the list. An
+    `evidenced` result the model returned with no citations at all is left as
+    the model gave it -- that is a different question (the prompt's own
+    contract), and changing it here would move coverage results on runs that
+    never had a bad citation.
+
+    Pure: returns a new `CoverageOutput` with the two counts filled in.
+    """
+    dropped_total = 0
+    downgraded = 0
+    results: list[RequirementCoverageResult] = []
+    for item in output.results:
+        kept = [c for c in item.cited_span_ids if c in corpus_span_ids]
+        dropped = len(item.cited_span_ids) - len(kept) + len(item.unparseable_citations)
+        if dropped == 0:
+            results.append(item)
+            continue
+        dropped_total += dropped
+        update: dict[str, object] = {"cited_span_ids": kept, "unparseable_citations": []}
+        new_status = _DOWNGRADE.get(item.status)
+        if not kept and new_status is not None:
+            downgraded += 1
+            update["status"] = new_status
+            note = _DOWNGRADE_NOTE.format(status=new_status, was=item.status)
+            update["evidence_note"] = f"{item.evidence_note} {note}".strip()
+        results.append(item.model_copy(update=update))
+    return CoverageOutput(
+        results=results, dropped_citations=dropped_total, downgraded_requirements=downgraded
+    )
 
 
 def check_coverage(
@@ -112,6 +174,7 @@ def check_coverage(
         cache_read_tokens: int | None = None,
         cache_write_tokens: int | None = None,
         cost_usd: object = None,
+        attributes: dict[str, object] | None = None,
     ) -> None:
         run_repo.record(
             RunRecord(
@@ -128,6 +191,7 @@ def check_coverage(
                 latency_ms=latency_ms,
                 outcome=outcome,
                 error=error,
+                attributes=attributes,
                 started_at=started_at,
             )
         )
@@ -214,6 +278,12 @@ def check_coverage(
             f"expected {len(requirements)} coverage results, got {len(result.results)}"
         )
 
+    # One bad citation used to void the whole run (production, 2026-09-23:
+    # `results.4.cited_span_ids.1 Input should be a valid UUID`). Now it is
+    # dropped, per id, and counted on this run's row so it is visible rather
+    # than silent.
+    result = drop_unverifiable_citations(result, frozenset(span.id for span in spans))
+
     record(
         "ok",
         None,
@@ -222,5 +292,9 @@ def check_coverage(
         cache_read_tokens,
         cache_write_tokens,
         cost_usd,
+        attributes={
+            "dropped_citations": result.dropped_citations,
+            "downgraded_requirements": result.downgraded_requirements,
+        },
     )
     return result

@@ -2,7 +2,32 @@
    the initial render, and returned standalone by POST /applications/{id}/status
    when htmx asks for it -- same markup either way, so the row never drifts
    from what a full page load would have shown.
-   Needs in context: session, application, statuses. #}
+   Needs in context: session, application, statuses, row_scores.
+
+   The two scores sit in two cells under two labels. Nothing here adds,
+   averages or otherwise combines them: "could I get this" and "do I want
+   this" diverge constantly, and one number would corrupt both. #}
+{% macro score_cell(rs, value, awaiting_ad) -%}
+  {%- if rs and rs.has_numbers -%}
+    {%- if value is not none -%}
+    <span class="row-score-number"><strong>{{ value }}</strong><span class="score-of">/10</span></span>
+    {%- else -%}
+    <span class="row-score-state" title="Nothing recorded for this ad to be measured against">no number</span>
+    {%- endif -%}
+    {%- if rs.state in ("scoring", "retrying") %}<span class="row-score-state">re-scoring…</span>{% endif -%}
+  {%- elif rs and rs.state == "scoring" -%}
+    <span class="row-score-state">scoring…</span>
+  {%- elif rs and rs.state == "retrying" -%}
+    <span class="row-score-state">scoring… retrying</span>
+  {%- elif rs and rs.state == "failed" -%}
+    <span class="row-score-state">not scored — failed</span>
+  {%- elif awaiting_ad -%}
+    <span class="row-score-state">scoring once the ad is read</span>
+  {%- else -%}
+    <span class="row-score-state">not scored</span>
+  {%- endif -%}
+{%- endmacro %}
+{% set rs = row_scores.get(application.id) if row_scores else none %}
 <tr id="application-{{ application.id }}">
   <td class="col-title" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
   <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
@@ -19,7 +44,22 @@
       </select>
     </form>
   </td>
+  {# The labels are literal, not variables, so they match the column headers
+     word for word -- `tests/test_mobile_layout.py` reads both. #}
+  <td class="col-score col-could-get" data-label="Could I get this">{{ score_cell(rs, rs.could_get if rs else none, application.extraction_status == "pending") }}</td>
+  <td class="col-score col-want-it" data-label="Do I want this">{{ score_cell(rs, rs.want_it if rs else none, application.extraction_status == "pending") }}</td>
   <td class="col-updated" data-label="Updated" title="{{ application.updated_at.isoformat() }}">
     {{ application.updated_at | humanize_dt }}
+  </td>
+  <td class="col-actions">
+    {# A confirm step without JavaScript: the disclosure reveals the real
+       button, so one stray tap never archives anything. #}
+    <details class="confirm-remove row-archive">
+      <summary>Archive…</summary>
+      <form method="post" action="/applications/{{ application.id }}/archive">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit" class="secondary">Yes, archive it</button>
+      </form>
+    </details>
   </td>
 </tr>

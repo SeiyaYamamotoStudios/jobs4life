@@ -51,6 +51,17 @@ class TaskContext:
     def user_id(self) -> uuid.UUID:
         return self.task.user_id
 
+    @property
+    def is_last_attempt(self) -> bool:
+        """Whether a retryable failure now would exhaust the task.
+
+        `attempts` increments at claim time (see `jfl_core.storage.tasks`), so
+        during the final attempt it already equals `max_attempts`. A handler
+        that records failures on its own row uses this to say "retrying" while
+        a retry is still coming and "failed" only when none is.
+        """
+        return self.task.attempts >= self.task.max_attempts
+
 
 class PermanentTaskError(Exception):
     """Raise from a handler for a failure a retry cannot fix.

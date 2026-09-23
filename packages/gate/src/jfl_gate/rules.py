@@ -70,6 +70,10 @@ def _flags_for(sentence: SentenceResult, corpus_span_ids: frozenset[uuid.UUID]) 
     # the ids given to it and never to invent one, so a miss here is a fabricated
     # citation -- the verdict rests on evidence that does not exist.
     unknown = sorted(str(c) for c in sentence.cited_span_ids if c not in corpus_span_ids)
+    # A "citation" that is not even a uuid names no span at all, so it is the
+    # same definitional miss -- set aside at parse time (`partition_citation_ids`)
+    # rather than failing the whole check, and flagged here like any other.
+    unknown.extend(sentence.unparseable_citations)
     flags.extend(f"unknown-citation:{c}" for c in unknown)
 
     # `supported` means, per the prompt, that the claim traces cleanly to the corpus.

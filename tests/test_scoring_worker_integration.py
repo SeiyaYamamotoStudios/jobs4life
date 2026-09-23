@@ -265,10 +265,12 @@ def add_pending_score(engine: Engine, user_id: uuid.UUID, application_id: uuid.U
         return PostgresScoreRepository(conn, user_id).create_pending(application_id).id
 
 
-def enqueue(engine: Engine, user_id: uuid.UUID, score_id: uuid.UUID) -> uuid.UUID:
+def enqueue(
+    engine: Engine, user_id: uuid.UUID, score_id: uuid.UUID, *, max_attempts: int = 3
+) -> uuid.UUID:
     with engine.begin() as conn:
         task = PostgresTaskRepository(conn, user_id).enqueue(
-            kind=SCORE_APPLICATION, payload={"score_id": str(score_id)}
+            kind=SCORE_APPLICATION, payload={"score_id": str(score_id)}, max_attempts=max_attempts
         )
     return task.id
 
@@ -599,7 +601,81 @@ def test_a_transient_failure_is_retried_rather_than_given_up_on(
     assert task.scheduled_at > dt.datetime.now(dt.UTC)
 
     row = score_row(engine, user, score_id)
-    assert row is not None and row.error_code == "model_error"
+    # Retrying, not failed: the row stays `pending` so the retry is not
+    # skipped as already finished, and carries the code so the page can say
+    # "retrying" rather than show an error.
+    assert row is not None and row.status == "pending"
+    assert row.error_code == "model_error"
+
+
+def _overloaded() -> Exception:
+    import httpx2
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.APIStatusError(
+        "overloaded", response=httpx2.Response(529, request=request), body=None
+    )
+
+
+def test_a_transient_failure_on_the_last_attempt_marks_the_row_failed(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store_key(engine, user, master_key, FAKE_KEY)
+    application_id = add_application(engine, user)
+    record_coverage(engine, user, application_id)
+    score_id = add_pending_score(engine, user, application_id)
+    task_id = enqueue(engine, user, score_id, max_attempts=1)
+
+    install_fake_client(monkeypatch, exception=_overloaded())
+    run_worker(engine, user, master_key, log_stream)
+
+    assert task_row(engine, task_id).status == "failed"
+    row = score_row(engine, user, score_id)
+    assert row is not None and row.status == "failed"
+    assert row.error_code == "model_error"
+
+
+def test_the_retry_after_a_transient_failure_actually_scores(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bug under the owner's "sometimes fails": the first attempt used to
+    mark the row `failed`, so the queued retry found a finished row and skipped
+    itself. Now the retry runs and lands the score.
+    """
+    store_key(engine, user, master_key, FAKE_KEY)
+    add_profile(engine, user)
+    application_id = add_application(engine, user)
+    record_coverage(engine, user, application_id)
+    score_id = add_pending_score(engine, user, application_id)
+    task_id = enqueue(engine, user, score_id)
+
+    install_fake_client(monkeypatch, exception=_overloaded())
+    run_worker(engine, user, master_key, log_stream)
+    assert task_row(engine, task_id).status == "pending"
+
+    # Make the retry due now, and let it succeed.
+    with engine.begin() as conn:
+        conn.execute(
+            tasks_table.update()
+            .where(tasks_table.c.id == task_id)
+            .values(scheduled_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1))
+        )
+    install_fake_client(monkeypatch, payloads=[SCORE_PAYLOAD])
+    run_worker(engine, user, master_key, log_stream)
+
+    assert task_row(engine, task_id).status == "succeeded"
+    row = score_row(engine, user, score_id)
+    assert row is not None and row.status == "done"
+    assert row.error_code is None
+    assert row.could_get_score == 6
 
 
 # --------------------------------------------------------------------------

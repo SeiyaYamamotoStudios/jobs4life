@@ -61,10 +61,21 @@
 </p>
 {% endif %}
 
+{% set sort_q = '' if active_sort == 'updated' else '&sort=' ~ active_sort %}
 <nav class="status-filter" aria-label="Filter applications by status">
-  <a href="/applications" class="{{ 'active' if active_status is none else '' }}">All</a>
+  <a href="/applications{{ '?sort=' ~ active_sort if active_sort != 'updated' else '' }}" class="{{ 'active' if active_status is none else '' }}">All</a>
   {% for s in statuses %}
-  <a href="/applications?status={{ s }}" class="{{ 'active' if s == active_status else '' }}">{{ s }}</a>
+  <a href="/applications?status={{ s }}{{ sort_q }}" class="{{ 'active' if s == active_status else '' }}">{{ s }}</a>
+  {% endfor %}
+</nav>
+
+{# One axis at a time, or none. There is deliberately no "best match" order:
+   ranking by a blend of the two scores would be the composite this product
+   refuses to compute, hidden inside a sort. #}
+<nav class="status-filter sort-order" aria-label="Sort applications">
+  <span class="sort-label">Sort:</span>
+  {% for key, label in sorts.items() %}
+  <a href="/applications?{{ 'status=' ~ active_status ~ '&' if active_status else '' }}sort={{ key }}" class="{{ 'active' if key == active_sort else '' }}"{% if key == active_sort %} aria-current="true"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
 
@@ -72,7 +83,7 @@
 <div class="table-wrap">
   <table class="applications">
     <thead>
-      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col">Updated</th></tr>
+      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col"><span class="col-score-head">Could I get this</span></th><th scope="col"><span class="col-score-head">Do I want this</span></th><th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
     </thead>
     <tbody>
       {% for application in applications %}
