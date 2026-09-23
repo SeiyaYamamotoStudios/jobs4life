@@ -781,6 +781,65 @@ application_question_answers = Table(
 
 
 # --------------------------------------------------------------------------
+# The complete CV (`jfl_core.cv_document.CvDocument`), one row per version.
+#
+# Append-only, like `profiles` and `application_question_answers`: a
+# regenerate is a new row, and an edit is a new row holding the edited
+# document, never an UPDATE to an earlier one -- the latest row is what is
+# shown, and every earlier one is still there. `document` is the whole
+# `CvDocument` as JSON (a plain JSONB dict here, since `jfl_core.db` does not
+# import the model). `status` says how this version came to be: `generated`
+# by the worker, `edited` by the user, `approved` when they have signed off
+# what the export renders. `gate_result` is the claim gate's raw output for a
+# generated version (the citations live there); NULL for a version the gate
+# never saw. `trace_id` is the generating task's id, shared with that version's
+# `runs` rows, so a version's cost is one query and a redelivered task finds
+# the version it already wrote.
+# --------------------------------------------------------------------------
+
+_CV_DOCUMENT_STATUSES = ("generated", "edited", "approved")
+
+_CV_TEMPLATES = ("classic", "modern")
+
+cv_documents = Table(
+    "cv_documents",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "application_id",
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("document", JSONB, nullable=False),
+    Column("template", Text, nullable=False, server_default="modern"),
+    Column("status", Text, nullable=False),
+    Column("gate_result", JSONB),
+    Column("trace_id", UUID(as_uuid=True)),
+    # `clock_timestamp()` so two versions written in one transaction still order.
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_CV_DOCUMENT_STATUSES) + "')",
+        name="status",
+    ),
+    CheckConstraint(
+        "template in ('" + "','".join(_CV_TEMPLATES) + "')",
+        name="template",
+    ),
+    Index(
+        "ix_cv_documents_user_id_application_id_created_at",
+        "user_id",
+        "application_id",
+        "created_at",
+    ),
+)
+
+
+# --------------------------------------------------------------------------
 # Background work (slice B1). A claim-gate call takes ~2 minutes and an
 # extraction is not much quicker, so nothing that slow may run inside a request:
 # the form returns immediately and a worker container picks the work up here.

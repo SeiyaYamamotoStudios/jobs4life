@@ -12,7 +12,14 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from jfl_worker.handlers.draft_generation import _application_id, _classify, _kind, _permanent
+from jfl_core.profile import Profile
+from jfl_worker.handlers.draft_generation import (
+    _application_id,
+    _classify,
+    _kind,
+    _permanent,
+    header_name,
+)
 from jfl_worker.registry import PermanentTaskError
 
 
@@ -36,6 +43,10 @@ class TestClassify:
             ),
             ("model refused to respond: reasoning_extraction", "model_refused"),
             ("bad_request: schema is invalid", "model_error"),
+            (
+                "claim gate output does not line up with the CV's lines: expected 3, got 2",
+                "model_error",
+            ),
         ],
     )
     def test_failures_a_retry_cannot_fix_are_permanent(self, message: str, code: str) -> None:
@@ -103,6 +114,8 @@ class TestKind:
     def test_a_recognised_kind_is_read(self) -> None:
         assert _kind({"kind": "cv_bullets"}) == "cv_bullets"
         assert _kind({"kind": "cover_letter"}) == "cover_letter"
+        # The complete CV -- what the web's "Write the CV" queues.
+        assert _kind({"kind": "cv_document"}) == "cv_document"
 
     @pytest.mark.parametrize("payload", [{}, {"kind": None}, {"kind": "resume"}, {"kind": 7}])
     def test_anything_else_is_permanently_failed(self, payload: dict[str, object]) -> None:
@@ -113,3 +126,21 @@ class TestKind:
 def test_permanent_builds_the_one_message_shape_the_web_layer_parses() -> None:
     error = _permanent("no_coverage")
     assert str(error) == "draft generation failed permanently: no_coverage"
+
+
+class TestHeaderName:
+    def test_the_account_name_when_the_profile_names_no_one(self) -> None:
+        assert header_name(Profile(), "Morgan Fictional") == "Morgan Fictional"
+
+    def test_empty_when_neither_names_anyone(self) -> None:
+        # jfl_generate.cv_document then falls back to the corpus title.
+        assert header_name(Profile(), "") == ""
+
+    def test_a_profile_contact_name_wins(self) -> None:
+        class _Contact:
+            name = "  Morgan F.  "
+
+        class _WithContact:
+            contact = _Contact()
+
+        assert header_name(_WithContact(), "Account Name") == "Morgan F."  # type: ignore[arg-type]

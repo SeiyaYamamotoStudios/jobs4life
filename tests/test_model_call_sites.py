@@ -47,6 +47,7 @@ _PRODUCT_MODULES = {
     "jfl_generate/answers.py",
     "jfl_generate/scoring.py",
     "jfl_generate/draft.py",
+    "jfl_generate/cv_document.py",
 }
 
 _GATE_MODULE = "jfl_gate/gate.py"

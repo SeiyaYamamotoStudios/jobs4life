@@ -1,6 +1,15 @@
-"""`generate_cv_draft`: a draft (CV bullets or a cover letter) for an
-application's job, generated against the corpus, gated automatically -- B5's
-"Generate a CV" screen, behind the queue.
+"""`generate_cv_draft`: a CV or a cover letter for an application's job,
+generated against the corpus, gated automatically -- B5's "Write the CV"
+screen, behind the queue, and the last step of its chain (`jfl_worker.chain`).
+
+**Payload `kind` picks what is written.** `cv_document` -- what the web's
+"Write the CV" now queues -- is the complete CV
+(`jfl_generate.cv_document.generate_cv_document`), stored as a new version in
+`cv_documents`. `cv_bullets` and `cover_letter` are the older text drafts
+(`jfl_generate.draft.generate_draft`), stored in `drafts`; the CLI still writes
+bullets that way. One task kind for all three, so the chain, the steps panel
+and the failure codes the web already reads are unchanged: the complete CV
+takes the bullets draft's place at the end of the same chain.
 
 Mirrors `jfl_worker.handlers.extraction` and `.coverage_generation` closely:
 same credential custody, same failure classification shape, same append-only
@@ -56,15 +65,17 @@ every other handler in this worker duplicates it.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
-from typing import Literal, get_args
+from collections.abc import Mapping, Sequence
+from typing import Literal, cast, get_args
 
 from jfl_core.context import GATE_MODEL as DEFAULT_GATE_MODEL
 from jfl_core.context import RequestContext
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
 from jfl_core.models import DraftKind, RunRecord
+from jfl_core.profile import Capability, Profile
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
+from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
 from jfl_core.storage.postgres import (
     PostgresGroundingRepository,
     PostgresJobRepository,
@@ -72,6 +83,7 @@ from jfl_core.storage.postgres import (
 )
 from jfl_core.storage.profile import PostgresProfileRepository
 from jfl_gate.gate import GateError
+from jfl_generate.cv_document import generate_cv_document
 from jfl_generate.draft import generate_draft
 from jfl_generate.errors import GenerateError
 from sqlalchemy.engine import Engine
@@ -81,7 +93,11 @@ from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
 KIND = "generate_cv_draft"
 
-_DRAFT_KINDS: tuple[DraftKind, ...] = get_args(DraftKind)
+# The complete CV, stored in `cv_documents` -- beside the two text drafts.
+CV_DOCUMENT = "cv_document"
+WriteKind = DraftKind | Literal["cv_document"]
+
+_WRITE_KINDS: tuple[str, ...] = (*get_args(DraftKind), CV_DOCUMENT)
 
 # A closed set, read back only by `jfl_web.drafts`. Never a formatted
 # exception -- this handler holds the user's decrypted API key while it runs.
@@ -128,6 +144,9 @@ _PERMANENT_FAILURES: tuple[tuple[str, DraftErrorCode], ...] = (
     ),  # the draft, not an ad, but the shape ("too long for one call") is the same
     ("model refused to respond", "model_refused"),
     ("bad_request", "model_error"),
+    # The CV's gate results could not be mapped back onto its lines. Nothing a
+    # retry changes -- it would only pay for both calls again.
+    ("claim gate output does not line up", "model_error"),
 )
 
 
@@ -152,15 +171,15 @@ def _application_id(payload: Mapping[str, object]) -> uuid.UUID:
         raise PermanentTaskError("payload application_id is not a uuid") from None
 
 
-def _kind(payload: Mapping[str, object]) -> DraftKind:
+def _kind(payload: Mapping[str, object]) -> WriteKind:
     raw = payload.get("kind")
-    if raw not in _DRAFT_KINDS:
+    if raw not in _WRITE_KINDS:
         # The message names neither the value nor the payload -- same
         # discipline as `_application_id`'s malformed-uuid branch, even though
         # `kind` is never a secret: consistency with the rest of this file's
         # error text is worth more than one extra word here.
         raise PermanentTaskError("payload kind is not a recognised draft kind")
-    return raw
+    return raw  # type: ignore[return-value]
 
 
 def build_generate_cv_draft(
@@ -201,19 +220,31 @@ def _generate_cv_draft(
     if job_id is None:
         raise _permanent("no_job")
 
-    with ctx.engine.connect() as conn:
-        existing = PostgresJobRepository(conn).list_drafts(ctx.user_id, job_id)
-    if any(d.trace_id == ctx.task.id for d in existing):
-        # This exact task already wrote its draft on an earlier delivery --
-        # at-least-once redelivery, not a second press of the button. A
-        # genuine second press is a new task with a new trace_id, so this
-        # never suppresses an intentional re-generation.
-        matched = next(d for d in existing if d.trace_id == ctx.task.id)
-        return {
-            "application_id": str(application_id),
-            "draft_id": str(matched.id),
-            "skipped": "draft already recorded for this task",
-        }
+    if kind == CV_DOCUMENT:
+        with ctx.engine.connect() as conn:
+            done = PostgresCvDocumentRepository(conn, ctx.user_id).version_for_trace(ctx.task.id)
+        if done is not None:
+            # Redelivery of a task that already stored its CV -- see the module
+            # docstring's idempotency note; the same reasoning as for drafts.
+            return {
+                "application_id": str(application_id),
+                "cv_document_id": str(done.id),
+                "skipped": "cv document already recorded for this task",
+            }
+    else:
+        with ctx.engine.connect() as conn:
+            existing = PostgresJobRepository(conn).list_drafts(ctx.user_id, job_id)
+        if any(d.trace_id == ctx.task.id for d in existing):
+            # This exact task already wrote its draft on an earlier delivery --
+            # at-least-once redelivery, not a second press of the button. A
+            # genuine second press is a new task with a new trace_id, so this
+            # never suppresses an intentional re-generation.
+            matched = next(d for d in existing if d.trace_id == ctx.task.id)
+            return {
+                "application_id": str(application_id),
+                "draft_id": str(matched.id),
+                "skipped": "draft already recorded for this task",
+            }
 
     if master_key is None:
         raise _permanent("credential_unreadable")
@@ -245,7 +276,20 @@ def _generate_cv_draft(
     # its own short transaction rather than inside the one that holds the model
     # call.
     with ctx.engine.begin() as conn:
-        capabilities = PostgresProfileRepository(conn, ctx.user_id).current().capabilities
+        profile = PostgresProfileRepository(conn, ctx.user_id).current()
+        display_name = PostgresCvDocumentRepository(conn, ctx.user_id).account_display_name()
+    capabilities = profile.capabilities
+
+    if kind == CV_DOCUMENT:
+        return _write_cv_document(
+            ctx,
+            request,
+            recorder,
+            application_id,
+            job_id,
+            capabilities=capabilities,
+            name=header_name(profile, display_name),
+        )
 
     try:
         with ctx.engine.begin() as conn:
@@ -255,7 +299,7 @@ def _generate_cv_draft(
                 PostgresGroundingRepository(conn),
                 recorder,
                 job_id,
-                kind,
+                cast(DraftKind, kind),  # cv_document returned above
                 capabilities,
             )
     except (GenerateError, GateError) as exc:
@@ -269,3 +313,71 @@ def _generate_cv_draft(
     # (`jfl_worker.runner.Worker._dispatch`), and a second `kind` keyword
     # collides with it.
     return {"application_id": str(application_id), "draft_id": str(draft.id), "draft_kind": kind}
+
+
+def header_name(profile: Profile, display_name: str) -> str:
+    """The CV header's name: the profile's, if it states one, else the
+    account's display name, else "" -- in which case
+    `jfl_generate.cv_document` falls back to the corpus document's own title.
+
+    The profile's contact settings are read by attribute because they belong to
+    the profile editing screen, not to this handler: a profile that has no
+    `contact` section (or no name in it) simply falls through. Never inferred
+    -- a name is only ever one the user typed or the account carries.
+    """
+    contact = getattr(profile, "contact", None)
+    name = getattr(contact, "name", None) or getattr(profile, "name", None)
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return display_name
+
+
+def _write_cv_document(
+    ctx: TaskContext,
+    request: RequestContext,
+    recorder: _RunRecorder,
+    application_id: uuid.UUID,
+    job_id: uuid.UUID,
+    *,
+    capabilities: Sequence[Capability],
+    name: str,
+) -> Mapping[str, object]:
+    """The complete CV: two model calls, then one new `cv_documents` row.
+
+    The version is written in its own transaction after both calls, so a
+    failed call leaves no half-written CV -- only its `runs` rows, which the
+    recorder has already committed on their own connection.
+    """
+    try:
+        with ctx.engine.connect() as conn:
+            generated = generate_cv_document(
+                request,
+                PostgresJobRepository(conn),
+                PostgresGroundingRepository(conn),
+                recorder,
+                job_id,
+                capabilities=capabilities,
+                name=name,
+            )
+    except (GenerateError, GateError) as exc:
+        code, permanent = _classify(str(exc))
+        if permanent:
+            raise _permanent(code) from None
+        raise
+
+    with ctx.engine.begin() as conn:
+        version = PostgresCvDocumentRepository(conn, ctx.user_id).add_version(
+            application_id,
+            generated.document,
+            status="generated",
+            gate_result=generated.gate_result,
+            trace_id=ctx.task.id,
+        )
+    if version is None:
+        # The application went away between the read above and this write.
+        raise PermanentTaskError("no application for this user")
+    return {
+        "application_id": str(application_id),
+        "cv_document_id": str(version.id),
+        "draft_kind": CV_DOCUMENT,
+    }
