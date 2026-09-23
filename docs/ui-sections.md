@@ -195,22 +195,75 @@ of its own** (`section:has(> details.section) { margin: 0 }`). Those wrappers
 are what produced the uneven gaps between the ad, the score and the questions
 panels.
 
-**Long unbroken strings break rather than push.** `overflow-wrap: break-word` on
-`body`, and `anywhere` on the cells where the hostile strings actually live —
-table cells, definition lists, list items, block quotes, `<a>`, `<code>`, and a
-draft's citation lines. An ATS URL, a span id and a long employer name each used
-to widen their cell and take the table with it.
+**Long unbroken strings break rather than push — and which property goes
+where is the whole rule.** *Corrected 2026-09-23; the first version of this
+paragraph was wrong and cost a desktop layout.*
 
-**Every table scrolls inside `.table-wrap`**, and keeps `min-width: 34rem` so a
-narrow screen scrolls it rather than crushing six columns into two words each.
-`table.cvs` had never been given the shared table rules at all, which is why its
-rows sat unaligned next to every other list in the app; it has them now.
+- `overflow-wrap: break-word` for **all text**, set once on `body` and
+  inherited. Ordinary words stay whole; only a run that cannot fit its line at
+  all is broken. It does **not** lower an element's min-content width, which is
+  why it is safe in a table cell.
+- `overflow-wrap: anywhere` **only on runs with no break opportunity**:
+  `code`, `.url-text` (a URL shown as its own text — e.g. a board with no
+  label), `.id-text`, a draft's `.draft-citations li`, and a `.drift-dimension`
+  name. Scope it by class; never on `td`, `th`, `a`, `li`, `dd`, `.note` or any
+  other general text selector.
+
+Why it matters: `anywhere` also counts every character as a soft wrap
+opportunity *when the browser measures min-content width*. The first version
+of this convention put it on `td, th, dd, dt, li, blockquote, .note, a`
+wholesale, so every cell's minimum collapsed to about one character, and the
+automatic table layout gave /changes' job titles ~40px ("En / gin / eer / ing")
+and /boards' employer names "Anthr / opic", while the `nowrap` timestamp and
+action cells kept their full width and ran off the container edge.
+`tests/test_table_layout.py` fails if it comes back.
+
+**Wide tables: the primary column has a floor, the actions never clip.**
+
+- The column a row is *about* carries `col-primary` on its `<td>` — the job
+  title on /jobs and /changes, the board on /boards, the title on
+  /applications — and gets `min-width: 14rem` (12rem for the board name). When
+  a table is short of room, the secondary columns (employer, locations,
+  workplace) give way first; with `break-word` none of them goes below its
+  longest word.
+- An action's label never wraps (`white-space: nowrap` on the button, summary
+  or badge), so the actions column's minimum is its widest control. The cell
+  itself wraps, so two actions stack rather than demanding the sum of their
+  widths.
+- Timestamps in a table cell use `| time_compact`: `<time datetime="…"
+  title="Wed 23 Sep 2026, 13:04 · 13 minutes ago">13 min ago</time>`. The long
+  `| humanize_dt` form ("Wed 23 Sep 2026, 13 minutes ago") stays where there is
+  room and the date matters — detail pages, fact lists, timelines — but
+  repeated per column it was most of /boards' width.
+- Pages with a `table.boards` (jobs, changes, boards) get `main` up to 80rem;
+  reading pages keep the 56rem measure, and those pages' `.lede` keeps it too.
+  /changes needs roughly 66rem of column minimums, so it fits without
+  scrolling from a ~1100px window upward.
+
+**Every table scrolls inside `.table-wrap`** — at narrow widths only. It
+keeps `min-width: 34rem` so a narrow window scrolls it rather than crushing
+six columns into two words each; between that and the column minimums above, a
+table scrolls inside its wrapper on a small laptop or split screen and never at
+a normal desktop width. Under 40rem the floor is reset to 0 and the tables
+become cards (see `tests/test_mobile_layout.py`), except `table.cvs`, which
+keeps a 30rem floor and scrolls. `table.cvs` had never been given the shared
+table rules at all, which is why its rows sat unaligned next to every other
+list in the app; it has them now.
 
 **Flex items that hold text get `min-width: 0`.** A flex item's default
 `min-width: auto` refuses to shrink below its longest word, which is how one
 long employer name pushed a two-column panel wider than the page. Named
 selectors rather than a blanket rule, so a deliberate `white-space: nowrap`
 elsewhere is not quietly overridden.
+
+**A card's actions belong to the card.** A panel of cards — title
+suggestions, profile proposals — puts each card's secondary action (Dismiss,
+Reject) in the same action row as its primary one, as a quiet link, not in a
+second box underneath. Where both act on the same record, one form with a
+`formaction` on the secondary button does it. Watch descendant selectors on a
+wrapping section: `.job-filter form` once boxed every form inside the
+suggestions panel, which is exactly how Dismiss ended up in a box of its own;
+it is `.job-filter > form` now.
 
 **Rows of controls wrap as rows.** `.quick-actions` wraps; `.status-badge` never
 does. Text inputs, selects and textareas are `max-width: 100%; box-sizing:

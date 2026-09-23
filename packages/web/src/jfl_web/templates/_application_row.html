@@ -29,7 +29,7 @@
 {%- endmacro %}
 {% set rs = row_scores.get(application.id) if row_scores else none %}
 <tr id="application-{{ application.id }}">
-  <td class="col-title" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
+  <td class="col-title col-primary" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
   <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
   <td class="col-status" data-label="Status">
     <form class="status-form">
@@ -48,9 +48,7 @@
      word for word -- `tests/test_mobile_layout.py` reads both. #}
   <td class="col-score col-could-get" data-label="Could I get this">{{ score_cell(rs, rs.could_get if rs else none, application.extraction_status == "pending") }}</td>
   <td class="col-score col-want-it" data-label="Do I want this">{{ score_cell(rs, rs.want_it if rs else none, application.extraction_status == "pending") }}</td>
-  <td class="col-updated" data-label="Updated" title="{{ application.updated_at.isoformat() }}">
-    {{ application.updated_at | humanize_dt }}
-  </td>
+  <td class="col-updated" data-label="Updated">{{ application.updated_at | time_compact }}</td>
   <td class="col-actions">
     {# A confirm step without JavaScript: the disclosure reveals the real
        button, so one stray tap never archives anything. #}

@@ -19,14 +19,14 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from jfl_core.models import SuggestedTitle, TitleSuggestion, TitleSuggestionErrorCode
-from jfl_intake.filtering import parse_terms
+from jfl_intake.filtering import already_covered, parse_terms
 from jfl_intake.normalise import normalise
 
 
 class _GetByPhraseKey(Protocol):
     """Structural stand-in for
     `PostgresTitleSuggestionRepository.get_by_phrase_key`, named only so
-    `suggestion_rows`'s signature reads without importing the storage layer
+    `suggestion_panel`'s signature reads without importing the storage layer
     into this display module.
     """
 
@@ -59,11 +59,14 @@ def visible_suggestions(
     what keeps "not already included" honest against the current state instead
     of a stale one.
     """
-    included = set(parse_terms(title_includes))
+    included = parse_terms(title_includes)
     visible: list[SuggestedTitle] = []
     for s in suggestions:
         keys = parse_terms(s.title)
-        if keys and keys[0] in included:
+        # "Already in the filter" by the filter's own matching rule, not by
+        # equal keys: with "technical lead" saved, "Technical Lead Manager"
+        # matches nothing the filter does not already match.
+        if keys and already_covered(keys[0], included):
             continue
         visible.append(s)
     return visible
@@ -130,11 +133,9 @@ def suggestion_row_view(
 ) -> SuggestionRowView:
     """One phrase's view, whether or not it has a row.
 
-    `row` is None when nothing was ever enqueued for this phrase -- no API key
-    at save time -- and the panel says so rather than showing nothing. A
-    dismissed row is treated the same as no row: the caller is expected to have
-    already filtered those out (see `jobs.list_jobs`), so a dismissed row
-    reaching here would show again, which is why it never does.
+    Phrases with no row at all never reach here any more -- the panel
+    collapses those into one line (`TitleSuggestionPanel.unsuggested`) rather
+    than a box each. `row` stays optional for the polling route's sake.
     """
     failure = title_suggestion_failure(row.error_code) if row and row.status == "failed" else None
     visible = (
@@ -143,19 +144,51 @@ def suggestion_row_view(
     return SuggestionRowView(phrase=phrase, row=row, failure=failure, visible=visible)
 
 
-def suggestion_rows(
+@dataclass(frozen=True, slots=True)
+class TitleSuggestionPanel:
+    """Everything `_title_suggestions.html` renders under the filter.
+
+    `rows` -- one card per phrase that has a live (not dismissed) suggestion
+    row: pending, failed or done.
+
+    `unsuggested` -- phrases that have never had a suggestion row, in filter
+    order. Typically saved before an API key was. Shown as **one line** with
+    one action, never a card each.
+
+    `has_key` -- whether an Anthropic key is actually stored, read from the
+    credential repository by the route. This, and only this, decides whether
+    the panel says to add one. A phrase with no row says nothing about the
+    key: it may simply predate it.
+    """
+
+    rows: list[SuggestionRowView]
+    unsuggested: list[str]
+    has_key: bool
+
+    @property
+    def empty(self) -> bool:
+        return not self.rows and not self.unsuggested
+
+
+def suggestion_panel(
     phrases: Sequence[str],
     get_by_phrase_key: _GetByPhraseKey,
     title_includes: str,
-) -> list[SuggestionRowView]:
-    """One view per current include phrase, in order. A dismissed row is
-    treated as though it does not exist -- the panel drops it entirely rather
-    than showing it as gone, which is what "Dismiss" means.
+    *,
+    has_key: bool,
+) -> TitleSuggestionPanel:
+    """The panel for the current include phrases, in order.
+
+    A dismissed row is dropped entirely -- that is what "Dismiss" means -- and
+    is neither a card nor counted as unsuggested: it had its suggestions, and
+    asking again for every dismissed phrase would undo the dismissal.
     """
-    views: list[SuggestionRowView] = []
+    rows: list[SuggestionRowView] = []
+    unsuggested: list[str] = []
     for phrase in phrases:
         row = get_by_phrase_key(normalise(phrase))
-        if row is not None and row.dismissed_at is not None:
-            row = None
-        views.append(suggestion_row_view(phrase, row, title_includes))
-    return views
+        if row is None:
+            unsuggested.append(phrase)
+        elif row.dismissed_at is None:
+            rows.append(suggestion_row_view(phrase, row, title_includes))
+    return TitleSuggestionPanel(rows=rows, unsuggested=unsuggested, has_key=has_key)

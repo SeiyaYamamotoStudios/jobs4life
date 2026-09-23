@@ -61,12 +61,12 @@
             <div class="note">replaces an earlier posting of this role that went down</div>
             {% endif %}
           </td>
-          <td class="col-job" data-label="Job">
+          <td class="col-job col-primary" data-label="Job">
             {% if job.url %}<a href="{{ job.url }}">{{ job.title }}</a>{% else %}{{ job.title }}{% endif %}
           </td>
           <td class="col-board" data-label="Board">
             {% if board %}
-            <a href="/boards/{{ board.id }}">{{ board.label or board.board_url }}</a>
+            <a href="/boards/{{ board.id }}"{% if not board.label %} class="url-text"{% endif %}>{{ board.label or board.board_url }}</a>
             <div class="note">{{ platform_label(board.platform) }}</div>
             {% endif %}
           </td>
@@ -75,9 +75,9 @@
           </td>
           <td class="col-locations" data-label="Locations">{{ (job.locations or ([job.location] if job.location else [])) | join("; ") or "—" }}</td>
           <td class="col-updated" data-label="When">
-            <span title="{{ event.at.isoformat() }}">{{ event.at | humanize_dt }}</span>
+            {{ event.at | time_compact }}
             {% if row.seen_before and row.mark %}
-            <div class="note" title="{{ row.mark.first_seen_at.isoformat() }}">first seen by you {{ row.mark.first_seen_at | humanize_dt }}</div>
+            <div class="note">first seen by you {{ row.mark.first_seen_at | time_compact }}</div>
             {% endif %}
           </td>
           <td class="col-actions">

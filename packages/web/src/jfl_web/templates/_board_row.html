@@ -2,8 +2,8 @@
    Needs in context: session, row (board, platform_label, last_check,
    open_job_count, held, checking, match_count). #}
 <tr id="board-{{ row.board.id }}">
-  <td class="col-board" data-label="Board">
-    <a href="/boards/{{ row.board.id }}">{{ row.board.label or row.board.board_url }}</a>
+  <td class="col-board col-primary" data-label="Board">
+    <a href="/boards/{{ row.board.id }}"{% if not row.board.label %} class="url-text"{% endif %}>{{ row.board.label or row.board.board_url }}</a>
     <div class="note">{{ row.platform_label }}</div>
   </td>
   <td class="col-check" data-label="Last check">
@@ -24,12 +24,10 @@
   </td>
   <td class="col-updated" data-label="Last checked">
     {% if row.last_check %}
-    <span title="{{ row.last_check.finished_at.isoformat() }}">{{ row.last_check.finished_at | humanize_dt }}</span>
+    {{ row.last_check.finished_at | time_compact }}
     {% else %}—{% endif %}
   </td>
-  <td class="col-updated" data-label="Added" title="{{ row.board.created_at.isoformat() }}">
-    {{ row.board.created_at | humanize_dt }}
-  </td>
+  <td class="col-updated" data-label="Added">{{ row.board.created_at | time_compact }}</td>
   <td class="col-open-jobs" data-label="Open jobs">
     {% if row.open_job_count is none %}first check pending{% else %}{{ row.open_job_count }}{% endif %}
   </td>

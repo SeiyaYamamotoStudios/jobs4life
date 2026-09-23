@@ -1,16 +1,47 @@
 {# Suggested title expansions for the saved filter's current include phrases --
-   slice C7a. One row per phrase, via `_title_suggestion_row.html`; a pending
-   row polls itself, mirroring `_extraction.html`'s trick. Nothing here writes
-   to the filter -- the row partial's tickbox-and-accept form is the only path
-   onto `title_includes`. #}
-{% if title_suggestion_rows %}
+   slice C7a. Built by `jfl_web.titlesuggestions.suggestion_panel`.
+
+   One card per phrase that has a live suggestion row (`_title_suggestion_row.html`;
+   a pending one polls itself, mirroring `_extraction.html`'s trick). Phrases
+   that have never had a row collapse into ONE line with one action, however
+   many there are. Whether to say "add your API key" is decided by whether a
+   key is actually stored (`panel.has_key`), never by a phrase lacking a row --
+   phrases saved before the key have none, and used to show eight identical
+   boxes each claiming there was no key.
+
+   Nothing here writes to the filter -- the row partial's tickbox-and-accept
+   form is the only path onto `title_includes`. #}
+{% set panel = title_suggestions %}
+{% if panel and not panel.empty %}
 <section class="title-suggestions" aria-label="Suggested title expansions">
-  {% for item in title_suggestion_rows %}
+  {% for item in panel.rows %}
   {% set phrase = item.phrase %}
   {% set row = item.row %}
   {% set failure = item.failure %}
   {% set visible = item.visible %}
   {% include "_title_suggestion_row.html" %}
   {% endfor %}
+
+  {% if panel.unsuggested %}
+  {% set n = panel.unsuggested | length %}
+  <div class="title-suggestion title-suggestion-missing">
+    {% if panel.has_key %}
+    <form method="post" action="/jobs/filter/titles/suggest" class="title-suggestion-actions">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <p class="note">
+        {% if n == 1 %}&ldquo;{{ panel.unsuggested[0] }}&rdquo; has no suggested titles yet.
+        {% else %}<span title="{{ panel.unsuggested | join(', ') }}">{{ n }} title phrases</span> have no suggested titles yet.
+        {% endif %}
+      </p>
+      <button type="submit" class="secondary">{% if n == 1 %}Suggest titles{% else %}Suggest titles for all {{ n }}{% endif %}</button>
+    </form>
+    {% else %}
+    <p class="note">
+      Add your API key in <a href="/settings">Settings</a> to get suggested titles
+      adjacent to {% if n == 1 %}&ldquo;{{ panel.unsuggested[0] }}&rdquo;{% else %}your {{ n }} title phrases{% endif %}.
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
 </section>
 {% endif %}

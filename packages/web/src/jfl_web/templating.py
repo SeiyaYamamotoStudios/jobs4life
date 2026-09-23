@@ -25,7 +25,7 @@ from jfl_web.drafts import (
     usd,
 )
 from jfl_web.jobfilter import workplace_display
-from jfl_web.timeformat import humanize
+from jfl_web.timeformat import humanize, time_compact
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -35,6 +35,10 @@ _templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 # `{{ value | humanize_dt }}` -> "Tue 8 Sep 2026, 3 days ago". See
 # jfl_web.timeformat for the thresholds.
 _templates.env.filters["humanize_dt"] = humanize
+# `{{ value | time_compact }}` -> `<time datetime=… title="Wed 23 Sep 2026,
+# 13:04 · 13 minutes ago">13 min ago</time>`. For table cells, where the full
+# form repeated per column crowded out the columns that carry the content.
+_templates.env.filters["time_compact"] = time_compact
 # `{{ check.error_code | board_error_message }}` -> plain English for a
 # BoardCheckErrorCode. See jfl_web.boards.
 _templates.env.filters["board_error_message"] = check_error_message

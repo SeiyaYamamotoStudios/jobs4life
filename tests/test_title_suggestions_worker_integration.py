@@ -49,7 +49,7 @@ FAKE_KEY = "sk-ant-api03-NEVERLEAKTHISVALUE-0123456789abcdef"
 
 TITLES_PAYLOAD = {
     "titles": [
-        {"title": "Senior Engineering Manager", "gloss": "a step up"},
+        {"title": "Head of Engineering", "gloss": "a step up"},
         {"title": "Engineering Lead", "gloss": ""},
     ]
 }
@@ -236,7 +236,7 @@ def test_the_handler_suggests_and_marks_the_row_done(
     assert row.status == "done"
     assert row.error_code is None
     assert [s.title for s in row.suggestions] == [
-        "Senior Engineering Manager",
+        "Head of Engineering",
         "Engineering Lead",
     ]
 

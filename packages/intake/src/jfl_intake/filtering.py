@@ -116,6 +116,20 @@ def parse_terms(text: str | None) -> Terms:
     return tuple(alternatives)
 
 
+def already_covered(alternative: frozenset[str], terms: Terms) -> bool:
+    """True when adding `alternative` to `terms` would match nothing new.
+
+    An alternative matches a title when *all* of its words are in it
+    (`any_alternative_matches`), so an existing alternative whose words are a
+    subset of the candidate's already matches every title the candidate would:
+    with "technical lead" in the filter, "Technical Lead Manager" adds nothing.
+    Exact equality is the special case. This is the test for "already in the
+    filter" -- comparing keys for equality alone let a suggestion through that
+    the filter already covered.
+    """
+    return any(existing <= alternative for existing in terms)
+
+
 def _words(text: str | None) -> frozenset[str]:
     return frozenset(normalise(text).split())
 
