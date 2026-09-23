@@ -1,143 +1,120 @@
 {% import "_sections.html" as sections %}
-{# Every disagreement with this application's score, and exactly what each one
-   did -- including, most of the time, nothing.
+{# Disagreeing with the score: one box, one card, one undo.
 
-   Three things are deliberate here.
+   The owner's complaint that shaped this: the earlier flow asked for a kind, a
+   direction and a size before anything happened, and afterwards it was still
+   not clear what had changed. So:
 
-   **The classification is confirmed by a person before anything is applied.**
-   The three kinds do sharply different things, so a model's guess is a default
-   on a radio button and never an action. Until someone presses Apply, the row
-   is recorded and inert.
+   **The box is the only thing on screen until it is used.** Words only. The
+   worker reads them and applies the reading in one task.
 
-   **"Nothing changed" is written out in as many words as "something changed".**
-   A loop that quietly ignores people is worse than one that argues with them,
-   and the refusals here are the product: being told the number is a statement
-   about your corpus, and being handed the sentence that would move it.
+   **The card leads with the number.** Before -> after, or "stays at", then one
+   sentence on why, then the next step when there is one. The reading we took
+   is its first line, so a misreading is visible at a glance.
 
-   **The list of what pushback cannot touch is on the screen**, not only in the
-   code. It is short, it is honest, and it is the sentence the whole feature is
-   for.
+   **"Not what I meant" is the only place the kinds appear**, and in words a
+   person would use. It withdraws the correction and re-applies under the pick,
+   in one POST -- undo-after rather than confirm-before, which is only as safe
+   as this card is unmissable.
 
-   The polling trigger lives on this element and only while a classification is
-   actually in flight, so the poll stops by virtue of what came back -- same
-   shape as the extraction and scoring panels. #}
-<section id="pushbacks"
+   The drift sentence is quiet until it matters (`jfl_web.pushbacks.drift_line`
+   says when, and why), and then it takes the loud styling.
+
+   The polling trigger lives on this element and only while the latest
+   correction is being read, so the poll stops by virtue of what came back. #}
+<section id="pushbacks" class="pushbacks"
          {% if pushback_polling %}
          hx-get="/applications/{{ application_id }}/pushbacks"
          hx-trigger="every 3s"
          hx-swap="outerHTML"
          {% endif %}>
 
-  {% if drift_meter.visible %}
-  <div class="drift-meter" role="note">
-    <h3>{{ drift_meter_heading }}</h3>
-    <p class="drift-figure"><strong>{{ drift_meter.sentence }}</strong></p>
-    {% if drift_meter.pending_evidence %}
-    <p class="note">{{ drift_meter.pending_evidence }} of them asked for a number to go
-      up and are waiting on a fact.</p>
+  {% if pushback_card %}
+  {% set c = pushback_card %}
+  {% set p = latest_pushback %}
+  <div class="pushback-card pushback-card-{{ c.state }}" id="pushback-{{ p.id }}" role="status">
+    {# Verbatim. The user's own words, never a model's tidying of them. #}
+    <blockquote class="pushback-words">{{ p.user_text }}</blockquote>
+    {% if c.meaning %}<p class="pushback-meaning"><strong>{{ c.meaning }}</strong></p>{% endif %}
+    {% if c.change %}
+    <p class="pushback-change">{{ c.change.label }}:
+      {% if c.change.after is none %}stays at <strong>{{ c.change.before }}</strong>
+      {% else %}{{ c.change.before }} → <strong>{{ c.change.after }}</strong>{% if c.change.shown_as is not none %} (shown as {{ c.change.shown_as }}){% endif %}
+      {% endif %}</p>
     {% endif %}
-    <p class="note">{{ drift_meter_note }} <a href="/pushbacks">Every correction you have made</a>.</p>
+    {% for line in c.lines %}<p class="note">{{ line }}</p>{% endfor %}
+    {% if c.link %}<p class="note">{{ c.link[0] }} <a href="{{ c.link[2] }}">{{ c.link[1] }}</a>.</p>{% endif %}
+
+    {% if c.rescore %}
+    {# A re-score is a model call on the user's own key, so it is a button they
+       press, never something this card does for them. #}
+    <form method="post" action="/applications/{{ application_id }}/score" class="pushback-rescore">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit" class="secondary">Score it again</button>
+      <span class="note">{{ score_cost_note }}</span>
+    </form>
+    {% endif %}
+
+    {% if c.state == "failed" %}
+    <form method="post" action="/pushbacks/{{ p.id }}/reading" class="pushback-readings">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      {% for r in c.other_readings %}
+      <button type="submit" name="reading" value="{{ r.key }}" class="secondary">{{ r.choice }}</button>
+      {% endfor %}
+    </form>
+    {% elif c.can_undo %}
+    <details class="pushback-not-meant">
+      <summary>{{ not_meant }}</summary>
+      <form method="post" action="/pushbacks/{{ p.id }}/reading" class="pushback-readings">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <p class="note">{{ not_meant_intro }}</p>
+        {% for r in c.other_readings %}
+        <button type="submit" name="reading" value="{{ r.key }}" class="secondary">{{ r.choice }}</button>
+        {% endfor %}
+        <button type="submit" name="reading" value="undo" class="secondary">{{ just_undo }}</button>
+      </form>
+    </details>
+    {% endif %}
+    <p class="note pushback-when"><span title="{{ p.created_at.isoformat() }}">{{ p.created_at | humanize_dt }}</span></p>
   </div>
   {% endif %}
 
-  {% if pushbacks %}
-  {# Folded behind its count once every correction has been applied or set
-     aside, and forced open while one is still waiting on the user to say what
-     kind of statement it was: a pushback nobody has applied has done nothing
-     yet, and a loop that quietly ignores people is the failure this whole
-     feature exists to avoid. #}
+  {% if score and score.status == "done" %}
+  <form method="post" action="/applications/{{ application_id }}/pushback" class="pushback-box">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <label for="pushback-text">{{ box_label }}</label>
+    <textarea id="pushback-text" name="user_text" rows="2" maxlength="2000" required></textarea>
+    <button type="submit">{{ box_button }}</button>
+  </form>
+  {% endif %}
+
+  {% if drift %}
+  <p class="drift-line{% if drift.loud %} drift-meter{% endif %}"{% if drift.loud %} role="note"{% endif %}>
+    {{ drift.text }}{% if drift.loud %} {{ drift_loud }}{% endif %}
+    <a href="/pushbacks">{{ drift_link }}</a>.
+  </p>
+  {% endif %}
+
+  {% if pushback_history %}
   {% call sections.section(pushbacks_section) %}
   <ul class="pushback-list">
-    {% for item in pushbacks %}
-    {% set p = item.pushback %}
-    <li class="pushback pushback-{{ p.status }}" id="pushback-{{ p.id }}">
-      {# Verbatim. The user's own words, never a model's tidying of them. #}
-      <blockquote class="pushback-words">{{ p.user_text }}</blockquote>
-      <p class="note">
-        About <strong>{{ item.label }}</strong>, said to be
-        {{ "too low" if p.asserted_direction == "up" else "too high" }}
-        against the {{ p.shown_score if p.shown_score is not none else "—" }} you were shown
-        — <span title="{{ p.created_at.isoformat() }}">{{ p.created_at | humanize_dt }}</span>.
-      </p>
-
-      {% if p.status == "applied" %}
-      <dl class="pushback-receipt">
-        <dt>{{ receipt_changed }}</dt><dd>{{ item.receipt.changed }}</dd>
-        <dt>{{ receipt_unchanged }}</dt><dd>{{ item.receipt.unchanged }}</dd>
-        {% if item.receipt.would_change %}
-        <dt>{{ receipt_would }}</dt><dd>{{ item.receipt.would_change }}</dd>
-        {% endif %}
-      </dl>
-
-      {% if item.receipt.evidence_required and not p.resulting_span_id %}
-      {# The flywheel: a gap becomes a question, the answer becomes a corpus
-         fact in the user's own words, and the number is recomputed from it. No
-         model anywhere on this path. #}
-      <div class="pushback-evidence">
-        <h4>{{ evidence_heading }}</h4>
-        <p class="note">{{ p.evidence_question }}</p>
-        <p class="note">{{ evidence_note }}</p>
-        <form method="post" action="/pushbacks/{{ p.id }}/evidence">
-          <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-          <label for="answer-{{ p.id }}">Your answer, stored word for word</label>
-          <textarea id="answer-{{ p.id }}" name="answer" rows="3" required></textarea>
-          <button type="submit">Record this as a fact about me</button>
-        </form>
-      </div>
-      {% elif p.resulting_span_id %}
-      <p class="note pushback-evidence-done">{{ evidence_recorded }}</p>
-      {% endif %}
-
-      {% if item.receipt.comparison_offered %}
-      <div class="pushback-comparison">
-        <h4>{{ comparison_heading }}</h4>
-        <p class="note">{{ comparison_intro }}</p>
-        <p class="note"><a href="/applications">Pick a job you have already scored</a> and
-          compare the two — a comparison is better evidence than another point, and
-          cheaper for you to give.</p>
-      </div>
-      {% endif %}
-
-      {% else %}
-      {# Recorded, classified or not, and applied to nothing. #}
-      <form method="post" action="/pushbacks/{{ p.id }}/apply" class="pushback-classify">
-        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <h4>{{ classify_heading }}</h4>
-        <p class="note">{{ classify_intro }}</p>
-        {% if p.error_code %}
-        <p class="note" role="status">{{ classify_failed }}</p>
-        {% elif p.status == "awaiting_classification" %}
-        <p class="note" role="status">Working out what kind of statement this is…</p>
-        {% elif p.classification_note %}
-        <p class="note">{{ p.classification_note }}</p>
-        {% endif %}
-        {% for kind in ["preference", "capability", "factual"] %}
-        <label class="pushback-kind">
-          <input type="radio" name="classification" value="{{ kind }}"
-                 {% if p.classification == kind %}checked{% elif not p.classification and kind == "factual" %}checked{% endif %}>
-          <span class="pushback-kind-label">{{ kind_wording[kind] }}</span>
-          <span class="note">{{ kind_consequence[kind] }}</span>
-        </label>
-        {% endfor %}
-        <label class="pushback-new-info">
-          <input type="checkbox" name="new_information" value="yes"
-                 {% if p.new_information %}checked{% endif %}>
-          {{ new_information_label }}
-        </label>
-        <p class="note">{{ new_information_note }}</p>
-        <button type="submit">Apply this</button>
-      </form>
-      {% endif %}
+    {% for item in pushback_history %}
+    {% set h = item.pushback %}
+    <li class="pushback">
+      <blockquote class="pushback-words">{{ h.user_text }}</blockquote>
+      <p class="note">{{ item.changed }} <span title="{{ h.created_at.isoformat() }}">{{ h.created_at | humanize_dt }}</span>.</p>
     </li>
     {% endfor %}
   </ul>
   {% endcall %}
   {% endif %}
 
+  {% if pushback_card %}
   <details class="pushback-limits">
     <summary>{{ never_changed_heading }}</summary>
     <ul class="pushback-never">
       {% for line in never_changed %}<li>{{ line }}</li>{% endfor %}
     </ul>
   </details>
+  {% endif %}
 </section>

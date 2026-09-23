@@ -74,11 +74,10 @@ def _call(
     ctx: RequestContext | None = None,
     runs: RunRepository | None = None,
     user_text: str = "I actually led that team of twelve",
-    axis: str = "get",
-    direction: str = "up",
-    shown_score: int | None = 4,
-    shown_explanation: str = "Limited evidence of team leadership.",
-    dimension_label: str = "a capability",
+    could_get_score: int | None = 4,
+    could_get_explanation: str = "Limited evidence of team leadership.",
+    want_score: int | None = 6,
+    want_explanation: str = "Two of what you said matters are evidenced.",
     earlier_texts: tuple[str, ...] = (),
     now: datetime = NOW,
 ) -> Any:
@@ -86,11 +85,10 @@ def _call(
         ctx or _ctx(),
         runs or _FakeRunRepo(),
         user_text=user_text,
-        axis=axis,
-        direction=direction,
-        shown_score=shown_score,
-        shown_explanation=shown_explanation,
-        dimension_label=dimension_label,
+        could_get_score=could_get_score,
+        could_get_explanation=could_get_explanation,
+        want_score=want_score,
+        want_explanation=want_explanation,
         earlier_texts=earlier_texts,
         now=now,
     )
@@ -98,6 +96,7 @@ def _call(
 
 _CLASSIFICATION_PAYLOAD = {
     "kind": "capability",
+    "direction": "up",
     "new_information": True,
     "classification_note": "A claim about what they have done, not what they want.",
 }
@@ -160,9 +159,10 @@ def test_schema_has_no_property_named_reason() -> None:
     assert "reason" not in _property_names(PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA)
 
 
-def test_schema_requires_all_three_fields_and_nothing_else() -> None:
+def test_schema_requires_all_four_fields_and_nothing_else() -> None:
     assert PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA["required"] == [
         "kind",
+        "direction",
         "new_information",
         "classification_note",
     ]
@@ -181,11 +181,10 @@ class TestPromptBuilder:
     def test_includes_the_users_words_verbatim_and_the_timestamp(self) -> None:
         prompt = build_pushback_classification_prompt(
             user_text="I actually led that team of twelve",
-            axis="get",
-            direction="up",
-            shown_score=4,
-            shown_explanation="Limited evidence of team leadership.",
-            dimension_label="a capability",
+            could_get_score=4,
+            could_get_explanation="Limited evidence of team leadership.",
+            want_score=4,
+            want_explanation="",
             earlier_texts=[],
             now=NOW,
         )
@@ -195,11 +194,10 @@ class TestPromptBuilder:
     def test_includes_earlier_texts_when_given(self) -> None:
         prompt = build_pushback_classification_prompt(
             user_text="new words",
-            axis="get",
-            direction="up",
-            shown_score=4,
-            shown_explanation="",
-            dimension_label="a capability",
+            could_get_score=4,
+            could_get_explanation="",
+            want_score=4,
+            want_explanation="",
             earlier_texts=["said this before"],
             now=NOW,
         )
@@ -208,11 +206,10 @@ class TestPromptBuilder:
     def test_says_nothing_else_said_when_there_are_no_earlier_texts(self) -> None:
         prompt = build_pushback_classification_prompt(
             user_text="new words",
-            axis="get",
-            direction="up",
-            shown_score=4,
-            shown_explanation="",
-            dimension_label="a capability",
+            could_get_score=4,
+            could_get_explanation="",
+            want_score=4,
+            want_explanation="",
             earlier_texts=[],
             now=NOW,
         )
@@ -221,11 +218,10 @@ class TestPromptBuilder:
     def test_never_asks_the_model_to_rewrite_the_users_words(self) -> None:
         prompt = build_pushback_classification_prompt(
             user_text="new words",
-            axis="get",
-            direction="up",
-            shown_score=4,
-            shown_explanation="",
-            dimension_label="a capability",
+            could_get_score=4,
+            could_get_explanation="",
+            want_score=4,
+            want_explanation="",
             earlier_texts=[],
             now=NOW,
         )
@@ -234,11 +230,10 @@ class TestPromptBuilder:
     def test_an_unscored_shown_score_reads_as_unscored_not_none(self) -> None:
         prompt = build_pushback_classification_prompt(
             user_text="new words",
-            axis="get",
-            direction="up",
-            shown_score=None,
-            shown_explanation="",
-            dimension_label="a capability",
+            could_get_score=None,
+            could_get_explanation="",
+            want_score=None,
+            want_explanation="",
             earlier_texts=[],
             now=NOW,
         )
@@ -440,6 +435,7 @@ class TestSanitisation:
     def test_whitespace_is_collapsed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         payload = {
             "kind": "preference",
+            "direction": "down",
             "new_information": False,
             "classification_note": "  a   note   with\nextra   whitespace  ",
         }
@@ -451,7 +447,12 @@ class TestSanitisation:
 
     def test_a_note_over_the_cap_is_trimmed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         long_note = "word " * 100  # comfortably over MAX_NOTE_CHARS
-        payload = {"kind": "factual", "new_information": False, "classification_note": long_note}
+        payload = {
+            "kind": "factual",
+            "direction": "down",
+            "new_information": False,
+            "classification_note": long_note,
+        }
         client = _FakeAnthropicClient(response=_response(payload))
         _patch_client(monkeypatch, client)
 
@@ -462,7 +463,12 @@ class TestSanitisation:
     def test_every_real_kind_passes_through_unchanged(
         self, monkeypatch: pytest.MonkeyPatch, kind: str
     ) -> None:
-        payload = {"kind": kind, "new_information": True, "classification_note": ""}
+        payload = {
+            "kind": kind,
+            "direction": "down",
+            "new_information": True,
+            "classification_note": "",
+        }
         client = _FakeAnthropicClient(response=_response(payload))
         _patch_client(monkeypatch, client)
 
@@ -480,6 +486,7 @@ class TestSanitisation:
         """
         payload = {
             "kind": "something-the-model-made-up",
+            "direction": "down",
             "new_information": True,
             "classification_note": "",
         }
@@ -490,9 +497,64 @@ class TestSanitisation:
         assert result.kind == "factual"
 
     def test_new_information_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        payload = {"kind": "preference", "new_information": False, "classification_note": ""}
+        payload = {
+            "kind": "preference",
+            "direction": "down",
+            "new_information": False,
+            "classification_note": "",
+        }
         client = _FakeAnthropicClient(response=_response(payload))
         _patch_client(monkeypatch, client)
 
         result = _call()
         assert result.new_information is False
+
+
+class TestDirection:
+    """The one box asks for words only, so the direction is read from them."""
+
+    @pytest.mark.parametrize("direction", ["up", "down"])
+    def test_a_real_direction_passes_through(
+        self, monkeypatch: pytest.MonkeyPatch, direction: str
+    ) -> None:
+        payload = {
+            "kind": "preference",
+            "direction": direction,
+            "new_information": True,
+            "classification_note": "",
+        }
+        _patch_client(monkeypatch, _FakeAnthropicClient(response=_response(payload)))
+        result = _call()
+        assert (result.kind, result.direction) == ("preference", direction)
+
+    @pytest.mark.parametrize("direction", ["", "sideways"])
+    def test_no_trustworthy_direction_reads_as_the_kind_that_moves_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, direction: str
+    ) -> None:
+        """A capability reading with no direction must not land on "down",
+        which applies in full -- so it becomes factual, and counts as upward
+        on the drift meter, the conservative side.
+        """
+        payload = {
+            "kind": "capability",
+            "direction": direction,
+            "new_information": True,
+            "classification_note": "",
+        }
+        _patch_client(monkeypatch, _FakeAnthropicClient(response=_response(payload)))
+        result = _call()
+        assert (result.kind, result.direction) == ("factual", "up")
+
+    def test_the_prompt_carries_both_numbers(self) -> None:
+        prompt = build_pushback_classification_prompt(
+            user_text="words",
+            could_get_score=4,
+            could_get_explanation="The ad asks for ownership.",
+            want_score=7,
+            want_explanation="Remote and hands-on.",
+            earlier_texts=[],
+            now=NOW,
+        )
+        assert "The ad asks for ownership." in prompt
+        assert "Remote and hands-on." in prompt
+        assert "7 out of 10" in prompt and "4 out of 10" in prompt

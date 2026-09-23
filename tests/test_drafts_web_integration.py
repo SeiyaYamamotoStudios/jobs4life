@@ -463,8 +463,18 @@ def test_an_ad_being_read_shows_that_step_running_and_waits(
 ) -> None:
     """Straight after adding an application its ad is being read. The page
     says so, polls, and offers no button -- a press now would pay to read the
-    same ad twice."""
+    same ad twice.
+
+    A key is stored first: without one, adding an application no longer queues
+    the read at all (there is nothing to pay for it with), so "being read" is a
+    state only a user with a key can reach."""
     sign_in(client, google, subs, engine)
+    response = client.post(
+        "/settings/api-key",
+        data={"csrf_token": csrf(client, "/settings"), "api_key": "sk-ant-test-" + "x" * 40},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
     app_id = add_application(client)
 
     page = client.get(f"/applications/{app_id}/drafts").text

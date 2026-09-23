@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}The fact behind it — jobs4life{% endblock %}
+{% block content %}
+{# The one question a "stronger fit" correction opens. The answer is kept word
+   for word as a confirmed fact -- no model anywhere on this path -- and the
+   score moves when the job is scored again against it, not before. #}
+<h1>The fact behind it</h1>
+
+<p class="note">You said:</p>
+<blockquote class="pushback-words">{{ pushback.user_text }}</blockquote>
+
+<p>{{ question }}</p>
+<p class="note">{{ evidence_note }}</p>
+
+<form method="post" action="/pushbacks/{{ pushback.id }}/evidence" class="pushback-box">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <label for="answer">Your answer, kept word for word</label>
+  <textarea id="answer" name="answer" rows="3" maxlength="1000" required></textarea>
+  <button type="submit">Keep this as a fact about me</button>
+</form>
+
+<p class="note"><a href="/applications/{{ pushback.application_id }}#pushbacks">Back to the application</a></p>
+{% endblock %}

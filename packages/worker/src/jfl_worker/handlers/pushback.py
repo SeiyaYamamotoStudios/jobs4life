@@ -1,16 +1,23 @@
-"""`classify_pushback`: propose what kind one score pushback is.
+"""`classify_pushback`: read one score pushback, and apply what it read.
 
 Mirrors `jfl_worker.handlers.title_suggestions` closely, and deliberately: same
 credential discipline, same failure classification shape, same append-only
 `runs` recording. Differences follow from what this call actually needs.
 
-**A failure here is not much of a failure.** `jfl_core.storage.pushbacks`'s
-`mark_classification_failed` leaves the row `awaiting_classification` with a
-code on it, and the screen simply asks the user which of the three kinds this
-is -- which it was always going to ask, since the classification is theirs to
-confirm before anything applies (see `jfl_core.pushback`'s module docstring
-and `PostgresPushbackRepository.apply`'s). A model outage here costs the user
-a moment of picking a radio button themselves, never the loop.
+**It applies what it read.** The pushback box is one textarea, and the owner's
+complaint about the earlier design was that confirming a classification before
+anything happened was a step too many and still left him unsure what changed.
+So the reading is applied here, in the same task, and the screen shows the
+result -- what was taken, before -> after, what did not move and what would --
+with "Not what I meant" beside it, which withdraws this row and re-applies
+under the reading the user picks. What makes applying unseen acceptable is the
+rule, not this handler: `jfl_core.pushback.decide` gives no reading a way to
+move "could I get this" upward, and the database refuses it too.
+
+**A failure here is not much of a failure.** `mark_classification_failed`
+leaves the row `awaiting_classification` with a code on it and nothing moved,
+and the screen asks the user which of a short list of plain readings they
+meant. A model outage costs one click, never the loop.
 
 **The key is never data.** Same custody as `title_suggestions.py`: fetched
 from `user_credentials`, unsealed with the worker's master key, held in one
@@ -32,11 +39,13 @@ from typing import Protocol
 
 from jfl_core.context import RequestContext
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
-from jfl_core.models import Pushback, PushbackErrorCode, RunRecord
-from jfl_core.pushback import COULD_GET_OVERALL, WANT_OVERALL
+from jfl_core.models import ApplicationScore, Pushback, PushbackErrorCode, RunRecord
+from jfl_core.pushback import Axis
+from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresRunRepository
 from jfl_core.storage.pushbacks import PostgresPushbackRepository
+from jfl_core.storage.scores import PostgresScoreRepository
 from jfl_generate.errors import GenerateError
 from jfl_generate.pushback import classify_pushback as call_classify_pushback
 from sqlalchemy.engine import Engine
@@ -46,12 +55,17 @@ from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
 KIND = "classify_pushback"
 
-# How many of this user's earlier pushbacks on the same dimension are given to
-# the model as context for judging `new_information`. Recent ones, not all of
-# them -- a dimension with a long history does not need its whole log
-# re-sent on every new correction, and `PostgresPushbackRepository.recent()`
-# is already newest-first.
+# How many of this user's earlier pushbacks are given to the model as context
+# for judging `new_information`. Recent ones, not all of them -- a long history
+# does not need re-sending on every new correction, and
+# `PostgresPushbackRepository.recent()` is already newest-first.
 MAX_EARLIER_TEXTS = 5
+
+# Statuses that mean the application was actually sent. Same list as
+# `jfl_web.routes.pushbacks._submitted`, which the web path uses when the user
+# picks a reading themselves; duplicated rather than imported because the
+# worker does not carry the web package.
+_SENT_STATUSES = frozenset({"applied", "screening", "interviewing", "offer", "rejected"})
 
 
 class _RunRecorder:
@@ -100,29 +114,6 @@ def _pushback_id(payload: Mapping[str, object]) -> uuid.UUID:
         raise PermanentTaskError("payload pushback_id is not a uuid") from None
 
 
-def dimension_label(dimension: str) -> str:
-    """Plain words for a dimension string, for the prompt and nowhere else --
-    it is not stored and not shown to the user, who sees their own panel, not
-    this label.
-
-    Deliberately dumb: it reads the prefix and nothing more. `capability:<key>`
-    collapses to "a capability" rather than trying to prettify `<key>`, which
-    is an internal id (see `jfl_core.profile.Capability`) with no guarantee of
-    being readable prose.
-    """
-    if dimension == WANT_OVERALL:
-        return 'the whole "do I want this" number'
-    if dimension == COULD_GET_OVERALL:
-        return 'the whole "could I get this" number'
-    if dimension.startswith("constraint:"):
-        return dimension.removeprefix("constraint:")
-    if dimension.startswith("objective:"):
-        return "objective " + dimension.removeprefix("objective:")
-    if dimension.startswith("capability:"):
-        return "a capability"
-    return dimension
-
-
 class _RecentReader(Protocol):
     """What `_earlier_texts` needs from a pushback repository -- narrower than
     `PostgresPushbackRepository` so a test double can satisfy it without
@@ -133,18 +124,38 @@ class _RecentReader(Protocol):
 
 
 def _earlier_texts(repo: _RecentReader, row: Pushback) -> list[str]:
-    """This user's own words from earlier pushbacks on the same dimension,
-    oldest excluded beyond the cap -- what `new_information` is judged
-    against. Simple: one table scan via `recent()`, filtered in Python. This
-    call is cheap and the log is not large enough yet to need a purpose-built
-    query.
+    """This user's own words from their earlier pushbacks, newest first and
+    capped -- what `new_information` is judged against.
+
+    Any score, not one dimension: the box no longer asks which part of the
+    score the words are about, so every earlier correction is a candidate for
+    "said this before". Withdrawn ones are left out -- the user said they were
+    misread, so they are not a record of what was meant.
     """
     older = [
         p.user_text
         for p in repo.recent()
-        if p.dimension == row.dimension and p.id != row.id and p.created_at < row.created_at
+        if p.id != row.id and p.created_at < row.created_at and p.withdrawn_at is None
     ]
     return older[:MAX_EARLIER_TEXTS]
+
+
+def _stimulus(score: ApplicationScore | None, axis: Axis) -> tuple[int | None, str]:
+    """The number and sentence on the axis the words turned out to be about."""
+    if score is None:
+        return None, ""
+    if axis == "want":
+        return score.want_it_score, score.want_it_assessment
+    return score.could_get_score, score.could_get_assessment
+
+
+def _submitted(applications: PostgresApplicationRepository) -> int:
+    """How many applications this user has actually sent -- the behavioural
+    channel in the shrinkage denominator (`jfl_core.pushback.observations`).
+    """
+    return sum(
+        1 for a in applications.list_applications(archived=False) if a.status in _SENT_STATUSES
+    )
 
 
 def build_classify_pushback(*, master_key: MasterKey | None) -> Handler:
@@ -188,6 +199,7 @@ def _classify_pushback(ctx: TaskContext, *, master_key: MasterKey | None) -> Map
 
     with ctx.engine.begin() as conn:
         earlier_texts = _earlier_texts(PostgresPushbackRepository(conn, ctx.user_id), row)
+        score = PostgresScoreRepository(conn, ctx.user_id).get(row.score_id)
 
     request = RequestContext(
         user_id=ctx.user_id,
@@ -202,11 +214,10 @@ def _classify_pushback(ctx: TaskContext, *, master_key: MasterKey | None) -> Map
             request,
             recorder,
             user_text=row.user_text,
-            axis=row.axis,
-            direction=row.asserted_direction,
-            shown_score=row.shown_score,
-            shown_explanation=row.shown_explanation,
-            dimension_label=dimension_label(row.dimension),
+            could_get_score=score.could_get_score if score else None,
+            could_get_explanation=score.could_get_assessment if score else "",
+            want_score=score.want_it_score if score else None,
+            want_explanation=score.want_it_assessment if score else "",
             earlier_texts=earlier_texts,
             now=ctx.now,
         )
@@ -219,8 +230,23 @@ def _classify_pushback(ctx: TaskContext, *, master_key: MasterKey | None) -> Map
             ) from None
         raise
 
+    # One transaction: read, classified and applied together, so the screen
+    # never shows a reading that has not been applied. Every write below is a
+    # no-op on a row that is already applied -- which is what happens if the
+    # user picked a reading themselves while this call was in flight, and then
+    # their pick stands.
+    axis: Axis = "get" if result.kind == "capability" else "want"
+    shown_score, shown_explanation = _stimulus(score, axis)
     with ctx.engine.begin() as conn:
-        PostgresPushbackRepository(conn, ctx.user_id).set_classification(
+        repo = PostgresPushbackRepository(conn, ctx.user_id)
+        repo.set_reading(
+            pushback_id,
+            axis=axis,
+            direction=result.direction,
+            shown_score=shown_score,
+            shown_explanation=shown_explanation,
+        )
+        repo.set_classification(
             pushback_id,
             classification=result.kind,
             new_information=result.new_information,
@@ -228,8 +254,18 @@ def _classify_pushback(ctx: TaskContext, *, master_key: MasterKey | None) -> Map
             source="model",
             trace_id=request.trace_id,
         )
+        repo.apply(
+            pushback_id,
+            classification=result.kind,
+            new_information=result.new_information,
+            submitted_applications=_submitted(PostgresApplicationRepository(conn, ctx.user_id)),
+        )
 
-    return {"pushback_id": str(pushback_id), "classification": result.kind}
+    return {
+        "pushback_id": str(pushback_id),
+        "classification": result.kind,
+        "direction": result.direction,
+    }
 
 
 def _fail(ctx: TaskContext, pushback_id: uuid.UUID, code: PushbackErrorCode) -> None:

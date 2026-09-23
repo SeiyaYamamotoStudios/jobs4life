@@ -243,5 +243,8 @@ class PushbackClassificationOutput(BaseModel):
     """
 
     kind: str
+    # Defaulted rather than required on the wire: a response without it is
+    # sanitised to the kind that moves nothing, never rejected into a retry.
+    direction: str = ""
     new_information: bool
     classification_note: str

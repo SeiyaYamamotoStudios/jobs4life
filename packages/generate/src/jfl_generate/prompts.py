@@ -26,7 +26,7 @@ from jfl_core.models import (
     Span,
 )
 from jfl_core.profile import Capability, Constraint, Profile
-from jfl_core.pushback import PUSHBACK_KINDS
+from jfl_core.pushback import DIRECTIONS, PUSHBACK_KINDS
 from jfl_gate.prompt import format_corpus
 
 # Kept in exact correspondence with jfl_generate.schema.ExtractOutput.
@@ -1287,6 +1287,9 @@ PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
         "kind": {"type": "string", "enum": list(PUSHBACK_KINDS)},
+        # Which way the person thinks the number should go. The one-box form
+        # asks for their words and nothing else, so this is read from them.
+        "direction": {"type": "string", "enum": list(DIRECTIONS)},
         "new_information": {"type": "boolean"},
         # Never `reason` -- see CLAUDE.md's 2026-09-02 decision and
         # PLAN.md's C7a: a schema property named `reason`, combined with a
@@ -1296,7 +1299,7 @@ PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA: dict[str, object] = {
         # model's reasoning about how it decided.
         "classification_note": {"type": "string"},
     },
-    "required": ["kind", "new_information", "classification_note"],
+    "required": ["kind", "direction", "new_information", "classification_note"],
     "additionalProperties": False,
 }
 
@@ -1304,34 +1307,39 @@ PUSHBACK_CLASSIFICATION_OUTPUT_SCHEMA: dict[str, object] = {
 # see the schema comment above. The note field is described as being for the
 # user, not for showing working.
 _PUSHBACK_CLASSIFICATION_INSTRUCTIONS = """\
-You are classifying one person's disagreement with a score jobs4life showed them, for a \
+You are reading one person's disagreement with a job score jobs4life showed them, for a \
 tool whose whole claim is measuring the distance between what someone can evidence and what \
-they assert -- applied here to a score instead of a CV bullet. Read their words and decide \
-which of three kinds this is. The three have sharply different consequences, so pick the \
-kind that is actually true of the sentence rather than the one that sounds most agreeable.
+they assert -- applied here to a score instead of a CV bullet. They typed their disagreement \
+into a single box under two numbers, so read their words and decide which of three kinds it \
+is and which way they think the score should go. The three have sharply different \
+consequences, so pick the kind that is actually true of the sentence rather than the one \
+that sounds most agreeable.
 
-- "preference" -- a statement about what the person WANTS. Accepted and folded into the \
-number, shrunk by how many times they have already said something about this dimension.
+- "preference" -- a statement about what the person WANTS. Folded into the "do I want this" \
+number, by a small and shrinking amount.
 - "capability" -- a statement about what the person CAN DO or HAS DONE. If they are saying \
-the tool rated them too high, the number moves down immediately. If they are saying the \
-tool rated them too low, the number moves NOTHING -- a claim of greater capability needs \
+the tool rated them too high, the "could I get this" number moves down. If they are saying \
+the tool rated them too low, the number moves NOTHING -- a claim of greater capability needs \
 evidence, not agreement, so this opens a question instead of taking their word for it.
 - "factual" -- a statement about the JOB AD itself, not about the person -- disputing what \
-it says rather than what they want or can do. Nothing about the person moves; the ad gets \
-re-read.
+it says rather than what they want or can do. Nothing about the person moves.
 
-They pushed back on {dimension_label} ("{axis_words}"), currently shown as {shown_score} out \
-of 10, with this explanation: "{shown_explanation}". They think this number should be \
-{direction_words}.
+Decide `direction`: "up" if they think the relevant number is too low, "down" if they think \
+it is too high. For a factual objection, the direction the corrected reading of the ad would \
+move the score.
+
+The two numbers they were shown:
+- "could I get this": {could_get_score} out of 10 -- "{could_get_explanation}"
+- "do I want this": {want_score} out of 10 -- "{want_explanation}"
 
 Their words: "{user_text}"
 
 {earlier_section}
 
-Decide `new_information`: whether this pushback states a fact the earlier ones on this same \
-dimension did not already state. Restating the same point more forcefully, or adding \
-emphasis with no new fact, is NOT new information -- it is the same claim said again, and \
-saying it again should not count as saying more.
+Decide `new_information`: whether this pushback states a fact the earlier ones did not \
+already state. Restating the same point more forcefully, or adding emphasis with no new \
+fact, is NOT new information -- it is the same claim said again, and saying it again should \
+not count as saying more.
 
 Do not rewrite, tidy or improve the person's words anywhere in your answer. \
 `classification_note` is a short note to them about what kind of statement you read this as, \
@@ -1341,32 +1349,26 @@ The current date and time is {now}.
 """
 
 
-_AXIS_WORDS = {"want": "do I want this", "get": "could I get this"}
-_DIRECTION_WORDS = {"up": "higher", "down": "lower"}
-
-
 def build_pushback_classification_prompt(
     *,
     user_text: str,
-    axis: str,
-    direction: str,
-    shown_score: int | None,
-    shown_explanation: str,
-    dimension_label: str,
+    could_get_score: int | None,
+    could_get_explanation: str,
+    want_score: int | None,
+    want_explanation: str,
     earlier_texts: Sequence[str],
     now: datetime,
 ) -> str:
     if earlier_texts:
         bullets = "\n".join(f'- "{text}"' for text in earlier_texts)
-        earlier_section = f"Earlier things they have said about this same dimension:\n{bullets}"
+        earlier_section = f"Earlier things they have said about their scores:\n{bullets}"
     else:
-        earlier_section = "They have said nothing else about this dimension before."
+        earlier_section = "They have said nothing else about their scores before."
     return _PUSHBACK_CLASSIFICATION_INSTRUCTIONS.format(
-        dimension_label=dimension_label,
-        axis_words=_AXIS_WORDS.get(axis, axis),
-        direction_words=_DIRECTION_WORDS.get(direction, direction),
-        shown_score=shown_score if shown_score is not None else "unscored",
-        shown_explanation=shown_explanation or "(none)",
+        could_get_score=could_get_score if could_get_score is not None else "unscored",
+        could_get_explanation=could_get_explanation or "(none)",
+        want_score=want_score if want_score is not None else "unscored",
+        want_explanation=want_explanation or "(none)",
         user_text=user_text,
         earlier_section=earlier_section,
         now=now.isoformat(),

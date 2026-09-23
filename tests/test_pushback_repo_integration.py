@@ -391,3 +391,88 @@ def test_another_users_override_is_invisible(
         bob.application_id, axis="get", value=9
     )
     assert PostgresScoreOverrideRepository(conn, alice.user_id).current(bob.application_id) == {}
+
+
+# -- "Not what I meant": withdrawing, and reading the one box ----------------
+
+
+def test_a_withdrawn_correction_stops_counting_everywhere(alice: Fixture) -> None:
+    """Undo is a mark on the log. The row keeps what it did; every sum skips it
+    -- displacement, the observation count that shrinks the next one, the
+    restatement check, the drift meter and the list of open questions.
+    """
+    row = alice.record(text="I would love this")
+    alice.repo.apply(row.id, classification="preference", new_information=True)
+    assert alice.repo.displacement(WANT_OVERALL) == pytest.approx(1.0)
+
+    withdrawn = alice.repo.withdraw(row.id)
+    assert withdrawn is not None and withdrawn.withdrawn
+    assert withdrawn.applied_delta == pytest.approx(1.0)  # the record stays readable
+    assert alice.repo.displacement(WANT_OVERALL) == 0.0
+    assert alice.repo.displacements() == {}
+    assert alice.repo.drift_meter().total == 0
+    assert alice.repo.applied_log() == []
+
+    # The same words again are not a restatement of a withdrawn row, and the
+    # withdrawn one is not an observation: this moves the full first step.
+    again = alice.record(text="I would love this")
+    applied = alice.repo.apply(again.id, classification="preference", new_information=True)
+    assert applied is not None and applied.applied_delta == pytest.approx(1.0)
+
+
+def test_a_withdrawn_question_is_no_longer_waiting(alice: Fixture) -> None:
+    row = alice.record(axis="get", dimension=COULD_GET_OVERALL)
+    alice.repo.apply(row.id, classification="capability", new_information=True)
+    assert len(alice.repo.awaiting_evidence()) == 1
+    alice.repo.withdraw(row.id)
+    assert alice.repo.awaiting_evidence() == []
+
+
+def test_only_an_applied_correction_can_be_withdrawn(conn: Connection, alice: Fixture) -> None:
+    row = alice.record()
+    assert alice.repo.withdraw(row.id).withdrawn_at is None  # type: ignore[union-attr]
+    with pytest.raises(IntegrityError):
+        conn.execute(
+            update(score_pushbacks)
+            .where(score_pushbacks.c.id == row.id)
+            .values(withdrawn_at=score_pushbacks.c.created_at)
+        )
+
+
+def test_another_user_cannot_withdraw_a_correction(alice: Fixture, bob: Fixture) -> None:
+    row = bob.record()
+    bob.repo.apply(row.id, classification="preference", new_information=True)
+    assert alice.repo.withdraw(row.id) is None
+    assert bob.repo.get(row.id).withdrawn_at is None  # type: ignore[union-attr]
+
+
+def test_the_reading_points_an_unapplied_row_at_the_right_score(alice: Fixture) -> None:
+    row = alice.record()
+    read = alice.repo.set_reading(
+        row.id, axis="get", direction="down", shown_score=4, shown_explanation="The ad asks."
+    )
+    assert read is not None
+    assert (read.axis, read.dimension, read.asserted_direction) == (
+        "get",
+        COULD_GET_OVERALL,
+        "down",
+    )
+    assert (read.shown_score, read.shown_explanation) == (4, "The ad asks.")
+
+
+def test_the_reading_never_touches_an_applied_row(alice: Fixture) -> None:
+    row = alice.record()
+    alice.repo.apply(row.id, classification="preference", new_information=True)
+    after = alice.repo.set_reading(
+        row.id, axis="get", direction="down", shown_score=4, shown_explanation=""
+    )
+    assert after is not None
+    assert (after.axis, after.asserted_direction) == ("want", "up")
+
+
+def test_the_applied_log_is_in_the_order_applied(alice: Fixture) -> None:
+    first = alice.record(text="first")
+    second = alice.record(text="second")
+    alice.repo.apply(first.id, classification="preference", new_information=True)
+    alice.repo.apply(second.id, classification="preference", new_information=True)
+    assert [p.user_text for p in alice.repo.applied_log()] == ["first", "second"]

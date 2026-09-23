@@ -246,12 +246,12 @@ def score_detail_sections(
 
 
 def pushbacks_section(states: dict[str, SectionState], pushbacks: Sequence[object]) -> Section:
-    """ "What you have said about this score".
+    """ "Earlier on this score" -- every correction before the latest, whose
+    card sits above this section, one line each.
 
-    Forced open while any of them is still waiting on the user to confirm what
-    kind of statement it was: a pushback nobody has applied has done nothing
-    yet, and a loop that quietly ignores people is the failure this feature
-    exists to avoid.
+    Forced open while any of them was never applied (its reading failed and
+    nobody picked one): it has done nothing yet, and a loop that quietly
+    ignores people is the failure this feature exists to avoid.
     """
     # `pushback_context` hands each row over as {"pushback": row, ...}; the
     # tests and any future caller may hand the row itself. Both read the same.
@@ -259,7 +259,7 @@ def pushbacks_section(states: dict[str, SectionState], pushbacks: Sequence[objec
     waiting = sum(1 for row in rows if getattr(row, "status", None) != "applied")
     return resolve(
         "score.pushbacks",
-        "What you have said about this score",
+        "Earlier on this score",
         state=states.get("score.pushbacks"),
         default_open=False,
         forced_open=waiting > 0,

@@ -1,53 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Corrections — jobs4life{% endblock %}
 {% block content %}
-{# Every correction this account has made, in the user's own words, with the
-   drift meter over it.
-
-   This page exists because the failure it watches for is invisible to every
-   other number in the product. A tool that agrees with you whenever you ask
-   scores well on satisfaction, on engagement, and on "did the user like the
-   answer" -- and that is exactly how a production assistant became sycophantic
-   in 2025 with its offline evals looking fine throughout. So the count, the
-   direction and the net movement are one line, near the top, on a page linked
-   from every screen. #}
+{# Every correction this account has made, as plain history: when, what you
+   said (verbatim), what it changed. The drift sentence sits over it, loud only
+   past the threshold `jfl_web.pushbacks.drift_line` documents. #}
 <h1>Corrections</h1>
 
-<section class="drift-meter drift-meter-page" role="note">
-  <h2>{{ meter.sentence if meter.total else "You have not corrected any score yet." }}</h2>
-  <p class="note">Corrections applied, how many of them asked for a number to go up, and
-    the total signed movement they produced. Upward counts what you asked for, not what
-    was applied.</p>
-  <p class="note">This is the one thing no other number here can catch: a tool that agrees
-    with you on request looks good on every measure except this one.</p>
-</section>
-
-{% if displacements %}
-<section>
-  <h2>Where the movement is</h2>
-  <p class="note">Each of these is capped at two points, after which the tool stops
-    arguing about the number and asks you to compare two jobs instead.</p>
-  <ul class="drift-dimensions">
-    {% for dimension, value in displacements.items() %}
-    <li><span class="drift-dimension">{{ dimension }}</span>
-      <span class="drift-value">{{ "%+.2f" | format(value) }}</span></li>
-    {% endfor %}
-  </ul>
-</section>
+{% if drift %}
+<p class="drift-line{% if drift.loud %} drift-meter{% endif %}"{% if drift.loud %} role="note"{% endif %}>
+  {{ drift.text }}{% if drift.loud %} {{ drift_loud }}{% endif %}
+</p>
 {% endif %}
 
 {% if awaiting_evidence %}
 <section>
   <h2>Waiting on a fact</h2>
-  <p class="note">These asked a number to go up. It has not moved and will not until you
-    have confirmed the fact — which is the point: the number is a statement about the
-    facts you have confirmed, not a judgement about you.</p>
+  <p class="note">You said you're a stronger fit than we scored. Your score won't move on
+    your word alone — confirm the fact behind it and it will.</p>
   <ul class="pushback-pending">
     {% for p in awaiting_evidence %}
     <li>
       <blockquote class="pushback-words">{{ p.user_text }}</blockquote>
-      <p class="note">{{ p.evidence_question }}
-        <a href="/applications/{{ p.application_id }}#pushbacks">Answer it</a>.</p>
+      <p class="note"><a href="/pushbacks/{{ p.id }}/evidence">Answer this</a>.</p>
     </li>
     {% endfor %}
   </ul>
@@ -57,30 +31,17 @@
 <section>
   <h2>Everything you have said</h2>
   {% if not items %}
-  <p class="note">Nothing yet. When a score looks wrong, say so on the application — your
-    words are kept exactly as you write them, whether or not they change the number.</p>
+  <p class="note">Nothing yet. When a score looks wrong, say so under it — your words are
+    kept exactly as you write them, whether or not they change the number.</p>
   {% else %}
   <ul class="pushback-list">
     {% for item in items %}
     {% set p = item.pushback %}
-    <li class="pushback pushback-{{ p.status }}">
+    <li class="pushback">
+      <p class="note pushback-when"><span title="{{ p.created_at.isoformat() }}">{{ p.created_at | humanize_dt }}</span>
+        · <a href="/applications/{{ p.application_id }}#pushbacks">the application</a></p>
       <blockquote class="pushback-words">{{ p.user_text }}</blockquote>
-      <p class="note">
-        <a href="/applications/{{ p.application_id }}#pushbacks">{{ item.label }}</a>,
-        said to be {{ "too low" if p.asserted_direction == "up" else "too high" }}
-        against the {{ p.shown_score if p.shown_score is not none else "—" }} shown
-        — <span title="{{ p.created_at.isoformat() }}">{{ p.created_at | humanize_dt }}</span>.
-      </p>
-      <p class="note">
-        {% if p.status != "applied" %}Recorded. Nothing applied yet — it is waiting for you
-        to confirm what kind of statement it is.
-        {% elif p.disposition == "pending_evidence" %}Recorded. The number did not move: a
-        claim that you are being underrated changes the score once you have confirmed the
-        fact, not when you assert it.
-        {% elif p.applied_delta %}Applied: {{ "%+.2f" | format(p.applied_delta) }} to
-        {{ p.target_dimension }}.
-        {% else %}Recorded, and nothing moved.{% endif %}
-      </p>
+      <p class="note">{{ item.changed }}</p>
     </li>
     {% endfor %}
   </ul>

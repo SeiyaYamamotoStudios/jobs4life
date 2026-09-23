@@ -76,6 +76,7 @@ current score stay open. Agreed with the owner; the table is the whole of it.
 | `application.status` | yes | — | — |
 | `application.timeline` | yes | — | `9 events` |
 | `application.notes` | only when something is written | — | `empty` |
+| `application.cv` | yes | a step of the CV sequence is running or stopped | `12 of 18 claims trace to your facts` |
 | `application.ad` | no | the ad is unread, being fetched, failed, or absent | `12 requirements · 8 essential` |
 | `application.score` | yes | not scored yet, pending, or failed | `1 must-have broken · 7 constraints · 2 objectives` |
 | `application.questions` | no | any question unanswered, running or failed | `4 questions · 3 answered` |
@@ -83,7 +84,7 @@ current score stay open. Agreed with the owner; the table is the whole of it.
 | `score.objectives` | yes | — | `2 objectives` |
 | `score.levers` | no | — | `3 claims` |
 | `score.not_stated` | no | — | `4 questions` |
-| `score.pushbacks` | no | one is still awaiting classification | `3 corrections` |
+| `score.pushbacks` | no | a correction is still being read | `3 corrections` — the box itself always shows; the fold holds past corrections, and the drift sentence under the score is never folded |
 | `drafts.requirements` | no | coverage has not been checked | `12 requirements · 8 evidenced` |
 | `drafts.generate` | yes | — | — |
 | `drafts.history` | yes | — | `3 drafts` |
