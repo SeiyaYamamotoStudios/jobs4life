@@ -250,3 +250,25 @@ def test_generated_lines_are_summary_then_skills_then_bullets_by_reference() -> 
     assert [line.text for line in lines] == ["s", "k", "b"]
     lines[0].verdict = "review"
     assert document.summary[0].verdict == "review"
+
+
+def test_a_note_beneath_a_qualification_is_never_an_education_line() -> None:
+    """The owner's record keeps caveats under a qualification -- that a 2011
+    certificate "should not be represented as current or applied AI expertise".
+    That is written for the tool, never for a reader, and it was once printed
+    onto a CV verbatim. Only the qualification itself is a line."""
+    corpus = (
+        "# Test Person — Verification Record\n\n"
+        "## Education\n\n"
+        "### PGCert (Distinction), Intelligent Systems — Example University, 2011\n\n"
+        "Named topics: neural networks, fuzzy logic. This is coursework from 2011 and "
+        "should not be represented as current expertise on its own.\n\n"
+        "- A bullet of further caveats about the same certificate.\n\n"
+        "### BSc (Hons), Computing — Example Polytechnic, 2006\n"
+    )
+    skeleton = build_skeleton(parse_document("corpus/record.md", corpus, USER).spans)
+    assert skeleton.education == (
+        "PGCert (Distinction), Intelligent Systems — Example University, 2011",
+        "BSc (Hons), Computing — Example Polytechnic, 2006",
+    )
+    assert not any("should not be represented" in line for line in skeleton.education)

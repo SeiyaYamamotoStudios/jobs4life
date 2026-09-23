@@ -29,7 +29,7 @@ from jfl_core.repositories import GroundingRepository, RunRepository
 from jfl_gate.input import BULLET_START
 from jfl_gate.pricing import compute_cost_usd
 from jfl_gate.prompt import GATE_OUTPUT_SCHEMA, build_system_blocks, build_user_message
-from jfl_gate.rules import apply_rules
+from jfl_gate.rules import apply_rules, resolve_abbreviated_citations
 from jfl_gate.schema import GateOutput, SentenceResult
 
 # One result object per input sentence, each with a drift label, cited span IDs and an
@@ -481,6 +481,9 @@ def check_text(
     # The rule tier makes no model call and adds no latency worth measuring, so it
     # runs here, after the one parse that can fail, and before the one `runs` row
     # this function writes on success -- never a second row of its own.
+    # Before the rules, so an abbreviated-but-unambiguous citation counts as the
+    # citation it is -- see `resolve_abbreviated_citations`.
+    result, resolved_citations = resolve_abbreviated_citations(result, spans)
     result = apply_rules(result, spans)
     rule_escalations = sum(1 for sentence in result.sentences if sentence.rule_flags)
     # Citations that were not uuids at all, set aside rather than failing the
@@ -499,6 +502,7 @@ def check_text(
         attributes={
             "rule_escalations": rule_escalations,
             "unparseable_citations": unparseable_citations,
+            "resolved_abbreviated_citations": resolved_citations,
         },
     )
     return result

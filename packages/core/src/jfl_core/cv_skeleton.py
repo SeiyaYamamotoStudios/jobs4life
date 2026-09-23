@@ -323,9 +323,23 @@ def _read_document(
             continue
         education_at = special(path, _EDUCATION_SECTION)
         if education_at is not None:
-            # The section's own heading is structure; anything under it --
-            # a sub-heading naming a degree, a bullet, a paragraph -- is a line.
-            if not (span.kind == "heading" and len(path) == education_at + 1):
+            # Three shapes, and only two of them are CV lines:
+            #   - the section's own heading: structure, never a line;
+            #   - a sub-heading directly under it ("### BSc ..., 2006"), or a
+            #     bullet sitting directly in the section with no sub-heading
+            #     (a flat list): the qualification itself -- a line;
+            #   - prose or bullets *beneath* a sub-heading: a NOTE about that
+            #     qualification, written for the tool, never for a reader. The
+            #     owner's record says, of a 2011 PGCert, that it "should not be
+            #     represented as current or applied AI expertise" -- a caveat
+            #     that was printed onto a CV verbatim before this rule. Notes
+            #     stay out of the document; the model still reads them in the
+            #     corpus, which is where a caveat belongs.
+            depth = len(path) - (education_at + 1)
+            is_qualification = (span.kind == "heading" and depth == 1) or (
+                span.kind != "heading" and depth == 0
+            )
+            if is_qualification:
                 education.append(span.text)
             continue
         if path[:1] in education_paths:

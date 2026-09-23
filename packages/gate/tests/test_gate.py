@@ -576,7 +576,11 @@ def test_rule_tier_runs_after_parsing_and_records_escalations_on_the_same_run(
     assert len(runs.recorded) == 1  # still exactly one row, not two
     run = runs.recorded[0]
     assert run.outcome == "ok"
-    assert run.attributes == {"rule_escalations": 1, "unparseable_citations": 0}
+    assert run.attributes == {
+        "rule_escalations": 1,
+        "unparseable_citations": 0,
+        "resolved_abbreviated_citations": 0,
+    }
 
 
 def test_a_malformed_citation_is_set_aside_not_fatal_and_counted_on_the_run(
@@ -626,7 +630,11 @@ def test_a_malformed_citation_is_set_aside_not_fatal_and_counted_on_the_run(
 
     (run,) = runs.recorded
     assert run.outcome == "ok"
-    assert run.attributes == {"rule_escalations": 1, "unparseable_citations": 1}
+    assert run.attributes == {
+        "rule_escalations": 1,
+        "unparseable_citations": 1,
+        "resolved_abbreviated_citations": 0,
+    }
 
 
 class TestAlignment:

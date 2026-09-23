@@ -128,3 +128,64 @@ def apply_rules(output: GateOutput, spans: Sequence[Span]) -> GateOutput:
         sentences.append(sentence.model_copy(update=update))
 
     return GateOutput(sentences=sentences)
+
+
+# The shortest id prefix accepted as naming a span. Eight hex digits is 32 bits:
+# against a corpus of a few hundred spans the chance that a prefix matches two is
+# about one in ten million -- and when it does, it is left unresolved rather than
+# guessed at, so the worst case is the old behaviour, never a wrong citation.
+_MIN_PREFIX_HEX = 8
+
+
+def resolve_abbreviated_citations(
+    output: GateOutput, spans: Sequence[Span]
+) -> tuple[GateOutput, int]:
+    """Turn a citation the model abbreviated back into the span it names.
+
+    **Observed, not hypothesised** (2026-09-23): on a 44-sentence CV citing 51
+    distinct spans, the model returned every citation as the first 8 hex digits
+    of the span id, where every shorter check before it had cited in full. Each
+    of those prefixes named exactly one real span in the user's corpus -- but
+    `partition_citation_ids` set them all aside as "not a uuid", the rule tier
+    then saw every `supported` claim as uncited, and all 44 sentences came back
+    "review". A tool whose whole claim is honesty about evidence told its user
+    that nothing on their CV traced to their facts, when nearly all of it did.
+
+    This stays definitional, which is the only kind of rule this tier allows: a
+    prefix either names exactly one span in *this user's* corpus or it names
+    nothing. Hex digits only, at least eight of them, compared against the id
+    with its dashes removed. A prefix matching no span, or more than one, stays
+    in `unparseable_citations` exactly as before and the rule tier treats it as
+    an unknown citation. Returns the resolved output and how many were resolved,
+    so the `runs` row can count them -- a model that starts abbreviating should
+    be a query, not a surprise.
+    """
+    by_hex = [(span.id.hex, span.id) for span in spans]
+    resolved_total = 0
+    sentences: list[SentenceResult] = []
+    for sentence in output.sentences:
+        if not sentence.unparseable_citations:
+            sentences.append(sentence)
+            continue
+        cited = list(sentence.cited_span_ids)
+        still_unparseable: list[str] = []
+        for raw in sentence.unparseable_citations:
+            candidate = raw.strip().strip("[]{}()").replace("-", "").lower()
+            matches = (
+                [sid for hex_id, sid in by_hex if hex_id.startswith(candidate)]
+                if len(candidate) >= _MIN_PREFIX_HEX
+                and all(ch in "0123456789abcdef" for ch in candidate)
+                else []
+            )
+            if len(matches) == 1:
+                if matches[0] not in cited:
+                    cited.append(matches[0])
+                resolved_total += 1
+            else:
+                still_unparseable.append(raw)
+        sentences.append(
+            sentence.model_copy(
+                update={"cited_span_ids": cited, "unparseable_citations": still_unparseable}
+            )
+        )
+    return GateOutput(sentences=sentences), resolved_total

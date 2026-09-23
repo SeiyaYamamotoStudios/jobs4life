@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 
 from jfl_core.models import Span
-from jfl_gate.rules import apply_rules
+from jfl_gate.rules import apply_rules, resolve_abbreviated_citations
 from jfl_gate.schema import GateOutput, SentenceResult
 
 USER = uuid.uuid4()
@@ -171,3 +171,55 @@ def test_apply_rules_does_not_mutate_its_input() -> None:
     apply_rules(output, [span])
     assert output.sentences[0].verdict == "supported"
     assert output.sentences[0].rule_flags == []
+
+
+class TestAbbreviatedCitations:
+    """Observed 2026-09-23: on a long CV the model cited every span by the first 8
+    hex digits of its id. Each named one real span; all 44 sentences still came
+    back "review" because the prefixes were set aside as malformed."""
+
+    def _with_unparseable(self, raw: list[str]) -> GateOutput:
+        sentence = _sentence().model_copy(update={"unparseable_citations": raw})
+        return GateOutput(sentences=[sentence])
+
+    def test_a_unique_prefix_resolves_and_the_claim_stays_supported(self) -> None:
+        span = _span("Led the platform team of four engineers.")
+        output, resolved = resolve_abbreviated_citations(
+            self._with_unparseable([span.id.hex[:8]]), [span, _span("Something else.")]
+        )
+        assert resolved == 1
+        assert output.sentences[0].cited_span_ids == [span.id]
+        assert output.sentences[0].unparseable_citations == []
+        after = apply_rules(output, [span])
+        assert after.sentences[0].verdict == "supported"
+        assert after.sentences[0].rule_flags == []
+
+    def test_a_prefix_matching_no_span_stays_an_unknown_citation(self) -> None:
+        span = _span("Led the platform team.")
+        output, resolved = resolve_abbreviated_citations(
+            self._with_unparseable(["deadbeef"]), [span]
+        )
+        assert resolved == 0
+        after = apply_rules(output, [span])
+        assert after.sentences[0].verdict == "review"
+        assert any(f.startswith("unknown-citation:") for f in after.sentences[0].rule_flags)
+
+    def test_an_ambiguous_prefix_is_never_guessed(self) -> None:
+        a = _span("One.")
+        b = _span("Two.")
+        shared = uuid.UUID(hex="1d205419" + "0" * 24)
+        twin = uuid.UUID(hex="1d205419" + "f" * 24)
+        a = a.model_copy(update={"id": shared})
+        b = b.model_copy(update={"id": twin})
+        output, resolved = resolve_abbreviated_citations(
+            self._with_unparseable(["1d205419"]), [a, b]
+        )
+        assert resolved == 0
+        assert output.sentences[0].cited_span_ids == []
+
+    def test_a_prefix_shorter_than_eight_hex_digits_is_not_resolved(self) -> None:
+        span = _span("Led the platform team.")
+        output, resolved = resolve_abbreviated_citations(
+            self._with_unparseable([span.id.hex[:6]]), [span]
+        )
+        assert resolved == 0
