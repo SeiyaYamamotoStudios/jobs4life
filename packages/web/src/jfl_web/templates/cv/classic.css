@@ -1,0 +1,26 @@
+/* classic: serif body, sans headings in a muted blue, generous margins. */
+@page { margin: 2cm 2cm 1.8cm 2cm; }
+@media screen { body { padding: 2cm; } }
+body {
+  font-family: "Liberation Serif", "Times New Roman", Times, serif;
+  font-size: 10.5pt;
+  line-height: 1.25;
+}
+.cv-name { font-size: 16pt; font-weight: bold; }
+.cv-tagline { margin-top: 3pt; color: #5b6e84; font-size: 10.5pt; }
+.cv-contact { margin-top: 2pt; font-size: 9.5pt; }
+.cv-header { padding-bottom: 6pt; border-bottom: 0.75pt solid #9a9a9a; margin-bottom: 9pt; }
+.cv-summary p { text-align: left; margin-bottom: 4pt; }
+.cv-section { margin-top: 10pt; }
+.cv-section h2 {
+  font-family: "Liberation Sans", Arial, Helvetica, sans-serif;
+  font-size: 11pt;
+  font-weight: bold;
+  color: #2f5f8f;
+  margin-bottom: 5pt;
+}
+.skill { margin-bottom: 4pt; }
+.role { margin-bottom: 8pt; }
+.role-employer { font-style: italic; color: #555555; margin-top: 1pt; margin-bottom: 3pt; }
+.bullets li { margin-bottom: 2pt; }
+.education-line, .interest { margin-bottom: 2pt; }

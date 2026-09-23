@@ -1,0 +1,34 @@
+/* Shared by both CV templates. Print-first: A4, real text, fonts that have
+   metric-compatible free equivalents (Liberation) so the server renders the
+   same line breaks as a desktop with Times New Roman / Arial. */
+@page { size: A4; }
+* { box-sizing: border-box; }
+html { background: #ffffff; }
+body { margin: 0; color: #111111; background: #ffffff; }
+p, ul, h1, h2 { margin: 0; }
+a { color: inherit; text-decoration: none; }
+.cv-header { text-align: center; }
+.cv-summary p, .skill, .bullets li { orphans: 2; widows: 2; }
+
+/* Page-break rules. `.keep` wraps a section heading with its first entry, and a
+   role's title/employer/descriptor lines with its first bullet; neither may be
+   split. Every bullet and entry is itself unbreakable, and a heading never ends
+   a page even outside a .keep. */
+.keep { break-inside: avoid; }
+h2, .role-head, .role-employer, .role-descriptor { break-after: avoid; }
+.bullets li, .skill, .education-line, .interest, .cv-header { break-inside: avoid; }
+
+/* Title then dates in source order, so a parser reads them in that order. */
+.role-head { display: table; width: 100%; }
+.role-title, .role-dates { display: table-cell; vertical-align: baseline; }
+.role-dates { text-align: right; white-space: nowrap; padding-left: 1em; }
+.role-title { font-weight: bold; }
+.bullets { padding-left: 0; list-style: none; }
+.bullets li { position: relative; padding-left: 1.2em; }
+.bullets li::before { content: "\2022"; position: absolute; left: 0.3em; }
+
+/* On screen the preview is a sheet of paper; in print it is the page itself. */
+@media screen {
+  html { background: #e9e9ec; }
+  body { width: 210mm; min-height: 297mm; margin: 16px auto; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+}

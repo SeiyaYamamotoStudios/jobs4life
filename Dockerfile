@@ -59,6 +59,20 @@ RUN uv sync --frozen --no-dev --package jfl-web --package jfl-worker
 
 FROM python:3.12-slim-bookworm AS runtime
 
+# CV PDF rendering (jfl_web.cv_pdf, WeasyPrint). WeasyPrint is pure Python over
+# cffi; the native libraries it loads at runtime are Pango (text layout),
+# PangoFT2 and HarfBuzz's subsetter (font embedding). `fonts-liberation` is the
+# metric-compatible set for Times New Roman / Arial / Courier, which is what the
+# CV stylesheets name first -- so a CV breaks lines and pages on the server
+# exactly as it does on a desktop. Without it fontconfig falls back to whatever
+# is present (nothing, on slim) and the PDF would render in a substitute face.
+# Roughly 45-55MB on the image, most of it glib/harfbuzz/fontconfig pulled in by
+# Pango; the fonts themselves are ~2MB.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+
 # Runs as a non-root user. The container is reachable only from the host's
 # loopback (Cloudflare Tunnel dials out to it), but a container escape should
 # not land on uid 0.
