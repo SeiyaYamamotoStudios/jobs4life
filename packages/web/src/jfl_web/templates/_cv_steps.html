@@ -1,0 +1,67 @@
+{# The three steps to a CV and the one button that runs them -- rendered on the
+   drafting screen, on the application page, and on its own by
+   GET .../drafts/steps for htmx to poll.
+
+   Expects `plan` (a jfl_web.drafts.CvPlan), `steps_url`, `application_id`,
+   `draft_kinds` and `session`. Everything it says was decided in
+   `jfl_web.drafts.plan_steps`; this file holds no rules.
+
+   The polling trigger lives on this element and only while a step is running,
+   so a finished press stops the poll by virtue of what came back -- the same
+   pattern as `_extraction.html`. The poll that finds it finished carries
+   `HX-Refresh`, and the whole page reloads to show the result. #}
+<div id="cv-steps" class="cv-steps"
+     {% if plan.in_progress %}
+     hx-get="{{ steps_url }}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+  <ol class="steps">
+    {% for step in plan.steps %}
+    <li class="step step-{{ step.state }}"{% if step.state in ("current", "running") %} aria-current="step"{% endif %}>
+      <span class="step-mark" aria-hidden="true">
+        {%- if step.state == "done" %}✓{% elif step.state == "running" %}…{% elif step.state == "failed" %}✗{% elif step.state == "blocked" %}!{% elif step.state == "current" %}→{% else %}○{% endif -%}
+      </span>
+      <span class="step-label">{{ step.label }}</span>
+      <span class="step-state">
+        {%- if step.state == "done" %}done{% elif step.state == "running" %}working on it{% elif step.state == "failed" %}stopped here{% elif step.state == "blocked" %}needs the ad{% elif step.state == "current" %}next{% else %}after that{% endif -%}
+      </span>
+      {% if step.state != "done" %}<span class="step-cost">{{ step.cost }}</span>{% endif %}
+      {% if step.detail %}
+      <p class="{{ 'error' if step.state == 'failed' else 'note' }} step-detail" role="{{ 'alert' if step.state == 'failed' else 'status' }}">
+        {{ step.detail }}
+        {% if step.fix_url %}<a href="{{ step.fix_url }}">{{ step.fix_label }}</a>.{% endif %}
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if plan.blocked_message %}
+  <p class="note">
+    {{ plan.blocked_message }}
+    <a href="/applications/{{ application_id }}#section-application-ad">Add the ad on the application page</a>
+    and this can start.
+  </p>
+  {% elif plan.can_start %}
+  <p class="note step-cost-line">{{ plan.cost_line }}</p>
+  <div class="quick-actions">
+    {% for kind in draft_kinds %}
+    <form method="post" action="/applications/{{ application_id }}/drafts">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <button type="submit"{% if not loop.first %} class="secondary"{% endif %}>{{ kind | generate_label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <p class="note">
+    Every sentence is checked against the facts you have confirmed. A sentence
+    they don't back is still shown in full and marked -- the check tells you
+    where you're claiming more than you can show; it never stops you.
+  </p>
+  {% else %}
+  <p class="note" role="status">
+    Working on it. This updates by itself -- or reload the page to see where it has got to.
+  </p>
+  {% endif %}
+</div>

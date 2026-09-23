@@ -1452,3 +1452,89 @@ table.cvs td .note {
     max-height: 60vh;
   }
 }
+
+/* -- writing a CV: the steps, the CV, its check -------------------------
+   The three steps read as one sequence -- "Read the ad ✓ → Check it against
+   your facts → Write the CV" -- across the page on a wide screen and as a
+   list under one hand. The step you are on is the only one in ink; done
+   steps are quiet and ticked, a stopped one is in the failure colour. */
+ol.steps {
+  list-style: none;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0;
+}
+ol.steps .step {
+  min-width: 0;
+  flex: 1 1 12rem;
+  padding: 0.55rem 0.8rem 0.55rem 0;
+  color: var(--muted);
+}
+ol.steps .step + .step::before { content: "→ "; color: var(--muted); }
+ol.steps .step-mark { display: inline-block; min-width: 1.1rem; font-weight: 700; }
+ol.steps .step-label { font-weight: 650; }
+ol.steps .step-state,
+ol.steps .step-cost { display: block; font-size: 0.85rem; }
+ol.steps .step-detail { margin: 0.25rem 0 0; }
+ol.steps .step-done .step-mark { color: var(--good); }
+ol.steps .step-current,
+ol.steps .step-running { color: var(--ink); }
+ol.steps .step-current .step-label,
+ol.steps .step-running .step-label { text-decoration: underline; text-underline-offset: 0.25em; }
+ol.steps .step-failed,
+ol.steps .step-blocked { color: var(--bad); }
+.step-cost-line { color: var(--ink-soft); }
+.cv-latest p { margin: 0.25rem 0; }
+
+.button.secondary {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+}
+.button.secondary:hover { border-color: var(--muted); color: var(--ink); }
+
+/* The headline count leads a draft, in ink, before the text itself. */
+.draft-headline { font-weight: 650; color: var(--ink); margin: 0.2rem 0 0.1rem; }
+
+/* The CV and its check side by side where there is room for both, stacked
+   (CV first) where there is not. */
+.draft-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+}
+.draft-document,
+.draft-checks { min-width: 0; }
+.draft-document label { display: block; font-weight: 650; margin-bottom: 0.3rem; }
+.draft-document .draft-text { width: 100%; box-sizing: border-box; white-space: pre-wrap; }
+.draft-actions { align-items: center; margin-top: 0.4rem; }
+.draft-actions button,
+.draft-actions .button { margin-top: 0; }
+.draft-checks h4 { margin: 0.9rem 0 0.2rem; font-size: 0.95rem; }
+ul.verdict-key {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+ul.verdict-key li { margin: 0.15rem 0; }
+ul.verdict-key .status-badge { margin-right: 0.35rem; }
+.draft-sentences.flagged q { color: var(--ink); }
+.draft-sentences .note { margin: 0.2rem 0 0; }
+.next-action { margin: 0.35rem 0 0; font-size: 0.92rem; }
+.checker-note { font-style: italic; }
+
+@media (max-width: 64rem) {
+  .draft-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 40rem) {
+  ol.steps { flex-direction: column; }
+  ol.steps .step { flex-basis: auto; padding-right: 0; }
+  ol.steps .step + .step::before { content: none; }
+  .draft-document .draft-text { font-size: 16px; max-height: 60vh; }
+}

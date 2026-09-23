@@ -80,13 +80,31 @@
   </details>
 {% endcall %}
 
+{# Writing the CV is the main thing a person does with an application, so it
+   is an action here rather than a link to another page: the same three steps
+   and the same one button as the drafting screen, and the newest CV's
+   headline count once there is one. The full CV, its check and its earlier
+   versions live on the drafting screen. #}
+{% call sections.section(cv_section) %}
+  {% if cv_latest %}
+  <div class="cv-latest">
+    <p>
+      <strong>Your latest {{ cv_latest.draft.kind | kind_label }}</strong>,
+      written <time title="{{ cv_latest.draft.created_at.isoformat() if cv_latest.draft.created_at else '' }}">{{ cv_latest.draft.created_at | humanize_dt if cv_latest.draft.created_at else "just now" }}</time>:
+      {{ cv_latest.check.headline }}
+    </p>
+    <p><a href="/applications/{{ application.id }}/drafts">Read it, copy it or download it →</a></p>
+  </div>
+  {% endif %}
+  {% with plan = cv_plan, steps_url = cv_steps_url, application_id = application.id %}
+  {% include "_cv_steps.html" %}
+  {% endwith %}
+{% endcall %}
+
 {% include "_extraction.html" %}
 
 {% include "_score.html" %}
 {% include "_application_questions.html" %}
-{% if application.job_id %}
-<p class="note"><a href="/applications/{{ application.id }}/drafts">Generate a CV or cover letter for this application →</a></p>
-{% endif %}
 
 {% call sections.section(notes_section) %}
   <form method="post" action="/applications/{{ application.id }}/notes">

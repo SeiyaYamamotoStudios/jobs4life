@@ -60,6 +60,7 @@ from jfl_web.deps import (
     ApplicationQuestionRepoDep,
     ApplicationRepoDep,
     CsrfDep,
+    JobRepoDep,
     PushbackRepoDep,
     ScoreOverrideRepoDep,
     ScoreRepoDep,
@@ -107,6 +108,7 @@ from jfl_web.pushbacks import (
     axis_displays,
     drift_meter_sentence,
 )
+from jfl_web.routes.drafts import cv_panel_context
 from jfl_web.routes.pushbacks import pushback_context
 from jfl_web.scores import (
     COST_NOTE,
@@ -345,6 +347,8 @@ def _detail_context(
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
     ui_sections: SectionRepoDep,
+    jobs: JobRepoDep,
+    tasks: TaskRepoDep,
     **extra: object,
 ) -> dict[str, object]:
     """Everything the detail page needs, in one place -- shared with
@@ -379,6 +383,8 @@ def _detail_context(
         "notes_section": notes_section(states, detail.application.notes),
         "timeline_section": timeline_section(states, detail.events),
         **_extraction_context(extraction, states),
+        # "CV for this job": the steps and the one button, on this page.
+        **cv_panel_context(session, applications, jobs, tasks, states, application_id, detail),
         **_score_context(
             scores.latest(application_id),
             detail=detail,
@@ -401,6 +407,8 @@ def application_detail(
     pushbacks: PushbackRepoDep,
     overrides: ScoreOverrideRepoDep,
     ui_sections: SectionRepoDep,
+    jobs: JobRepoDep,
+    tasks: TaskRepoDep,
 ) -> Response:
     detail = applications.get_application(application_id)
     if detail is None:
@@ -419,6 +427,8 @@ def application_detail(
             pushbacks=pushbacks,
             overrides=overrides,
             ui_sections=ui_sections,
+            jobs=jobs,
+            tasks=tasks,
         ),
     )
 
@@ -490,6 +500,7 @@ def attach_ad(
     overrides: ScoreOverrideRepoDep,
     ui_sections: SectionRepoDep,
     tasks: TaskRepoDep,
+    jobs: JobRepoDep,
     _csrf: CsrfDep,
     job_ad: Annotated[str, Form()],
 ) -> Response:
@@ -529,6 +540,8 @@ def attach_ad(
                 pushbacks=pushbacks,
                 overrides=overrides,
                 ui_sections=ui_sections,
+                jobs=jobs,
+                tasks=tasks,
                 ad_error=message,
                 ad_value=job_ad,
             ),

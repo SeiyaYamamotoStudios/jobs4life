@@ -57,6 +57,7 @@ from jfl_generate.errors import GenerateError
 from jfl_generate.jobs import run_coverage
 from sqlalchemy.engine import Engine
 
+from jfl_worker.chain import queue_next
 from jfl_worker.credentials import load_api_key
 from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
@@ -158,7 +159,10 @@ def _generate_coverage(
         # This exact task already wrote its coverage rows on an earlier
         # delivery -- at-least-once redelivery, not a genuine re-check. A
         # person pressing the button again gets a new task and a new
-        # trace_id, so this never blocks that.
+        # trace_id, so this never blocks that. The next step, if this was a
+        # chain, may not have been queued before the redelivery -- `queue_next`
+        # queues it at most once either way.
+        queue_next(ctx)
         return {"job_id": str(job_id), "skipped": "coverage already recorded for this task"}
 
     if master_key is None:
@@ -199,4 +203,6 @@ def _generate_coverage(
             raise _permanent(code) from None
         raise
 
+    # "Write the CV" pressed before this check had run: the draft is next.
+    queue_next(ctx)
     return {"job_id": str(job_id), "requirements_checked": len(rows)}

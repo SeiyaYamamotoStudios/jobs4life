@@ -41,14 +41,14 @@ _templates.env.filters["board_error_message"] = check_error_message
 # `{{ job | workplace_display }}` -> the employer's own label where one was
 # given ("On-Site"), else our word. See jfl_web.jobfilter.
 _templates.env.filters["workplace_display"] = workplace_display
-# `{{ sentence | sentence_label }}` -> "SUPPORTED" / "REVIEW" / "UNSUPPORTED" /
-# "NOT CHECKED". `{{ sentence | sentence_style }}` -> the matching CSS class.
-# See jfl_web.drafts -- B5's drafting screen, framing rendered as NOT CHECKED.
+# `{{ sentence | sentence_label }}` -> "Supported" / "Check this" / "Not
+# supported" / "Not checked". `{{ sentence | sentence_style }}` -> the matching
+# CSS class. See jfl_web.drafts -- framing is rendered as not checked.
 _templates.env.filters["sentence_label"] = sentence_label
 _templates.env.filters["sentence_style"] = sentence_style
 # `{{ draft.kind | kind_label }}` -> "CV" / "cover letter".
 _templates.env.filters["kind_label"] = kind_label
-# `{{ kind | generate_label }}` -> "Generate a CV" / "Generate a cover letter".
+# `{{ kind | generate_label }}` -> "Write the CV" / "Write a cover letter".
 _templates.env.filters["generate_label"] = generate_label
 # `{{ cost | usd }}` -> "$0.4123", or "—" when nothing was billed yet.
 _templates.env.filters["usd"] = usd

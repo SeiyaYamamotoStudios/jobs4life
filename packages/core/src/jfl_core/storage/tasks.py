@@ -224,6 +224,25 @@ class PostgresTaskRepository(TenantScopedRepository):
         ).first()
         return None if row is None else _task_from_row(row)
 
+    def follow_up(self, task_id: uuid.UUID) -> Task | None:
+        """The task queued as the next step after `task_id`, if one was.
+
+        A chained task carries `"after": "<the task before it>"` in its
+        payload -- see `jfl_worker.chain`. This is how the worker avoids
+        queueing the next step twice when a task is redelivered, and how the
+        drafting screen follows one button press through its steps.
+        """
+        row = self._conn.execute(
+            select(*_TASK_COLUMNS)
+            .where(
+                tasks_table.c.user_id == self._user_id,
+                tasks_table.c.payload["after"].astext == str(task_id),
+            )
+            .order_by(tasks_table.c.created_at)
+            .limit(1)
+        ).first()
+        return None if row is None else _task_from_row(row)
+
 
 class PostgresTaskQueue:
     """The worker's side of the queue. Cross-tenant by necessity; see the module

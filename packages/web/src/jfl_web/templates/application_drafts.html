@@ -1,29 +1,46 @@
 {% extends "base.html" %}
 {% import "_sections.html" as sections %}
-{% block title %}Drafts{% if job and job.title %} — {{ job.title }}{% endif %} — jobs4life{% endblock %}
+{% block title %}CV{% if job and job.title %} — {{ job.title }}{% endif %} — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Drafts{% if job and job.title %} — {{ job.title }}{% endif %}</h1>
+  <h1>CV{% if job and job.title %} for {{ job.title }}{% endif %}</h1>
   <a href="/applications/{{ application_id }}">Back to the application</a>
 </div>
 
-{% if job_id is none %}
-<p class="note">No job ad is linked to this application yet.</p>
+{#- The steps lead while a press is being worked on or has just stopped on a
+    failure: that is what the person is waiting to see. Otherwise the newest
+    CV leads -- it is what they came for -- and the steps sit under it as
+    "write another". -#}
+{% set steps_first = plan.in_progress or not latest or plan.steps | selectattr("state", "equalto", "failed") | list %}
 
-{% elif job is none %}
-<p class="note">The job for this application could not be found.</p>
+{% set steps_panel %}
+{% call sections.section(generate_section) %}
+  {% include "_cv_steps.html" %}
+{% endcall %}
+{% endset %}
 
-{% elif not requirements %}
-<p class="note">
-  The ad has not been read yet, so there are no requirements to draft
-  against. <a href="/applications/{{ application_id }}">Read the ad on the application page</a>.
-</p>
+{% if steps_first %}{{ steps_panel }}{% endif %}
 
-{% else %}
-{# The list the owner's complaint named: every essential and desirable, at the
-   top of the page, pushing everything actionable below the fold. It folds
-   behind its counts once coverage has been checked, and stays open until then
-   because an unchecked list is a prompt rather than a result. #}
+{% if latest %}
+{% with entry = latest %}
+{% include "_draft.html" %}
+{% endwith %}
+{% endif %}
+
+{% if not steps_first %}{{ steps_panel }}{% endif %}
+
+{% if older %}
+{% call sections.section(draft_history_section) %}
+  <p class="note">Most recent first. Writing again never overwrites one -- every version stays.</p>
+  {% for entry in older %}
+  {% include "_draft.html" %}
+  {% endfor %}
+{% endcall %}
+{% endif %}
+
+{% if requirements %}
+{#- Reference, not a prompt: the steps above say whether the check has run.
+    It folds behind its counts. -#}
 {% call sections.section(requirements_section) %}
   <ul class="requirements">
     {% for requirement in requirements %}
@@ -35,23 +52,12 @@
     </li>
     {% endfor %}
   </ul>
-
-  {% if not coverage %}
-  <p class="note">
-    This job has not been checked against your confirmed facts yet. That check
-    is a model call, billed to your own API key -- and drafting needs it first,
-    so it never runs silently on the way to a draft.
-  </p>
-  <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
-    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit">Check coverage</button>
-  </form>
-  {% else %}
+  {% if coverage %}
   <details class="status-more">
-    <summary>Check coverage again</summary>
+    <summary>Check against your facts again</summary>
     <p class="note">
-      Worth it after you have confirmed more facts -- this calls the model
-      again and is billed to your own API key.
+      Worth it after you have confirmed more facts -- {{ plan.steps[1].cost }}
+      on your own API key.
     </p>
     <form method="post" action="/applications/{{ application_id }}/drafts/coverage">
       <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
@@ -60,38 +66,7 @@
   </details>
   {% endif %}
 {% endcall %}
-
-{% if coverage %}
-{% call sections.section(generate_section) %}
-  <p class="note">
-    Each draft is a model call, billed to your own API key, and every sentence
-    in it is checked against your confirmed facts automatically. A draft with
-    flagged sentences is still shown in full: the check tells you where you are
-    claiming more than you can evidence, it never stops you.
-  </p>
-  <div class="quick-actions">
-    {% for kind in draft_kinds %}
-    <form method="post" action="/applications/{{ application_id }}/drafts">
-      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-      <input type="hidden" name="kind" value="{{ kind }}">
-      <button type="submit">{{ kind | generate_label }}</button>
-    </form>
-    {% endfor %}
-  </div>
-{% endcall %}
-{% endif %}
 {% endif %}
 
-{% if task %}
-{% include "_draft_task.html" %}
-{% endif %}
-
-{% if drafts %}
-{% call sections.section(draft_history_section) %}
-  <p class="note">Most recent first. Generating again never overwrites one -- every draft stays.</p>
-  {% for entry in drafts %}
-  {% include "_draft.html" %}
-  {% endfor %}
-{% endcall %}
-{% endif %}
+<script src="{{ asset_url('copy.js') }}" defer></script>
 {% endblock %}
