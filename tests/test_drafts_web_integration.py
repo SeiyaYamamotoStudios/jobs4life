@@ -556,7 +556,7 @@ def test_one_press_with_the_ad_unread_queues_the_read_with_the_rest_behind_it(
             {"kind": GENERATE_COVERAGE_KIND, "payload": {"job_id": str(job_id)}},
             {
                 "kind": GENERATE_CV_DRAFT_KIND,
-                "payload": {"application_id": app_id, "kind": "cv_bullets"},
+                "payload": {"application_id": app_id, "kind": "cv_document"},
             },
         ],
     }
@@ -589,7 +589,7 @@ def test_one_press_follows_the_chain_through_each_step_once(
         "then": [
             {
                 "kind": GENERATE_CV_DRAFT_KIND,
-                "payload": {"application_id": app_id, "kind": "cv_bullets"},
+                "payload": {"application_id": app_id, "kind": "cv_document"},
             }
         ],
     }
@@ -610,7 +610,7 @@ def test_one_press_follows_the_chain_through_each_step_once(
     assert len(drafts) == 1
     assert drafts[0].payload == {
         "application_id": app_id,
-        "kind": "cv_bullets",
+        "kind": "cv_document",
         "after": str(checks[0].id),
     }
 
@@ -642,7 +642,7 @@ def test_a_press_with_everything_ready_queues_only_the_cv(
     assert enqueued_tasks(engine, user_id, GENERATE_COVERAGE_KIND) == []
     tasks = enqueued_tasks(engine, user_id, GENERATE_CV_DRAFT_KIND)
     assert len(tasks) == 1
-    assert tasks[0].payload == {"application_id": app_id, "kind": "cv_bullets"}
+    assert tasks[0].payload == {"application_id": app_id, "kind": "cv_document"}
 
     # Loading the page again enqueues nothing further.
     client.get(location)

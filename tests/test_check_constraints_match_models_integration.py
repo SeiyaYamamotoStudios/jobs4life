@@ -58,6 +58,8 @@ CONSTRAINED_COLUMNS = [
     ("score_pushbacks", "classification", tables._PUSHBACK_CLASSIFICATIONS),
     ("score_pushbacks", "classification_source", tables._CLASSIFICATION_SOURCES),
     ("score_pushbacks", "disposition", tables._PUSHBACK_DISPOSITIONS),
+    ("cv_documents", "status", tables._CV_DOCUMENT_STATUSES),
+    ("cv_documents", "template", tables._CV_TEMPLATES),
     ("score_pushbacks", "axis", tables._SCORE_AXES),
     ("score_overrides", "axis", tables._SCORE_AXES),
 ]

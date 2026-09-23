@@ -732,6 +732,21 @@ def build_draft_user_message(
     `JobRepository.latest_coverage`) so the model knows, before it writes anything,
     which requirements the corpus can actually back.
     """
+    lines = _draft_job_lines(job, requirements, coverage)
+    lines.extend(_draft_capability_ceiling(capabilities))
+    lines.append("Write the draft now.")
+    return "\n".join(lines)
+
+
+def _draft_job_lines(
+    job: Job,
+    requirements: Sequence[JobRequirement],
+    coverage: Sequence[RequirementCoverage],
+) -> list[str]:
+    """The job, its ad, and each requirement with its latest corpus coverage --
+    shared by the bullets-only draft and the complete CV, so both calls read
+    the job the same way.
+    """
     coverage_by_requirement = {c.requirement_id: c for c in coverage}
     lines = [f"Job: {job.title or '(unknown title)'} at {job.employer or '(unknown employer)'}"]
     if job.location:
@@ -748,8 +763,142 @@ def build_draft_user_message(
         lines.append(f"{i}. [{requirement.necessity}] {requirement.text}")
         lines.append(f"   coverage: {status} -- {evidence_note}")
     lines.append("")
+    return lines
+
+
+########################################################################
+# The complete CV (`jfl_generate.cv_document`). One call writes the parts of a
+# CV that are claims -- summary, skills, a descriptor and bullets per role --
+# against a skeleton of roles read deterministically from the corpus
+# (`jfl_core.cv_skeleton`). The model is given the roles by number and returns
+# them by number: it never writes a title, an employer or a date, so none of
+# those can drift.
+########################################################################
+
+# Kept in exact correspondence with jfl_generate.schema.CvDocumentOutput. No
+# property is named `reason` (CLAUDE.md, 2026-09-02), and no role carries a
+# title, employer or date field for the model to fill.
+CV_DOCUMENT_OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "array", "items": {"type": "string"}},
+        "skills": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "text": {"type": "string"},
+                },
+                "required": ["label", "text"],
+                "additionalProperties": False,
+            },
+        },
+        "roles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    # The role's number in the user message's list -- never its
+                    # title or employer.
+                    "index": {"type": "integer"},
+                    "descriptor": {"type": "string"},
+                    "bullets": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["index", "descriptor", "bullets"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "skills", "roles"],
+    "additionalProperties": False,
+}
+
+# Short and near-default, like _DRAFT_INSTRUCTIONS -- CLAUDE.md, "How to develop
+# the model-facing parts". The length guidance is the owner's own CVs': two
+# pages usually, three at most; about twenty bullets, weighted to recent roles;
+# bullets of roughly 25-40 words.
+_CV_DOCUMENT_INSTRUCTIONS = """\
+You are writing a complete CV for jobs4life, a tool that measures the distance between \
+what a candidate's corpus documents and what is claimed on their behalf. The next message \
+gives the job and the candidate's roles, numbered, each with the confirmed facts filed \
+under it. Each role's title, employer and dates are already fixed; do not write them.
+
+Return:
+- summary: one to three short paragraphs introducing the candidate for this job
+- skills: six to eight entries, each a short label and one line on what the candidate \
+brings there
+- roles: for each role you write about, its number, a one-line descriptor of what the \
+employer does, and bullets chosen and compressed from that role's facts toward this job's \
+requirements
+
+Aim for two pages, three at most: about twenty bullets in total, weighted to the recent \
+roles, each roughly 25 to 40 words. An older role may have one bullet or none.
+
+Ground every factual claim in the corpus below, and do not assert anything the corpus does \
+not support -- where the corpus is silent or only partial on a requirement, omit the claim \
+rather than invent evidence to fill the gap. The descriptor is about the employer, not the \
+candidate: write it only from what the corpus says about the employer, or return "" for it.
+
+## Corpus
+
+{corpus}
+"""
+
+
+def build_cv_document_system_blocks(
+    spans: Sequence[Span], *, cache: Literal["instructions", "corpus"] = "corpus"
+) -> list[TextBlockParam]:
+    """Instructions then corpus, the corpus block cached -- the same split as
+    `build_draft_system_blocks`. The clock goes in the user message, not here:
+    a timestamp in `system` would invalidate the cached corpus on every call.
+    """
+    return _split_system_blocks(_CV_DOCUMENT_INSTRUCTIONS, format_corpus(spans), cache=cache)
+
+
+@dataclass(frozen=True)
+class CvPromptRole:
+    """One skeleton role as the prompt shows it. `jfl_core.cv_skeleton.SkeletonRole`
+    carries more (span ids); this is only what the model reads."""
+
+    title: str
+    employer: str
+    dates: str
+    facts: Sequence[str] = ()
+
+
+def build_cv_document_user_message(
+    job: Job,
+    requirements: Sequence[JobRequirement],
+    coverage: Sequence[RequirementCoverage],
+    roles: Sequence[CvPromptRole],
+    *,
+    boundaries: Sequence[str] = (),
+    capabilities: Sequence[Capability] = (),
+    now: datetime,
+) -> str:
+    """The volatile half: the clock, the job, the numbered roles with their
+    facts, what the corpus says is NOT true, and the depth ceiling.
+    """
+    lines = [f"The current date and time is {now.isoformat()}.", ""]
+    lines.extend(_draft_job_lines(job, requirements, coverage))
+    lines.append("## The candidate's roles, most recent first")
+    if not roles:
+        lines.append("(no roles recorded)")
+    for i, role in enumerate(roles, start=1):
+        heading = " -- ".join(part for part in (role.title, role.employer) if part)
+        lines.append(f"Role {i}: {heading or '(untitled)'} ({role.dates or 'dates not stated'})")
+        if role.facts:
+            lines.extend(f"- {fact}" for fact in role.facts)
+        else:
+            lines.append("- (no confirmed facts filed under this role)")
+    lines.append("")
+    if boundaries:
+        lines.append("## Stated as NOT true -- never claim any of these")
+        lines.extend(f"- {line}" for line in boundaries)
+        lines.append("")
     lines.extend(_draft_capability_ceiling(capabilities))
-    lines.append("Write the draft now.")
+    lines.append("Write the CV now.")
     return "\n".join(lines)
 
 

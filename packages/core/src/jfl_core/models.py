@@ -141,6 +141,9 @@ class GapQuestion(BaseModel):
 
 DraftKind = Literal["cv_bullets", "cover_letter"]
 
+# How a `cv_documents` version came to be -- see `jfl_core.db.tables.cv_documents`.
+CvDocumentStatus = Literal["generated", "edited", "approved"]
+
 
 class Draft(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)

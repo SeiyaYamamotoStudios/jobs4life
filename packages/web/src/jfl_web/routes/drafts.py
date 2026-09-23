@@ -606,7 +606,11 @@ def request_draft(
         return RedirectResponse(drafts_url, status_code=303)
 
     todo = {step.key for step in plan.steps if step.state != "done"}
-    draft_payload = {"application_id": str(application_id), "kind": kind}
+    # "Write the CV" writes the complete CV (`jfl_generate.cv_document`), stored
+    # in `cv_documents`; the bullets-only draft stays for the CLI. The form value
+    # is unchanged, so this screen's own labels still read "cv_bullets" as "CV".
+    payload_kind = "cv_document" if kind == "cv_bullets" else kind
+    draft_payload = {"application_id": str(application_id), "kind": payload_kind}
     draft_step = {"kind": GENERATE_CV_DRAFT_KIND, "payload": draft_payload}
     coverage_step = {"kind": GENERATE_COVERAGE_KIND, "payload": {"job_id": str(job_id)}}
     if "ad" in todo:

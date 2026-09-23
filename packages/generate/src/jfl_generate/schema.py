@@ -248,3 +248,32 @@ class PushbackClassificationOutput(BaseModel):
     direction: str = ""
     new_information: bool
     classification_note: str
+
+
+class CvSkillOutput(BaseModel):
+    label: str
+    text: str
+
+
+class CvRoleOutput(BaseModel):
+    """One role's generated half, by index into the skeleton the prompt listed.
+
+    No title, employer, dates or location: those are copied from confirmed
+    facts (`jfl_core.cv_skeleton`) and never taken from the model. A response
+    that includes them anyway -- the wire schema forbids it, but a parse is not
+    the place to trust that -- has them dropped here, because pydantic ignores
+    fields a model does not declare.
+    """
+
+    index: int
+    descriptor: str
+    bullets: list[str]
+
+
+class CvDocumentOutput(BaseModel):
+    """The wire shape of `jfl_generate.cv_document`'s one model call. Nothing
+    here is named `reason` -- CLAUDE.md's 2026-09-02 decision."""
+
+    summary: list[str]
+    skills: list[CvSkillOutput]
+    roles: list[CvRoleOutput]
