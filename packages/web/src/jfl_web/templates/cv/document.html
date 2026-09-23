@@ -1,0 +1,116 @@
+<!doctype html>
+{#- The CV as it is sent. Rendered by jfl_web.cv_pdf for both the PDF and the
+    on-screen preview. Only the document's text reaches this template: no
+    claim-gate verdict or evidence note is ever passed in, so none can leak into
+    what goes to an employer. -#}
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>{{ doc.header.name }} — CV</title>
+<meta name="author" content="{{ doc.header.name }}">
+<meta name="generator" content="jobs4life">
+<style>
+{{ css | safe }}
+</style>
+</head>
+<body class="cv cv-{{ doc.template }}">
+
+<header class="cv-header">
+  <h1 class="cv-name">{{ doc.header.name }}</h1>
+  {%- if tagline %}
+  <p class="cv-tagline">{% for item in tagline %}{% if not loop.first %}<span class="sep"> | </span>{% endif %}<span class="item">{{ item }}</span>{% endfor %}</p>
+  {%- endif %}
+  {%- if doc.header.contact or doc.header.links %}
+  <p class="cv-contact">
+    {%- for item in doc.header.contact %}{% if not loop.first %}<span class="sep"> | </span>{% endif %}<span class="item">{{ item }}</span>{% endfor -%}
+    {%- for link in doc.header.links %}{% if doc.header.contact or not loop.first %}<span class="sep"> | </span>{% endif %}<a class="item" href="{{ link.url }}">{{ link.label }}</a>{% endfor -%}
+  </p>
+  {%- endif %}
+</header>
+
+{%- if doc.summary %}
+<section class="cv-summary">
+  {%- for line in doc.summary %}
+  <p>{{ line.text }}</p>
+  {%- endfor %}
+</section>
+{%- endif %}
+
+{#- Every section keeps its heading and its first entry in one unbreakable
+    block, so a heading is never stranded at the foot of a page. -#}
+
+{%- if doc.skills %}
+<section class="cv-section cv-skills">
+  {%- if doc.template == "modern" %}
+  {%- for skill in doc.skills %}
+  {%- if loop.first %}<div class="keep"><h2>{{ doc.skills_heading }}</h2>{% endif %}
+  <ul class="skill-list"><li class="skill"><strong>{{ skill.label }}:</strong> {{ skill.text.text }}</li></ul>
+  {%- if loop.first %}</div>{% endif %}
+  {%- endfor %}
+  {%- else %}
+  {%- for skill in doc.skills %}
+  {%- if loop.first %}<div class="keep"><h2>{{ doc.skills_heading }}</h2>{% endif %}
+  <p class="skill"><strong>{{ skill.label }}:</strong> {{ skill.text.text }}</p>
+  {%- if loop.first %}</div>{% endif %}
+  {%- endfor %}
+  {%- endif %}
+</section>
+{%- endif %}
+
+{%- if doc.roles %}
+<section class="cv-section cv-experience">
+  {%- for role in doc.roles %}
+  <article class="role">
+    {#- The role's heading lines and its first bullet cannot be separated. -#}
+    <div class="keep">
+      {%- if loop.first %}<h2>{{ doc.experience_heading }}</h2>{% endif %}
+      <div class="role-head">
+        <span class="role-title">{{ role.title }}</span>
+        <span class="role-dates">{{ role.dates }}</span>
+      </div>
+      {%- if doc.template == "modern" %}
+      <p class="role-employer"><span class="employer">{{ role.employer }}</span>{% if role.location %}<span class="sep"> | </span><span class="location">{{ role.location }}</span>{% endif %}</p>
+      {%- if role.descriptor %}
+      <p class="role-descriptor">{{ role.descriptor }}</p>
+      {%- endif %}
+      {%- else %}
+      <p class="role-employer">{{ role.employer }}{% if role.location %} | {{ role.location }}{% endif %}{% if role.descriptor %} — {{ role.descriptor }}{% endif %}</p>
+      {%- endif %}
+      {%- if role.bullets %}
+      <ul class="bullets"><li>{{ role.bullets[0].text }}</li></ul>
+      {%- endif %}
+    </div>
+    {%- if role.bullets | length > 1 %}
+    <ul class="bullets rest">
+      {%- for bullet in role.bullets[1:] %}
+      <li>{{ bullet.text }}</li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </article>
+  {%- endfor %}
+</section>
+{%- endif %}
+
+{%- if doc.education %}
+<section class="cv-section cv-education">
+  {%- for line in doc.education %}
+  {%- if loop.first %}<div class="keep"><h2>{{ doc.education_heading }}</h2>{% endif %}
+  <p class="education-line">{{ line.text }}</p>
+  {%- if loop.first %}</div>{% endif %}
+  {%- endfor %}
+</section>
+{%- endif %}
+
+{%- if doc.interests %}
+<section class="cv-section cv-interests">
+  {%- for item in doc.interests %}
+  {%- if loop.first %}<div class="keep"><h2>{{ doc.interests_heading }}</h2>{% endif %}
+  <p class="interest">{{ item }}</p>
+  {%- if loop.first %}</div>{% endif %}
+  {%- endfor %}
+</section>
+{%- endif %}
+
+</body>
+</html>

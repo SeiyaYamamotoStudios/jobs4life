@@ -72,3 +72,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["defusedxml.*"]
 ignore_missing_imports = true
+
+# WeasyPrint (CV PDF rendering) ships no type information.
+[[tool.mypy.overrides]]
+module = ["weasyprint.*", "weasyprint"]
+ignore_missing_imports = true
