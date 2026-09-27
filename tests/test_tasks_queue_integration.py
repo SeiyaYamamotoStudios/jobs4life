@@ -169,6 +169,110 @@ def test_claim_takes_the_oldest_first(
     assert [t.id for t in claimed] == [earlier.id, later.id]
 
 
+# -- the per-user cap -------------------------------------------------------
+#
+# Fairness between tenants: one user's burst may not fill every worker slot.
+# See `PostgresTaskQueue.claim` for the two places it is enforced and why both
+# are needed; each test below pins one of them.
+
+
+def test_the_per_user_cap_holds_within_one_claim(
+    conn: Connection, queue: PostgresTaskQueue, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    """Alice's three are older than Bob's one. Uncapped, a claim of four takes
+    all of them; capped at two, Alice gets two and Bob is not starved. This is
+    the Python half: before the claim neither user has anything running, so
+    the SQL count alone would have let Alice have all three.
+    """
+    alices = PostgresTaskRepository(conn, alice)
+    oldest = [
+        alices.enqueue(kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=i)) for i in range(3)
+    ]
+    bobs = PostgresTaskRepository(conn, bob).enqueue(
+        kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=10)
+    )
+
+    claimed = queue.claim(
+        kinds=[KIND], now=NOW + dt.timedelta(minutes=1), limit=4, per_user_limit=2
+    )
+
+    assert [t.id for t in claimed] == [oldest[0].id, oldest[1].id, bobs.id]
+    # The one left over was locked as a candidate and then not taken: it is
+    # untouched, with no attempt spent.
+    left = alices.get_task(oldest[2].id)
+    assert left is not None
+    assert left.status == "pending"
+    assert left.attempts == 0
+
+
+def test_the_per_user_cap_counts_what_is_already_running(
+    conn: Connection, queue: PostgresTaskQueue, alice: uuid.UUID
+) -> None:
+    alices = PostgresTaskRepository(conn, alice)
+    for i in range(3):
+        alices.enqueue(kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=i))
+    later = NOW + dt.timedelta(minutes=1)
+
+    assert len(queue.claim(kinds=[KIND], now=later, limit=1, per_user_limit=2)) == 1
+    # One running, cap two: one more, however many slots are free.
+    assert len(queue.claim(kinds=[KIND], now=later, limit=4, per_user_limit=2)) == 1
+    # At the cap: nothing, while a row is still due.
+    assert queue.claim(kinds=[KIND], now=later, limit=4, per_user_limit=2) == []
+    # And uncapped, the same queue hands it over -- the cap is the only reason.
+    assert len(queue.claim(kinds=[KIND], now=later, limit=4)) == 1
+
+
+def test_a_user_at_the_cap_does_not_block_the_queue_behind_them(
+    conn: Connection, queue: PostgresTaskQueue, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    """The SQL half. Alice is at her cap with a long backlog, all older than
+    Bob's one task. A claim of ONE must reach past her backlog to Bob -- which
+    only works if capped users are excluded before the LIMIT, not after it.
+    """
+    alices = PostgresTaskRepository(conn, alice)
+    for i in range(7):
+        alices.enqueue(kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=i))
+    bobs = PostgresTaskRepository(conn, bob).enqueue(
+        kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=30)
+    )
+    later = NOW + dt.timedelta(minutes=1)
+    assert len(queue.claim(kinds=[KIND], now=later, limit=2, per_user_limit=2)) == 2
+
+    claimed = queue.claim(kinds=[KIND], now=later, limit=1, per_user_limit=2)
+
+    assert [t.id for t in claimed] == [bobs.id]
+
+
+def test_the_per_user_cap_keeps_skip_locked(engine: Engine, committed_user: uuid.UUID) -> None:
+    """The capped query must still step over rows another claimer holds rather
+    than wait for them. Same shape and same `statement_timeout` assertion as
+    the uncapped test below.
+    """
+    with engine.begin() as c:
+        repo = PostgresTaskRepository(c, committed_user)
+        first = repo.enqueue(kind=KIND, scheduled_at=NOW)
+        second = repo.enqueue(kind=KIND, scheduled_at=NOW + dt.timedelta(seconds=1))
+
+    with engine.connect() as c1, engine.connect() as c2:
+        tx1 = c1.begin()
+        held = PostgresTaskQueue(c1).claim(
+            kinds=[KIND], now=NOW + dt.timedelta(1), per_user_limit=2
+        )
+        assert [t.id for t in held] == [first.id]
+
+        with c2.begin():
+            c2.exec_driver_sql("set local statement_timeout = '2s'")
+            try:
+                other = PostgresTaskQueue(c2).claim(
+                    kinds=[KIND], now=NOW + dt.timedelta(1), per_user_limit=2
+                )
+            except DBAPIError as exc:  # pragma: no cover - only on a regression
+                pytest.fail(f"the capped claim blocked instead of skipping: {exc}")
+        assert [t.id for t in other] == [second.id]
+
+        tx1.rollback()
+
+
 # -- SKIP LOCKED, with two real connections --------------------------------
 
 

@@ -55,7 +55,8 @@ def model_calls_disabled(env: Mapping[str, str] | None = None) -> bool:
 # `from_env` would be a descriptor object, not 2.0. It fails silently into a
 # nonsense setting, so the values are named once and used twice.
 DEFAULT_POLL_INTERVAL = 2.0
-DEFAULT_BATCH_SIZE = 1
+DEFAULT_CONCURRENCY = 4
+DEFAULT_PER_USER_CONCURRENCY = 2
 DEFAULT_VISIBILITY_TIMEOUT = 15 * 60.0
 DEFAULT_RECLAIM_INTERVAL = 60.0
 DEFAULT_RETRY_BASE = 30.0
@@ -75,6 +76,22 @@ def _seconds(env: Mapping[str, str], name: str, default: float) -> float:
     return float(raw)
 
 
+def _count(env: Mapping[str, str], name: str, default: int) -> int:
+    """A positive whole number, or a boot failure naming the variable.
+
+    Zero is refused rather than read as "unlimited" or "off": a worker with no
+    slots claims nothing and looks, from outside, exactly like an idle one --
+    the quietest possible way to stop every user's work.
+    """
+    raw = env.get(name)
+    if raw is None or not raw.strip():
+        return default
+    value = int(raw)
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1, got {value}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerSettings:
     """Every number the loop needs, with the reasoning for each default.
@@ -92,18 +109,38 @@ class WorkerSettings:
     # sleeping at all, so this is the idle cost only.
     poll_interval: float = DEFAULT_POLL_INTERVAL
 
-    # How many tasks to claim at once. ONE, and not for want of ambition: this
-    # worker runs tasks serially, so claiming five would start the visibility
-    # clock on four rows nobody is touching yet -- they would look stale and be
-    # reclaimed while queued behind a gate call. `claim(limit=...)` takes a
-    # batch size because a concurrent worker would want one; this loop does not.
-    batch_size: int = DEFAULT_BATCH_SIZE
+    # How many tasks run at once, each on its own thread. Four, because the
+    # work is almost all waiting: a scoring run or a gate call is 30 seconds to
+    # two minutes of an open HTTPS request to the model API, with the CPU idle
+    # throughout. Run serially, five applications added in a row meant the
+    # fifth user-visible score arrived five calls later; run four at a time it
+    # arrives two calls later. Not more, on a 2 vCPU / 4 GB host: each slot can
+    # hold two Postgres connections (see `main.py`), a PDF parse or a CV render
+    # does use CPU, and the web app shares the box.
+    #
+    # The loop claims only as many tasks as it has FREE slots -- never a batch
+    # to queue behind the running ones. That keeps the visibility-timeout
+    # reasoning below true: the clock on a `running` row starts at claim, so a
+    # row claimed into an in-process backlog would age while nobody touched it,
+    # and a long enough backlog would have it reclaimed and run twice. Every
+    # claimed row has a thread on it from the moment it is claimed.
+    concurrency: int = DEFAULT_CONCURRENCY
+
+    # The most tasks any one user may have running at once, whatever the free
+    # slots. Two: a user's burst (thirty CV uploads is thirty extraction calls)
+    # then takes at most half the worker, everyone else's work is claimed
+    # beside it, and the burst's own calls do not all land on the user's key in
+    # the same second and trip its rate limit. Enforced in the claim query --
+    # see `PostgresTaskQueue.claim` for exactly how, and where it is soft.
+    per_user_concurrency: int = DEFAULT_PER_USER_CONCURRENCY
 
     # How long a `running` row may sit before another worker may assume its
     # owner is dead. Fifteen minutes against a slowest-known task of ~2 minutes
     # (a claim-gate call): generous on purpose, because reclaiming too early
     # runs the work twice and, when the handler eventually calls a model, twice
-    # means paying twice.
+    # means paying twice. Concurrency does not change the arithmetic, because
+    # a row is only ever claimed into a free slot (see `concurrency`): its age
+    # is the age of one task's run, never of a wait behind others.
     visibility_timeout: float = DEFAULT_VISIBILITY_TIMEOUT
 
     # How often to sweep for those rows. A minute; the sweep is one indexed
@@ -114,7 +151,8 @@ class WorkerSettings:
     # minutes. The first retry is far enough out to clear a transient API 529 or
     # a Postgres restart, and the cap keeps a task that will eventually succeed
     # from being parked for hours. Deterministic, with no jitter: jitter exists
-    # to desynchronise a herd, and this deployment has one worker.
+    # to desynchronise a herd, and this deployment has one worker whose herd is
+    # at most `concurrency` tasks, mostly on different users' keys.
     retry_base: float = DEFAULT_RETRY_BASE
     retry_factor: float = DEFAULT_RETRY_FACTOR
     retry_cap: float = DEFAULT_RETRY_CAP
@@ -169,12 +207,18 @@ class WorkerSettings:
     # does not follow the product model.
     gate_model: str = DEFAULT_GATE_MODEL
 
+    def __post_init__(self) -> None:
+        # Here as well as in `_count`, so a settings object built by hand -- a
+        # test, a script -- cannot have zero slots either.
+        if self.concurrency < 1 or self.per_user_concurrency < 1:
+            raise ValueError("worker concurrency settings must be at least 1")
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> WorkerSettings:
         """The only place this process reads its environment.
 
-        A missing `JFL_DATABASE_URL` or `JFL_MASTER_KEY` raises here, at boot,
-        rather than at the first task.
+        A missing `JFL_DATABASE_URL` or `JFL_MASTER_KEY`, or a concurrency
+        below one, raises here, at boot, rather than at the first task.
         """
         source = os.environ if env is None else env
         return cls(
@@ -183,6 +227,10 @@ class WorkerSettings:
             model=source.get("JFL_MODEL") or DEFAULT_MODEL,
             gate_model=source.get("JFL_GATE_MODEL") or DEFAULT_GATE_MODEL,
             poll_interval=_seconds(source, "JFL_WORKER_POLL_INTERVAL", DEFAULT_POLL_INTERVAL),
+            concurrency=_count(source, "JFL_WORKER_CONCURRENCY", DEFAULT_CONCURRENCY),
+            per_user_concurrency=_count(
+                source, "JFL_WORKER_PER_USER_CONCURRENCY", DEFAULT_PER_USER_CONCURRENCY
+            ),
             visibility_timeout=_seconds(
                 source, "JFL_WORKER_VISIBILITY_TIMEOUT", DEFAULT_VISIBILITY_TIMEOUT
             ),

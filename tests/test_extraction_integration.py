@@ -221,7 +221,7 @@ def run_worker(
     """The real loop, the real registry, drained until nothing is due.
 
     Drained rather than one `run_once`, because the worker enqueues its own
-    recurring session purge on the first iteration and `batch_size` is 1 -- so a
+    recurring session purge on the first iteration and `run_once` claims one -- so a
     single pass might spend itself on maintenance and never reach the task under
     test. A task backing off into the future is not due, so this still
     terminates on the retry cases.

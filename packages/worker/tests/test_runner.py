@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import threading
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -59,19 +60,37 @@ def make_task(
 
 
 class FakeQueue:
-    """In-memory, single-threaded, and faithful on the points that matter."""
+    """In-memory and faithful on the points that matter.
+
+    Called from pool threads in the concurrency tests below. Each call touches
+    one task's entry and replaces it whole, and the claims all come from the
+    loop thread, so the GIL's per-operation atomicity on a dict is enough here;
+    Postgres's row locks are what make the real one safe.
+    """
 
     def __init__(self) -> None:
         self.tasks: dict[uuid.UUID, Task] = {}
         self.claim_calls: list[tuple[str, ...]] = []
+        self.claim_limits: list[tuple[int, int | None]] = []
         self.reclaim_calls: list[dt.datetime] = []
 
     def add(self, task: Task) -> Task:
         self.tasks[task.id] = task
         return task
 
-    def claim(self, *, kinds: Sequence[str], now: dt.datetime, limit: int = 1) -> list[Task]:
+    def claim(
+        self,
+        *,
+        kinds: Sequence[str],
+        now: dt.datetime,
+        limit: int = 1,
+        per_user_limit: int | None = None,
+    ) -> list[Task]:
+        """`per_user_limit` is recorded, not applied: the cap is SQL, and is
+        proved against Postgres in `tests/test_tasks_queue_integration.py`.
+        """
         self.claim_calls.append(tuple(kinds))
+        self.claim_limits.append((limit, per_user_limit))
         due = sorted(
             (
                 t
@@ -566,3 +585,194 @@ def test_a_failure_line_never_carries_the_payload(engine: Engine) -> None:
     output = stream.getvalue()
     assert "secret-looking" not in output
     assert "task.retrying" in output
+
+
+# -- concurrency -------------------------------------------------------------
+#
+# Deterministic by construction: every wait below is on an Event that the code
+# under test sets, and `WAIT` is only a failure guard -- a passing run never
+# sleeps it out. `poll_interval` is set long (a minute) wherever the test is
+# about a slot freeing up, so the only way the next task can start inside
+# `WAIT` is the wake-on-free path, not the loop's idle timer.
+
+WAIT = 5.0
+
+
+class BlockingHandlers:
+    """A handler that reports when each task starts and then blocks until the
+    test releases that task, counting how many are inside it at once.
+    """
+
+    def __init__(self, tasks: Sequence[Task]) -> None:
+        self.started = {t.id: threading.Event() for t in tasks}
+        self.release = {t.id: threading.Event() for t in tasks}
+        self._lock = threading.Lock()
+        self._running = 0
+        self.peak = 0
+
+    def __call__(self, ctx: TaskContext) -> Mapping[str, object]:
+        with self._lock:
+            self._running += 1
+            self.peak = max(self.peak, self._running)
+        self.started[ctx.task.id].set()
+        released = self.release[ctx.task.id].wait(WAIT)
+        with self._lock:
+            self._running -= 1
+        return {"released": released}
+
+
+def start_worker(worker: Worker) -> threading.Thread:
+    thread = threading.Thread(target=worker.run_forever, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_two_tasks_run_at_once_and_a_third_waits_for_a_free_slot(engine: Engine) -> None:
+    """The owner's report, pinned: tasks no longer queue behind one another.
+
+    And the other half, which is what keeps the visibility timeout honest: the
+    third task is not claimed while both slots are busy. It sits `pending` with
+    no attempt spent -- not `running` in an in-process backlog with its
+    reclaim clock ticking.
+    """
+    queue = FakeQueue()
+    a, b, c = (queue.add(make_task()) for _ in range(3))
+    handlers = BlockingHandlers([a, b, c])
+    registry = HandlerRegistry()
+    registry.register("thing", handlers, calls_model=False)
+    settings = WorkerSettings(database_url="x", poll_interval=60.0, concurrency=2)
+    worker, _ = build_worker(engine, registry, queue, settings=settings)
+
+    thread = start_worker(worker)
+    try:
+        assert handlers.started[a.id].wait(WAIT)
+        assert handlers.started[b.id].wait(WAIT)  # both inside the handler at once
+
+        assert not handlers.started[c.id].is_set()
+        assert queue.tasks[c.id].status == "pending"
+        assert queue.tasks[c.id].attempts == 0
+        assert worker.in_flight == 2
+        # Asked for exactly the free slots, with the per-user cap passed down.
+        assert queue.claim_limits[0] == (2, 2)
+
+        handlers.release[a.id].set()
+        # A minute's poll interval, so only the slot freeing can start this.
+        assert handlers.started[c.id].wait(WAIT)
+        assert queue.claim_limits[-1] == (1, 2)
+    finally:
+        for event in handlers.release.values():
+            event.set()
+        worker.request_stop()
+        thread.join(WAIT)
+
+    assert not thread.is_alive()
+    assert handlers.peak == 2
+    assert {queue.tasks[t.id].status for t in (a, b, c)} == {"succeeded"}
+    # Every claim asked for at least one row: a full worker does not query.
+    assert all(limit >= 1 for limit, _ in queue.claim_limits)
+
+
+def test_shutdown_stops_claiming_and_waits_for_the_tasks_in_flight(engine: Engine) -> None:
+    """SIGTERM with two tasks mid-call: both finish and are recorded before the
+    process exits, and the third -- due, but never claimed -- stays `pending`
+    with its attempt intact for the next worker.
+    """
+    queue = FakeQueue()
+    a, b, c = (queue.add(make_task()) for _ in range(3))
+    handlers = BlockingHandlers([a, b, c])
+    registry = HandlerRegistry()
+    registry.register("thing", handlers, calls_model=False)
+    settings = WorkerSettings(database_url="x", poll_interval=60.0, concurrency=2)
+    stream = io.StringIO()
+    worker, _ = build_worker(engine, registry, queue, settings=settings, stream=stream)
+
+    thread = start_worker(worker)
+    try:
+        assert handlers.started[a.id].wait(WAIT)
+        assert handlers.started[b.id].wait(WAIT)
+
+        worker.request_stop()  # the SIGTERM
+        # Still draining: the handlers have not been released. (A short join is
+        # the one timed wait in this file, and it can only err towards passing
+        # a broken drain, never towards failing a working one.)
+        thread.join(0.2)
+        assert thread.is_alive()
+        assert queue.tasks[a.id].status == "running"
+        assert queue.tasks[b.id].status == "running"
+    finally:
+        handlers.release[a.id].set()
+        handlers.release[b.id].set()
+        thread.join(WAIT)
+
+    assert not thread.is_alive()
+    assert queue.tasks[a.id].status == "succeeded"
+    assert queue.tasks[b.id].status == "succeeded"
+    assert not handlers.started[c.id].is_set()
+    assert queue.tasks[c.id].status == "pending"
+    assert queue.tasks[c.id].attempts == 0
+
+    events = [json.loads(line) for line in stream.getvalue().strip().splitlines()]
+    draining = [e for e in events if e["event"] == "worker.draining"]
+    assert draining and draining[0]["in_flight"] == 2
+    assert events[-1]["event"] == "worker.stopped"
+
+
+def test_the_dispatch_time_kill_switch_holds_for_every_task_in_a_batch(engine: Engine) -> None:
+    """Two tasks claimed together, the lever pulled between claim and call:
+    each is checked for itself on its own thread, and neither is run.
+    """
+    queue = FakeQueue()
+    tasks = [queue.add(make_task(kind="draft_cv")) for _ in range(2)]
+    called: list[uuid.UUID] = []
+
+    def handler(ctx: TaskContext) -> None:
+        called.append(ctx.task.id)  # pragma: no cover - must never run
+
+    registry = HandlerRegistry()
+    registry.register("draft_cv", handler, calls_model=True)
+    env: dict[str, str] = {}
+    settings = WorkerSettings(database_url="x", concurrency=2)
+    worker, _ = build_worker(engine, registry, queue, env=env, settings=settings)
+
+    real_claim = queue.claim
+
+    def claim_then_pull_the_lever(**kwargs: Any) -> list[Task]:
+        claimed = real_claim(**kwargs)
+        env["JFL_DISABLE_MODEL_CALLS"] = "1"
+        return claimed
+
+    queue.claim = claim_then_pull_the_lever  # type: ignore[method-assign]
+
+    assert worker.run_once(limit=2) == 2
+    assert called == []
+    for task in tasks:
+        released = queue.tasks[task.id]
+        assert released.status == "pending"
+        assert released.attempts == 0
+
+
+def test_a_failure_to_record_an_outcome_does_not_lose_the_slot(engine: Engine) -> None:
+    """Postgres goes away between the handler returning and `mark_succeeded`.
+
+    On a pool thread nothing would ever read that exception, so it is logged
+    where the operator will see it, and the slot is given back -- a worker that
+    leaked a slot per database blip would quietly run out of them. The row is
+    left `running` for the reclaim sweep, the at-least-once path.
+    """
+    queue = FakeQueue()
+    task = queue.add(make_task())
+    registry = HandlerRegistry()
+    registry.register("thing", lambda ctx: None, calls_model=False)
+    stream = io.StringIO()
+    worker, _ = build_worker(engine, registry, queue, stream=stream)
+
+    def postgres_went_away(task_id: uuid.UUID, *, now: dt.datetime) -> Task:
+        raise RuntimeError("connection reset")
+
+    queue.mark_succeeded = postgres_went_away  # type: ignore[method-assign]
+
+    assert worker.run_once() == 1
+    assert worker.in_flight == 0
+    assert queue.tasks[task.id].status == "running"
+    events = [json.loads(line)["event"] for line in stream.getvalue().strip().splitlines()]
+    assert "task.dispatch_failed" in events

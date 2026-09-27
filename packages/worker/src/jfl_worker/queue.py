@@ -29,7 +29,14 @@ from sqlalchemy.engine import Engine
 class TaskQueue(Protocol):
     """The worker's side of the queue. Mirrors `PostgresTaskQueue`."""
 
-    def claim(self, *, kinds: Sequence[str], now: dt.datetime, limit: int = 1) -> list[Task]: ...
+    def claim(
+        self,
+        *,
+        kinds: Sequence[str],
+        now: dt.datetime,
+        limit: int = 1,
+        per_user_limit: int | None = None,
+    ) -> list[Task]: ...
 
     def mark_succeeded(self, task_id: uuid.UUID, *, now: dt.datetime) -> Task: ...
 

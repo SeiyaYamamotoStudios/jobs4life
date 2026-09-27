@@ -231,7 +231,7 @@ def test_the_worker_runs_the_feed_mark_purge(engine: Engine, user: uuid.UUID) ->
     """The same proof as the session purge, for the feed-mark purge: ticker ->
     enqueue -> claim -> dispatch -> handler -> succeeded, deleting a real dead
     mark. `run_once` is called enough times to drain all three maintenance
-    tickers (`batch_size` is 1, so each dispatches one task).
+    tickers (`run_once` claims one task per call).
     """
     now = dt.datetime.now(tz=dt.UTC)
     _dead_feed_mark(engine, user, now=now)

@@ -5,10 +5,14 @@ the registry, installs signal handlers, and runs the loop until told to stop.
 
 SIGTERM matters here specifically: `docker compose stop` sends it and then
 SIGKILLs `stop_grace_period` later. Handling it is what turns "the container was
-killed and a task is stuck in `running` until the visibility timeout" into "the
-worker finished its task and exited". The stuck case still exists for tasks
-longer than the grace period -- see `runner.py` -- which is why reclaim exists
-too.
+killed and its tasks are stuck in `running` until the visibility timeout" into
+"the worker stopped claiming, finished the tasks in flight, and exited". The
+stuck case still exists for tasks longer than the grace period -- see
+`runner.py` -- which is why reclaim exists too.
+
+The handler runs on the main thread, which is where Python delivers signals;
+the pool threads never see one. They finish because `run_forever` drains them,
+not because they were told.
 """
 
 from __future__ import annotations
@@ -32,9 +36,25 @@ def main() -> int:
 
     # `pool_pre_ping`: this process outlives Postgres restarts and idle-timeout
     # reaps, and a stale pooled connection would otherwise surface as one failed
-    # task per restart. `pool_size=2` because the loop uses one connection at a
-    # time and a handler may open a second.
-    engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=2, max_overflow=2)
+    # task per restart.
+    #
+    # Sized so no thread ever waits on the pool: a running handler may hold two
+    # connections at once, and the loop thread holds one while it claims or
+    # sweeps. Two, audited per handler: several hold a transaction open across
+    # their model call (extraction, coverage, the claim-gate passes, drafting)
+    # and record the `runs` row on a second, short-lived connection when the
+    # response lands. None nests a third. With the default four slots that is
+    # nine; a pool smaller than that could leave a task blocked on
+    # `QueuePool`'s 30-second checkout timeout behind model calls that each
+    # hold a connection for minutes. The small overflow is headroom for an audit that
+    # missed a third connection somewhere, not a budget. Postgres's default
+    # `max_connections` of 100 is far away, even beside the web app's pool.
+    engine = create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_size=2 * settings.concurrency + 1,
+        max_overflow=2,
+    )
 
     worker = Worker(
         registry=build_registry(settings),

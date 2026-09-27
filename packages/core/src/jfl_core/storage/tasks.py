@@ -52,7 +52,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 
 from jfl_core.db.tables import tasks as tasks_table
@@ -262,6 +262,7 @@ class PostgresTaskQueue:
         kinds: Sequence[str],
         now: dt.datetime,
         limit: int = 1,
+        per_user_limit: int | None = None,
     ) -> list[Task]:
         """Take up to `limit` due tasks, marking them `running`.
 
@@ -274,25 +275,87 @@ class PostgresTaskQueue:
         makes an unrecognised kind harmless: it stays `pending` until a worker
         that knows it is deployed, instead of being claimed and failed by an
         older container mid-rollout.
+
+        `per_user_limit`, when given, caps how many tasks any one user may have
+        `running` at once, counting the ones already running. It is fairness,
+        not a quota: without it, one user uploading thirty CVs fills every
+        worker slot with thirty queued extractions, and everyone else's scoring
+        run waits behind the lot -- while the thirty calls, all on that user's
+        own key, walk straight into their rate limit. With it, the burst drains
+        at the cap's pace and other users' tasks are claimed beside it.
+
+        Enforced in two places, because one is not enough:
+
+          * in SQL, a user already at the cap is excluded from the candidate
+            rows, so their backlog does not even take the row locks;
+          * in Python, over the locked candidates, because the SQL count is of
+            rows *already* running -- a single claim of four could otherwise
+            hand one user four rows at once. Candidates past a user's cap are
+            simply not updated, and their SKIP LOCKED locks die with the
+            transaction, leaving them `pending` and untouched.
+
+        The second step can leave the batch short while another user's task
+        sits further down the queue (the candidate window is `limit` rows, and
+        the burst may fill it). That is self-correcting rather than a stall: the
+        worker polls again at once whenever it claimed something, and by then
+        the capped user is excluded in SQL. A soft cap, too, across workers:
+        two workers claiming at the same instant each count the other's claim
+        as not yet running. With one worker deployed that cannot happen, and
+        with two the overshoot is bounded by the number of workers.
+
+        One more consequence, stated rather than hidden: a `running` row left by
+        a worker that was SIGKILLed counts against its user's cap until the
+        reclaim sweep requeues it, i.e. up to the visibility timeout. That user's
+        other tasks wait that long -- which is also how long the orphan itself
+        waits, so the cap delays nothing that was not already delayed.
+
+        No index of its own: the count is per candidate row (at most `limit` of
+        them), and both the partial index on `running` rows -- a handful at any
+        moment -- and `(user_id, created_at)` can answer it.
         """
         if not kinds:
             return []
 
-        locked = (
-            self._conn.execute(
-                select(tasks_table.c.id)
-                .where(
-                    tasks_table.c.status == "pending",
-                    tasks_table.c.kind.in_(list(kinds)),
-                    tasks_table.c.scheduled_at <= now,
-                )
-                .order_by(tasks_table.c.scheduled_at.asc(), tasks_table.c.created_at.asc())
-                .limit(limit)
-                .with_for_update(skip_locked=True)
+        candidates = (
+            select(tasks_table.c.id, tasks_table.c.user_id)
+            .where(
+                tasks_table.c.status == "pending",
+                tasks_table.c.kind.in_(list(kinds)),
+                tasks_table.c.scheduled_at <= now,
             )
-            .scalars()
-            .all()
+            .order_by(tasks_table.c.scheduled_at.asc(), tasks_table.c.created_at.asc())
+            .limit(limit)
+            # `of=`: lock the candidate rows only. The count below reads other
+            # rows of the same table and must not lock them.
+            .with_for_update(skip_locked=True, of=tasks_table)
         )
+        if per_user_limit is not None:
+            running = tasks_table.alias("running")
+            in_flight = (
+                select(func.count())
+                .select_from(running)
+                .where(
+                    running.c.user_id == tasks_table.c.user_id,
+                    running.c.status == "running",
+                )
+                .scalar_subquery()
+            )
+            candidates = candidates.add_columns(in_flight.label("in_flight")).where(
+                in_flight < per_user_limit
+            )
+
+        rows_locked = self._conn.execute(candidates).all()
+        if per_user_limit is None:
+            locked = [row.id for row in rows_locked]
+        else:
+            taken: dict[uuid.UUID, int] = {}
+            locked = []
+            for row in rows_locked:
+                already = row.in_flight + taken.get(row.user_id, 0)
+                if already >= per_user_limit:
+                    continue
+                taken[row.user_id] = taken.get(row.user_id, 0) + 1
+                locked.append(row.id)
         if not locked:
             return []
 

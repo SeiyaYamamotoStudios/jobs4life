@@ -60,7 +60,8 @@ def test_from_env_takes_defaults_and_overrides() -> None:
     assert settings.database_url == "postgresql+psycopg://x/y"
     assert settings.poll_interval == 0.5
     assert settings.visibility_timeout == 15 * 60.0
-    assert settings.batch_size == 1
+    assert settings.concurrency == 4
+    assert settings.per_user_concurrency == 2
     assert settings.system_user_id == LOCAL_USER_ID
     # No JFL_MODEL set, so the default. Model choice is a product option that a
     # deployment picks, but there is always an answer.
@@ -137,3 +138,36 @@ def test_backoff_is_exponential_and_capped() -> None:
 def test_backoff_never_goes_negative_on_a_zero_attempt_count() -> None:
     settings = WorkerSettings(database_url="x")
     assert settings.retry_delay(0) == dt.timedelta(seconds=30)
+
+
+def test_concurrency_is_read_from_the_environment() -> None:
+    settings = WorkerSettings.from_env(
+        {
+            "JFL_DATABASE_URL": "postgresql+psycopg://x/y",
+            "JFL_MASTER_KEY": _MASTER_KEY,
+            "JFL_WORKER_CONCURRENCY": "6",
+            "JFL_WORKER_PER_USER_CONCURRENCY": "3",
+        }
+    )
+    assert settings.concurrency == 6
+    assert settings.per_user_concurrency == 3
+
+
+@pytest.mark.parametrize("name", ["JFL_WORKER_CONCURRENCY", "JFL_WORKER_PER_USER_CONCURRENCY"])
+def test_zero_concurrency_fails_at_boot(name: str) -> None:
+    """Zero slots would claim nothing and look exactly like an idle worker --
+    the quietest way to stop everyone's work. So it is refused, at boot.
+    """
+    with pytest.raises(ValueError, match=name):
+        WorkerSettings.from_env(
+            {
+                "JFL_DATABASE_URL": "postgresql+psycopg://x/y",
+                "JFL_MASTER_KEY": _MASTER_KEY,
+                name: "0",
+            }
+        )
+
+
+def test_a_hand_built_settings_object_cannot_have_zero_slots_either() -> None:
+    with pytest.raises(ValueError):
+        WorkerSettings(database_url="x", concurrency=0)

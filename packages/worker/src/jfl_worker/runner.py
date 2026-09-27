@@ -1,15 +1,28 @@
-"""The poll loop.
+"""The poll loop, and the pool of threads that runs what it claims.
 
-Shape of one iteration:
+Shape of one iteration, all on the loop thread:
 
   1. maintenance, if due -- reclaim rows a dead worker left `running`, and
      enqueue the three recurring tasks: the session purge, the feed-mark purge,
      and the watched-board scheduling pass;
-  2. claim up to `batch_size` due tasks of the kinds this worker can run;
-  3. dispatch each one, recording success or failure;
-  4. if nothing was claimed, sleep for `poll_interval`.
+  2. count the free slots (`concurrency` minus tasks in flight), and if there
+     are any, claim up to that many due tasks of the kinds this worker can run;
+  3. hand each claimed task to a pool thread, which dispatches it and records
+     success or failure;
+  4. if nothing was claimed, wait `poll_interval` -- or less, because a slot
+     freeing up wakes the loop at once.
 
-Three properties worth stating plainly, because they are what makes this
+**Why threads.** The tasks are waiting, not computing: a scoring run is 30
+seconds to two minutes of an open request to the model API. Run serially, five
+applications added in a row were five of those back to back, and the user
+watched the fifth spinner for ten minutes. Threads are the smallest change that
+overlaps the waits -- the handlers, the Anthropic SDK and SQLAlchemy are all
+synchronous, and the GIL is released for exactly the I/O that dominates. Not
+asyncio, which would mean rewriting every handler and the SDK calls under
+them; not processes, which would multiply the memory of a 4 GB host for work
+that is idle on the CPU.
+
+Four properties worth stating plainly, because they are what makes this
 correct rather than merely working:
 
 **Delivery is at-least-once.** The claim is committed before the handler runs,
@@ -19,17 +32,29 @@ because "the handler finished" and "the row says succeeded" are two events with
 a gap between them. `reclaim_stale` closes it after the visibility timeout, and
 handlers must be safe to run twice.
 
-**Shutdown is graceful, up to a point.** SIGTERM sets a flag; the loop finishes
-the task in hand and exits before claiming another. Docker sends SIGTERM and
-then SIGKILL `stop_grace_period` later, so a task longer than that grace is
-killed anyway -- which is the at-least-once case above, and why the compose
-service sets a grace period longer than the longest expected task.
+**A row is claimed only into a free slot.** Never a batch to queue behind the
+running ones: the visibility clock starts at claim, so a row waiting in an
+in-process backlog would age with nobody touching it and could be reclaimed --
+and run twice, and paid for twice -- while still queued. Claiming `free` rows
+and no more means every `running` row has a thread on it from the moment it is
+claimed. The loop is the only thing that claims, so "free" cannot go stale
+between counting and claiming.
 
-**The kill switch is checked twice.** Once when choosing which kinds to ask for
-(so a disabled model task is never claimed and stays `pending`), and again
-immediately before dispatch (so a switch thrown mid-flight releases the task
-instead of spending on it). The second check is the one the brief demands:
-at dispatch, not at startup.
+**Shutdown is graceful, up to a point.** SIGTERM sets a flag; the loop stops
+claiming at once and then waits for every task in flight to finish and be
+recorded before the process exits. Docker sends SIGTERM and then SIGKILL
+`stop_grace_period` later, so a task longer than that grace is killed anyway --
+which is the at-least-once case above, and why the compose service sets a grace
+period longer than the longest expected task. The tasks in flight run side by
+side, so draining four takes as long as the slowest of them, not their sum.
+
+**The kill switch is checked twice, per task.** Once when choosing which kinds
+to ask for (so a disabled model task is never claimed and stays `pending`), and
+again on the pool thread immediately before that task's handler runs (so a
+switch thrown mid-flight releases the task instead of spending on it). The
+second check is the one the brief demands: at dispatch, not at startup. With
+several tasks claimed together, each is checked for itself at its own moment of
+spending.
 """
 
 from __future__ import annotations
@@ -40,6 +65,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 
 from jfl_core.models import Task
 from jfl_intake.scheduling import SCHEDULE_BOARD_CHECKS_KIND
@@ -60,7 +86,15 @@ def _utcnow() -> dt.datetime:
 
 
 class Worker:
-    """One process, one loop, tasks run serially.
+    """One process, one loop, up to `settings.concurrency` tasks at once.
+
+    The loop thread owns everything that is not a task: polling, claiming,
+    maintenance, and the maintenance tickers' state, which is therefore never
+    touched by two threads. Pool threads run `_dispatch` -- one task each, from
+    the kill-switch check to the row recording its outcome -- and share nothing
+    with each other but the injected collaborators, which are either stateless
+    per call (the scopes open a fresh transaction each time) or thread-safe
+    (the engine's pool, the logger).
 
     Collaborators are injected rather than constructed: `main.py` wires the
     Postgres ones, tests wire fakes. `env` is the mapping the kill switch reads;
@@ -90,6 +124,19 @@ class Worker:
         # An Event, not a bool: `wait()` is the sleep, so SIGTERM during an idle
         # poll wakes the loop immediately instead of after `poll_interval`.
         self._stop = threading.Event()
+        # Set whenever a slot frees (and on stop), so an idle-or-full loop wakes
+        # at once rather than after `poll_interval`. That matters twice over: a
+        # backlog drains without a two-second gap per task, and a task that
+        # chains a follow-up (extraction -> scoring, say) has it claimed the
+        # moment the first one's slot is free.
+        self._wake = threading.Event()
+        self._pool = ThreadPoolExecutor(
+            max_workers=settings.concurrency, thread_name_prefix="jfl-task"
+        )
+        # Read and written under the lock by pool threads (on finishing) and by
+        # the loop (on claiming); nothing else decides how many rows to claim.
+        self._in_flight_lock = threading.Lock()
+        self._in_flight = 0
         # None means "due now". On the first iteration after a restart the
         # worker therefore sweeps for orphans and enqueues a purge straight
         # away, which is exactly the moment both are most likely to be needed.
@@ -101,8 +148,9 @@ class Worker:
     # -- lifecycle ---------------------------------------------------------
 
     def request_stop(self) -> None:
-        """Signal-handler safe: sets a flag and returns."""
+        """Signal-handler safe: sets two flags and returns."""
         self._stop.set()
+        self._wake.set()
 
     @property
     def stopping(self) -> bool:
@@ -114,46 +162,130 @@ class Worker:
             logging.INFO,
             "worker.started",
             kinds=list(self._registry.kinds()),
+            concurrency=self._settings.concurrency,
+            per_user_concurrency=self._settings.per_user_concurrency,
             poll_interval=self._settings.poll_interval,
             visibility_timeout=self._settings.visibility_timeout,
             model_calls_disabled=model_calls_disabled(self._env),
         )
-        while not self._stop.is_set():
-            try:
-                handled = self.run_once()
-            except Exception:
-                # A poll failure -- Postgres restarting, most likely -- must not
-                # end the process: the container would restart into the same
-                # outage, and the backoff below is gentler than Docker's.
-                log_event(self._log, logging.ERROR, "worker.poll_failed", exc_info=True)
-                self._stop.wait(self._settings.error_backoff)
-                continue
-            if handled == 0:
-                self._stop.wait(self._settings.poll_interval)
+        try:
+            while not self._stop.is_set():
+                # Cleared BEFORE the poll counts free slots, so a task that
+                # finishes after the count sets it again and the wait below
+                # returns at once. Cleared after, that finish could be missed
+                # and its slot would sit idle for a whole `poll_interval`.
+                self._wake.clear()
+                try:
+                    claimed = self._poll()
+                except Exception:
+                    # A poll failure -- Postgres restarting, most likely -- must
+                    # not end the process: the container would restart into the
+                    # same outage, and the backoff below is gentler than Docker's.
+                    log_event(self._log, logging.ERROR, "worker.poll_failed", exc_info=True)
+                    self._stop.wait(self._settings.error_backoff)
+                    continue
+                if not claimed:
+                    self._wake.wait(self._settings.poll_interval)
+        finally:
+            self._drain()
         log_event(self._log, logging.INFO, "worker.stopped")
+
+    def _drain(self) -> None:
+        """Wait for every task in flight to finish and be recorded.
+
+        Claimed tasks are finished rather than abandoned: their rows are already
+        `running` with an attempt spent, so leaving them would be the
+        at-least-once case on purpose -- a reclaim fifteen minutes later and,
+        for a model call, paying for it twice.
+        """
+        in_flight = self.in_flight
+        if in_flight:
+            log_event(self._log, logging.INFO, "worker.draining", in_flight=in_flight)
+        self._pool.shutdown(wait=True)
 
     # -- one iteration -----------------------------------------------------
 
-    def run_once(self) -> int:
-        """Do at most one batch of work. Returns how many tasks were dispatched."""
+    def run_once(self, *, limit: int = 1) -> int:
+        """Claim at most `limit` tasks, run them, and return once they are all
+        recorded. Returns how many were claimed.
+
+        The synchronous step, for tests and anything else that wants "do the
+        next thing, now". It goes through the same pool and the same `_dispatch`
+        as `run_forever` -- only the waiting differs -- and `limit` defaults to
+        one so a caller that asserts on one task at a time gets exactly one.
+        """
+        futures = self._claim_and_submit(limit=limit)
+        wait(futures)
+        return len(futures)
+
+    def _poll(self) -> int:
+        """One loop iteration: claim into every free slot and return without
+        waiting for the tasks. Returns how many were claimed.
+        """
+        return len(self._claim_and_submit(limit=self._settings.concurrency))
+
+    def _claim_and_submit(self, *, limit: int) -> list[Future[None]]:
         now = self._clock()
         self._run_maintenance(now)
 
+        free = min(limit, self._settings.concurrency - self.in_flight)
+        if free <= 0:
+            # Every slot busy. Not a claim with limit 0: asking the database for
+            # nothing is still a round trip, and the wake event will bring the
+            # loop back the moment a slot frees.
+            return []
+
         kinds = self._registry.runnable_kinds(allow_model_calls=not model_calls_disabled(self._env))
         if not kinds:
-            return 0
+            return []
 
         with self._queue_scope() as queue:
-            claimed = queue.claim(kinds=kinds, now=now, limit=self._settings.batch_size)
+            claimed = queue.claim(
+                kinds=kinds,
+                now=now,
+                limit=free,
+                per_user_limit=self._settings.per_user_concurrency,
+            )
 
-        # Claimed tasks are dispatched even if a stop arrived in between: the
+        # Claimed tasks are submitted even if a stop arrived in between: the
         # rows are already `running` with an attempt spent, and finishing them
-        # is cheaper than leaving them for the reclaim sweep. With
-        # `batch_size == 1` that is one task, which is what "finish the current
-        # task, then exit" means.
+        # is cheaper than leaving them for the reclaim sweep. Shutdown drains
+        # the pool, so "finish the tasks in hand, then exit" still holds.
+        futures: list[Future[None]] = []
         for task in claimed:
+            with self._in_flight_lock:
+                self._in_flight += 1
+            futures.append(self._pool.submit(self._run_task, task))
+        return futures
+
+    def _run_task(self, task: Task) -> None:
+        """A pool thread's whole job: one task, then give the slot back.
+
+        `_dispatch` records every outcome of the handler itself -- success,
+        failure, refusal. What reaches the `except` here is a failure to
+        *record* one: Postgres going away between the handler returning and
+        `mark_succeeded`. On the serial loop that surfaced as a poll failure;
+        here it must be caught, or it would vanish into a Future nobody reads.
+        The row is left `running`, and the reclaim sweep requeues it -- the
+        at-least-once path, which is exactly what it is for.
+        """
+        try:
             self._dispatch(task)
-        return len(claimed)
+        except Exception:
+            log_event(
+                self._log,
+                logging.ERROR,
+                "task.dispatch_failed",
+                task_id=str(task.id),
+                kind=task.kind,
+                user_id=str(task.user_id),
+                attempt=task.attempts,
+                exc_info=True,
+            )
+        finally:
+            with self._in_flight_lock:
+                self._in_flight -= 1
+            self._wake.set()
 
     def _run_maintenance(self, now: dt.datetime) -> None:
         if self._next_reclaim_at is None or now >= self._next_reclaim_at:
@@ -340,3 +472,9 @@ class Worker:
     @property
     def system_user_id(self) -> uuid.UUID:
         return self._settings.system_user_id
+
+    @property
+    def in_flight(self) -> int:
+        """How many claimed tasks are running on pool threads right now."""
+        with self._in_flight_lock:
+            return self._in_flight

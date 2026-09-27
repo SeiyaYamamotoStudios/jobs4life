@@ -71,13 +71,15 @@ services:
     # forever and hide a real problem behind a permanent false one.
     healthcheck:
       disable: true
-    # Docker sends SIGTERM and then SIGKILL this long after. The worker finishes
-    # the task in hand on SIGTERM, and the slowest known task is a ~2-minute
-    # claim-gate call, so anything under that guarantees a kill mid-task on
-    # every deploy. A killed task is not lost -- it is reclaimed after the
+    # Docker sends SIGTERM and then SIGKILL this long after. The worker stops
+    # claiming on SIGTERM and finishes the tasks in flight -- up to
+    # JFL_WORKER_CONCURRENCY of them, but side by side, so the drain takes as
+    # long as the slowest one, not their sum. The slowest known task is a CV
+    # draft -- a draft call then a ~2-minute claim-gate call, back to back -- so
+    # anything under about four minutes risks a kill mid-task on every deploy. A killed task is not lost -- it is reclaimed after the
     # visibility timeout and run again -- but re-running a gate call means paying
     # for it twice, so the grace period is set to make that the exception.
-    stop_grace_period: 150s
+    stop_grace_period: 300s
 
 volumes:
   pgdata:
