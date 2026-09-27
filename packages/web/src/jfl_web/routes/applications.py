@@ -40,6 +40,14 @@ Screens:
                                          only, never writes
   POST /applications/archive-by-rule/confirm  -- re-runs the same rule and
                                          archives what it matches
+  POST /applications/rescore/preview          -- "this will re-score N,
+                                         about $X" -- reads only
+  POST /applications/rescore/confirm          -- re-scores exactly the
+                                         eligible subset of the submission
+  POST /applications/retry-failed/preview     -- "this will retry N,
+                                         about $X" -- reads only
+  POST /applications/retry-failed/confirm     -- retries every currently
+                                         failed read or score on the live list
 
 Bulk archiving (owner feedback, 2026-09-27) adds a second way onto the same
 `archive_many`/`unarchive_many` repository methods the per-row buttons already
@@ -53,6 +61,17 @@ Rule matching never trusts an id list either -- `archive-by-rule/confirm`
 re-parses the same rule fields the preview showed and recomputes the match at
 write time, so there is nothing to tamper with between "this will archive"
 and the button that does it.
+
+Bulk re-score and "retry everything that failed" (owner feedback, same day)
+follow the identical preview-then-confirm shape, over `jfl_web.bulk_actions`'
+pure selection logic and the `_enqueue_rescore`/`_enqueue_read_retry` helpers
+this module shares with the single-application buttons -- a bulk press does
+exactly what N presses of the existing button would do, never a shortcut that
+skips a check the single button makes. Neither ever re-reads an ad that was
+already read successfully: the only re-read path here is retrying a *failed*
+one. Both show a cost estimate measured from the user's own `runs` history
+(`jfl_web.bulk_actions.estimate_for_count`/`estimate_retry_cost`), labelled as
+an estimate, with a stated fallback range when there is no history yet.
 
 `POST /applications/{id}/status` answers two different callers with one route
 rather than two: the **list** screen calls it over htmx (`HX-Request` header
@@ -96,6 +115,16 @@ from jfl_web.archive_rules import (
     matching_applications,
     parse_rule_form,
 )
+from jfl_web.bulk_actions import (
+    SKIP_REASON_LABELS,
+    CostEstimate,
+    RescoreSkip,
+    RetryPlan,
+    estimate_for_count,
+    estimate_retry_cost,
+    partition_rescore,
+    plan_retry_failed,
+)
 from jfl_web.deps import (
     ApplicationQuestionRepoDep,
     ApplicationRepoDep,
@@ -103,6 +132,7 @@ from jfl_web.deps import (
     CsrfDep,
     JobRepoDep,
     PushbackRepoDep,
+    RunRepoDep,
     ScoreOverrideRepoDep,
     ScoreRepoDep,
     SectionRepoDep,
@@ -143,6 +173,7 @@ from jfl_web.scores import (
     WANT_IT_LABEL,
     WANT_IT_SUBTITLE,
     RowScore,
+    ScoreFailure,
     SortDirection,
     SortHeader,
     SortKey,
@@ -175,6 +206,19 @@ EXTRACT_JOB_AD_KIND = "extract_job_ad"
 # The worker's kind for "score this application". A string on both sides, for
 # the same reason as above.
 SCORE_APPLICATION_KIND = "score_application"
+
+# `runs.stage` values a score's button press can write -- `jfl_generate.scoring`
+# and `jfl_generate.coverage` respectively (a score runs coverage first only
+# when none is recorded yet). Grouped by trace in `recent_costs`, this is what
+# `application_scores.cost_usd` already totals for one run; used here only to
+# estimate a *bulk* re-score before it is pressed. See `jfl_web.bulk_actions`.
+_SCORE_COST_STAGES = ("score", "coverage")
+# `jfl_generate.extract`'s stage -- what one read of a job ad costs.
+_READ_COST_STAGES = ("extract_requirements",)
+# How many recent traces the cost estimate samples from. Not the whole
+# history: a modest, recent sample is enough for a rough estimate, and an old,
+# no-longer-representative run should not count as much as a recent one.
+_COST_SAMPLE_SIZE = 20
 
 router = APIRouter()
 
@@ -317,7 +361,17 @@ def list_applications(
             "active_status": status,
             "show_archived": show_archived,
             "archived_count": archived_count,
+            "retry_failed_count": _retry_failed_count(
+                applications,
+                scores,
+                show_archived=show_archived,
+                status=status,
+                items=items,
+                row_scores=row_scores,
+            ),
             "just_archived": _just_archived_title(applications, request),
+            "queued_rescores": _queued_count(request, "queued_rescores"),
+            "queued_retries": _queued_count(request, "queued_retries"),
             "row_scores": row_scores,
             # The column headers are the sort control; the status filter
             # carries the sort, and the headers carry the filter. Every link
@@ -351,6 +405,49 @@ def _row_scores(
 ) -> dict[uuid.UUID, RowScore]:
     pairs = scores.latest_for_applications(application_ids)
     return {app_id: row_score(*pairs.get(app_id, (None, None))) for app_id in application_ids}
+
+
+def _retry_failed_count(
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    *,
+    show_archived: bool,
+    status: str | None,
+    items: list[Application],
+    row_scores: dict[uuid.UUID, RowScore],
+) -> int:
+    """How many live applications "Retry everything that failed" would touch --
+    what decides whether the button shows on the list at all (owner feedback,
+    2026-09-27, alongside the bulk-archive slice).
+
+    Never computed for the archived view -- retrying is for what is still
+    live. "Everything that failed" is also never scoped to the current
+    `?status=` filter, so when one is active this re-reads the unfiltered live
+    list; with no filter, `items`/`row_scores` already *are* that list, one
+    query saved.
+    """
+    if show_archived:
+        return 0
+    if status is None:
+        return plan_retry_failed(items, row_scores).count
+    all_live = applications.list_applications(archived=False)
+    all_row_scores = _row_scores(scores, [a.id for a in all_live])
+    return plan_retry_failed(all_live, all_row_scores).count
+
+
+def _queued_count(request: Request, param: str) -> int | None:
+    """A non-negative integer straight off a redirect's own query string (never
+    user-tampered in a way that matters -- it only ever names a count this
+    same request cycle just wrote), or None if it is absent or malformed.
+    """
+    raw = request.query_params.get(param)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 def _just_archived_title(applications: ApplicationRepoDep, request: Request) -> str | None:
@@ -671,6 +768,22 @@ def extraction_panel(
     )
 
 
+def _enqueue_read_retry(
+    applications: ApplicationRepoDep, tasks: TaskRepoDep, application_id: uuid.UUID
+) -> bool:
+    """Re-read this application's ad, unless there is no ad to read. Shared by
+    the single "Read it again" button and the bulk "Retry everything that
+    failed" action below, so both press exactly the same button under the
+    hood. Returns whether a task was actually enqueued -- `request_extraction`
+    returns False when there is no ad stored (`description_unavailable`'s own
+    case), and a task that could only fail is not worth queueing.
+    """
+    if not applications.request_extraction(application_id):
+        return False
+    tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
+    return True
+
+
 @router.post("/applications/{application_id}/extract")
 def extract_again(
     request: Request,
@@ -684,15 +797,12 @@ def extract_again(
 
     Extraction is a model call on the user's own key, so a re-run spends their
     money: it happens because a person asked, not because a page was refreshed
-    or a task was redelivered. `request_extraction` returns False when there is
-    no ad stored, and then nothing is enqueued -- a task that could only fail is
-    not worth queueing.
+    or a task was redelivered.
     """
     if applications.get_application(application_id) is None:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
-    if applications.request_extraction(application_id):
-        tasks.enqueue(kind=EXTRACT_JOB_AD_KIND, payload={"application_id": str(application_id)})
+    _enqueue_read_retry(applications, tasks, application_id)
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
 
 
@@ -803,6 +913,34 @@ def score_panel(
     )
 
 
+def _enqueue_rescore(
+    scores: ScoreRepoDep, tasks: TaskRepoDep, application_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Create a pending score and enqueue it, unless one is already in flight.
+    Shared by the single Re-score button and the bulk "Re-score selected" and
+    "Retry everything that failed" actions below, so all three press exactly
+    the same button under the hood -- one place that decides what a score
+    press does, rather than three copies that could drift.
+
+    A run already in flight is not duplicated: pressing twice while the panel
+    says "scoring" would buy a second charge for the same answer. A finished
+    *or failed* run is re-scored, because that is what the button is for, and
+    the earlier row is kept rather than overwritten. Returns the new score's
+    id, or None if nothing was queued.
+    """
+    latest = scores.latest(application_id)
+    if latest is not None and latest.status == "pending":
+        return None
+    row = scores.create_pending(application_id)
+    tasks.enqueue(
+        kind=SCORE_APPLICATION_KIND,
+        # Ids only. Nothing about the job, the profile or the key is in a
+        # payload that admin queries read back.
+        payload={"score_id": str(row.id)},
+    )
+    return row.id
+
+
 @router.post("/applications/{application_id}/score")
 def score_application(
     request: Request,
@@ -821,28 +959,15 @@ def score_application(
     chained from the read of the ad, because adding the application *is* that
     choice; every later one is this button, because a person pressed it.
 
-    A run already in flight is not duplicated: pressing twice while the panel
-    says "scoring" would buy a second charge for the same answer. A finished
-    run *is* re-scored, because that is what the button is for, and the earlier
-    row is kept rather than overwritten.
-
-    Both writes are in the request's single transaction, so the row and its
-    task are committed together: there is no state where a `pending` score sits
-    with nothing queued to move it.
+    Both writes `_enqueue_rescore` makes are in the request's single
+    transaction, so the row and its task are committed together: there is no
+    state where a `pending` score sits with nothing queued to move it.
     """
     if applications.get_application(application_id) is None:
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
 
-    latest = scores.latest(application_id)
-    if latest is None or latest.status != "pending":
-        row = scores.create_pending(application_id)
-        tasks.enqueue(
-            kind=SCORE_APPLICATION_KIND,
-            # Ids only. Nothing about the job, the profile or the key is in a
-            # payload that admin queries read back.
-            payload={"score_id": str(row.id)},
-        )
+    _enqueue_rescore(scores, tasks, application_id)
     # POST/redirect/GET: a refresh must not enqueue a second run.
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
 
@@ -1183,3 +1308,211 @@ def archive_by_rule_confirm(
     matched = _rule_matches(applications, scores, rules)
     archived = applications.archive_many([a.id for a in matched])
     return RedirectResponse(_bulk_redirect("/applications", archived), status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Bulk re-score: score a selection of rows at once, skipping anything already
+# scoring or not yet read. Owner feedback, 2026-09-27.
+# --------------------------------------------------------------------------
+
+
+def _has_requirements(
+    applications: ApplicationRepoDep, application_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, bool]:
+    """Which of these applications have at least one requirement recorded --
+    what a bulk re-score's preflight check reads, so it can skip an
+    application scoring would only fail on (`no_requirements`) instead of
+    spending a queued, doomed run to discover the same thing.
+    """
+    return {
+        application_id: bool(extraction.requirements)
+        for application_id in application_ids
+        if (extraction := applications.get_extraction(application_id)) is not None
+    }
+
+
+def _rescore_selection(
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    ids: list[uuid.UUID],
+) -> tuple[list[Application], list[RescoreSkip]]:
+    """The eligible/skipped split for a set of submitted ids, resolved fresh
+    through this user's own repositories -- shared by the preview and confirm
+    routes so "what this will score" and "what this scores" are always the
+    same computation, the same discipline `_rule_matches` uses for
+    archive-by-rule.
+    """
+    apps = applications.list_by_ids(ids)
+    row_scores = _row_scores(scores, [a.id for a in apps])
+    has_requirements = _has_requirements(applications, [a.id for a in apps])
+    return partition_rescore(apps, row_scores, has_requirements)
+
+
+@router.post("/applications/rescore/preview")
+def rescore_preview(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    runs: RunRepoDep,
+    _csrf: CsrfDep,
+    application_id: Annotated[list[str] | None, Form()] = None,
+) -> Response:
+    """ "This will re-score N applications, about $X on your API key" --
+    read-only. Nothing here enqueues anything; the confirm route below is the
+    only write, and it recomputes the eligible set itself rather than trusting
+    what this page listed.
+    """
+    ids = _parse_ids(application_id)
+    if not ids:
+        return RedirectResponse("/applications?bulk_error=none_selected", status_code=303)
+
+    eligible, skipped = _rescore_selection(applications, scores, ids)
+    costs = runs.recent_costs(session.user.id, stages=_SCORE_COST_STAGES, limit=_COST_SAMPLE_SIZE)
+    estimate: CostEstimate = estimate_for_count(costs, len(eligible))
+    return render(
+        request,
+        "rescore_preview.html",
+        {
+            "session": session,
+            "user": session.user,
+            "eligible": eligible,
+            "skipped": skipped,
+            "skip_reason_labels": SKIP_REASON_LABELS,
+            "row_scores": _row_scores(scores, [a.id for a in eligible]),
+            "estimate": estimate,
+            "submitted_ids": ids,
+        },
+    )
+
+
+@router.post("/applications/rescore/confirm")
+def rescore_confirm(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+    application_id: Annotated[list[str] | None, Form()] = None,
+) -> Response:
+    """The confirm button on the preview page. Recomputes the eligible set from
+    the submitted ids rather than trusting the preview's -- an application that
+    started scoring, or had its ad read, between preview and confirm is
+    measured as it stands now. Ids for another user, or a stale id, resolve to
+    nothing through `list_by_ids` and are silently dropped, same as every
+    other bulk action here.
+    """
+    ids = _parse_ids(application_id)
+    eligible, _skipped = _rescore_selection(applications, scores, ids)
+    queued = [a.id for a in eligible if _enqueue_rescore(scores, tasks, a.id) is not None]
+    if not queued:
+        # Nothing to say -- same "silent when nothing happened" convention as
+        # `_bulk_redirect` above.
+        return RedirectResponse("/applications", status_code=303)
+    return RedirectResponse(f"/applications?queued_rescores={len(queued)}", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Retry everything that failed: no selection, no rule form -- it retries
+# whatever the live list currently shows as failed. Owner feedback,
+# 2026-09-27.
+# --------------------------------------------------------------------------
+
+
+def _retry_plan(
+    applications: ApplicationRepoDep, scores: ScoreRepoDep
+) -> tuple[RetryPlan, dict[uuid.UUID, RowScore]]:
+    """Read the live (non-archived) list fresh and classify it -- called from
+    the list page (to decide whether the button shows at all), the preview and
+    the confirm route, so all three agree on what "has failed" means right
+    now. Never scoped to the current status filter: "everything that failed"
+    means everything, not whatever `?status=` happens to be on the URL.
+    """
+    items = applications.list_applications(archived=False)
+    row_scores = _row_scores(scores, [a.id for a in items])
+    return plan_retry_failed(items, row_scores), row_scores
+
+
+@router.post("/applications/retry-failed/preview")
+def retry_failed_preview(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    runs: RunRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """ "This will retry N applications, about $X on your API key" -- read-only,
+    same discipline as every other preview here: nothing is enqueued until
+    confirm, which recomputes the plan itself rather than trusting this page.
+    """
+    plan, row_scores = _retry_plan(applications, scores)
+    if plan.is_empty:
+        return RedirectResponse("/applications", status_code=303)
+
+    read_costs = runs.recent_costs(
+        session.user.id, stages=_READ_COST_STAGES, limit=_COST_SAMPLE_SIZE
+    )
+    score_costs = runs.recent_costs(
+        session.user.id, stages=_SCORE_COST_STAGES, limit=_COST_SAMPLE_SIZE
+    )
+    estimate: CostEstimate = estimate_retry_cost(
+        read_costs, score_costs, reads=len(plan.retry_reads), scores=len(plan.retry_scores)
+    )
+    # Why each one failed, in the same words the single-application panels
+    # use -- `extraction_failure`/`score_failure` are the same lookups
+    # `_extraction_context`/`_score_context` call for the detail page.
+    read_failures = {
+        a.id: extraction_failure(a.extraction_error_code)
+        for a in (*plan.retry_reads, *plan.needs_paste)
+    }
+    score_failures: dict[uuid.UUID, ScoreFailure] = {}
+    for application in plan.retry_scores:
+        latest = scores.latest(application.id)
+        score_failures[application.id] = score_failure(latest.error_code if latest else None)
+    return render(
+        request,
+        "retry_failed_preview.html",
+        {
+            "session": session,
+            "user": session.user,
+            "plan": plan,
+            "row_scores": row_scores,
+            "read_failures": read_failures,
+            "score_failures": score_failures,
+            "estimate": estimate,
+        },
+    )
+
+
+@router.post("/applications/retry-failed/confirm")
+def retry_failed_confirm(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+) -> Response:
+    """The confirm button on the preview page. Re-reads the live list and
+    recomputes the plan at write time -- an application fixed, archived or
+    newly failed between preview and confirm is retried (or not) as it stands
+    now, never as the stale preview said.
+
+    A failed read wins over a failed score on the same application: retrying
+    the read is enough (a successful re-read chains its own first score, see
+    `jfl_worker.handlers.extraction._chain_first_score`), so `plan_retry_failed`
+    never puts one application in both buckets.
+    """
+    plan, _row_scores = _retry_plan(applications, scores)
+    read_count = sum(1 for a in plan.retry_reads if _enqueue_read_retry(applications, tasks, a.id))
+    score_count = sum(
+        1 for a in plan.retry_scores if _enqueue_rescore(scores, tasks, a.id) is not None
+    )
+    total = read_count + score_count
+    if not total:
+        # Nothing to say -- same "silent when nothing happened" convention as
+        # `_bulk_redirect` above.
+        return RedirectResponse("/applications", status_code=303)
+    return RedirectResponse(f"/applications?queued_retries={total}", status_code=303)

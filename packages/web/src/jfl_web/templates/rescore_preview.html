@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_score_cell.html" as score_cell_macros %}
+{% block title %}Re-score selected — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Re-score selected</h1>
+  <a href="/applications">Cancel</a>
+</div>
+
+{% if eligible %}
+<p>
+  This will re-score {{ eligible|length }} application{{ "" if eligible|length == 1 else "s" }},
+  {% if estimate.measured %}
+  about ${{ estimate.total }} on your API key (measured from your own recent runs).
+  {% else %}
+  about {{ estimate.fallback }} on your API key -- a rough estimate, since there is no cost history yet to measure from.
+  {% endif %}
+</p>
+<ul class="rule-preview-list">
+  {% for application in eligible %}
+  {% set rs = row_scores.get(application.id) if row_scores else none %}
+  <li>
+    <strong>{{ application.title }}</strong>{% if application.employer %} — {{ application.employer }}{% endif %}
+    <span class="status-badge status-{{ application.status }}">{{ application.status }}</span>
+    <span class="rule-preview-scores">
+      Could I get this: {{ score_cell_macros.score_cell(rs, rs.could_get if rs else none, application.extraction_status == "pending") }}
+      · Do I want this: {{ score_cell_macros.score_cell(rs, rs.want_it if rs else none, application.extraction_status == "pending") }}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+<form method="post" action="/applications/rescore/confirm">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  {#- The eligible set is recomputed at confirm time from these same ids, never
+      trusted from this page -- see `_rescore_selection`. Carrying the whole
+      submission (not just what turned out eligible) means an application that
+      finishes its own read between this preview and the confirm click is
+      picked up rather than silently dropped. -#}
+  {% for application_id in submitted_ids %}
+  <input type="hidden" name="application_id" value="{{ application_id }}">
+  {% endfor %}
+  <button type="submit">Re-score {{ eligible|length }} application{{ "" if eligible|length == 1 else "s" }}</button>
+</form>
+{% else %}
+<p class="note">None of the selected applications can be re-scored right now.</p>
+{% endif %}
+
+{% if skipped %}
+<h2>Not included</h2>
+<ul class="rule-preview-list">
+  {% for skip in skipped %}
+  <li>
+    <strong>{{ skip.application.title }}</strong>{% if skip.application.employer %} — {{ skip.application.employer }}{% endif %}
+    — {{ skip_reason_labels[skip.reason] }}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if not eligible and not skipped %}
+<a class="button" href="/applications">Back to applications</a>
+{% endif %}
+{% endblock %}

@@ -1302,3 +1302,550 @@ def test_rule_by_status_and_activity_can_be_combined_with_and(
     )
     assert "Stale Rejected Role" in response.text
     assert "Fresh Rejected Role" not in response.text
+
+
+# --------------------------------------------------------------------------
+# Bulk re-score and "retry everything that failed" -- owner feedback,
+# 2026-09-27, alongside bulk-archive and archive-by-rule above.
+# --------------------------------------------------------------------------
+
+
+def _user_id_for(engine: Engine, application_id: str) -> uuid.UUID:
+    from jfl_core.db.tables import applications as applications_table
+
+    with engine.begin() as conn:
+        return conn.execute(
+            select(applications_table.c.user_id).where(
+                applications_table.c.id == uuid.UUID(application_id)
+            )
+        ).scalar_one()
+
+
+def _mark_read_and_gave_a_requirement(engine: Engine, application_id: str) -> None:
+    """What a successful read leaves behind: `extraction_status="done"` and at
+    least one requirement -- the state a bulk re-score's preflight check
+    requires before it will queue anything.
+    """
+    from jfl_core.db.tables import applications as applications_table
+    from jfl_core.db.tables import job_requirements as job_requirements_table
+
+    with engine.begin() as conn:
+        row = conn.execute(
+            select(applications_table.c.job_id, applications_table.c.user_id).where(
+                applications_table.c.id == uuid.UUID(application_id)
+            )
+        ).one()
+        conn.execute(
+            job_requirements_table.insert().values(
+                id=uuid.uuid4(),
+                user_id=row.user_id,
+                job_id=row.job_id,
+                ordinal=0,
+                text="5+ years of Python",
+                necessity="essential",
+            )
+        )
+        conn.execute(
+            applications_table.update()
+            .where(applications_table.c.id == uuid.UUID(application_id))
+            .values(extraction_status="done")
+        )
+
+
+def _fail_extraction(engine: Engine, application_id: str, code: str = "model_error") -> None:
+    from jfl_core.db.tables import applications as applications_table
+
+    with engine.begin() as conn:
+        conn.execute(
+            applications_table.update()
+            .where(applications_table.c.id == uuid.UUID(application_id))
+            .values(extraction_status="failed", extraction_error_code=code)
+        )
+
+
+def _fail_score(engine: Engine, application_id: str, code: str = "model_error") -> None:
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        conn.execute(
+            scores_table.insert().values(
+                id=uuid.uuid4(),
+                user_id=_user_id_for(engine, application_id),
+                application_id=uuid.UUID(application_id),
+                status="failed",
+                error_code=code,
+            )
+        )
+
+
+def _pending_score(engine: Engine, application_id: str) -> None:
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        conn.execute(
+            scores_table.insert().values(
+                id=uuid.uuid4(),
+                user_id=_user_id_for(engine, application_id),
+                application_id=uuid.UUID(application_id),
+                status="pending",
+            )
+        )
+
+
+def _record_run(engine: Engine, user_id: uuid.UUID, *, stage: str, cost: str) -> None:
+    """A measured `runs` row, minimal enough for `recent_costs` to read back --
+    same shortcut the other tests here use for extraction and scores: write
+    the state directly rather than calling the model.
+    """
+    import datetime as dt
+
+    from jfl_core.db.tables import runs as runs_table
+
+    with engine.begin() as conn:
+        conn.execute(
+            runs_table.insert().values(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                trace_id=uuid.uuid4(),
+                component="generate",
+                stage=stage,
+                outcome="ok",
+                cost_usd=cost,
+                started_at=dt.datetime.now(dt.UTC),
+            )
+        )
+
+
+def test_rescore_preview_lists_the_eligible_applications_and_writes_nothing(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    a_id = _add_application(client, title="Ready To Re-score A")
+    b_id = _add_application(client, title="Ready To Re-score B")
+    _mark_read_and_gave_a_requirement(engine, a_id)
+    _mark_read_and_gave_a_requirement(engine, b_id)
+
+    response = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+    )
+    assert response.status_code == 200
+    assert "This will re-score 2 applications" in response.text
+    assert "Ready To Re-score A" in response.text
+    assert "Ready To Re-score B" in response.text
+
+    # Read-only: nothing was enqueued or written by the preview.
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        assert conn.execute(select(scores_table)).all() == []
+
+
+def test_rescore_preview_skips_an_application_already_scoring(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    ready_id = _add_application(client, title="Ready")
+    _mark_read_and_gave_a_requirement(engine, ready_id)
+    scoring_id = _add_application(client, title="Already Scoring")
+    _mark_read_and_gave_a_requirement(engine, scoring_id)
+    _pending_score(engine, scoring_id)
+
+    response = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [ready_id, scoring_id]},
+    )
+    assert "This will re-score 1 application," in response.text
+    assert "Already Scoring" in response.text
+    assert "already scoring" in response.text
+
+
+def test_rescore_preview_skips_an_application_whose_ad_has_not_been_read(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    ready_id = _add_application(client, title="Ready")
+    _mark_read_and_gave_a_requirement(engine, ready_id)
+    unread_id = _add_application(client, title="Unread Ad")
+
+    response = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [ready_id, unread_id]},
+    )
+    assert "This will re-score 1 application," in response.text
+    assert "Unread Ad" in response.text
+    assert "the ad has not been read yet" in response.text
+
+
+def test_rescore_confirm_enqueues_exactly_one_score_per_eligible_application(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    a_id = _add_application(client, title="Confirm A")
+    b_id = _add_application(client, title="Confirm B")
+    _mark_read_and_gave_a_requirement(engine, a_id)
+    _mark_read_and_gave_a_requirement(engine, b_id)
+
+    response = client.post(
+        "/applications/rescore/confirm",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?queued_rescores=2"
+
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        rows = conn.execute(select(scores_table)).all()
+    assert {str(r.application_id) for r in rows} == {a_id, b_id}
+    assert all(r.status == "pending" for r in rows)
+    score_tasks = _extraction_tasks_of_kind(engine, "score_application")
+    assert {t.payload["score_id"] for t in score_tasks} == {str(r.id) for r in rows}
+
+    page = client.get("/applications?queued_rescores=2").text
+    assert "Queued 2 re-scores." in page
+
+
+def _extraction_tasks_of_kind(engine: Engine, kind: str) -> list[Any]:
+    with engine.begin() as conn:
+        return list(conn.execute(select(tasks_table).where(tasks_table.c.kind == kind)).all())
+
+
+def test_rescore_confirm_recomputes_rather_than_trusting_a_stale_preview(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    a_id = _add_application(client, title="Still Eligible")
+    b_id = _add_application(client, title="Started Scoring Meanwhile")
+    _mark_read_and_gave_a_requirement(engine, a_id)
+    _mark_read_and_gave_a_requirement(engine, b_id)
+
+    preview = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+    ).text
+    assert "This will re-score 2 applications" in preview
+
+    # Between preview and confirm, a scoring run starts on one of them.
+    _pending_score(engine, b_id)
+
+    confirm = client.post(
+        "/applications/rescore/confirm",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+        follow_redirects=False,
+    )
+    assert confirm.headers["location"] == "/applications?queued_rescores=1"
+
+
+def test_rescore_ignores_ids_belonging_to_another_user(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    alice = sign_in(client, google, subs)
+    alice_id = _add_application(client, title="Alice's Role")
+    _mark_read_and_gave_a_requirement(engine, alice_id)
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    bob_id = _add_application(client, title="Bob's Role")
+    _mark_read_and_gave_a_requirement(engine, bob_id)
+
+    response = client.post(
+        "/applications/rescore/confirm",
+        data={"csrf_token": _csrf(client), "application_id": [alice_id, bob_id]},
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == "/applications?queued_rescores=1"
+
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        rows = conn.execute(select(scores_table)).all()
+    assert {str(r.application_id) for r in rows} == {bob_id}
+
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs, sub=alice.sub, email=alice.email)
+    with engine.begin() as conn:
+        assert (
+            conn.execute(
+                select(scores_table).where(scores_table.c.application_id == uuid.UUID(alice_id))
+            ).all()
+            == []
+        )
+
+
+def test_rescore_requires_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded Rescore")
+    _mark_read_and_gave_a_requirement(engine, app_id)
+
+    for path in ("/applications/rescore/preview", "/applications/rescore/confirm"):
+        response = client.post(path, data={"csrf_token": "wrong", "application_id": [app_id]})
+        assert response.status_code == 403
+
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        assert conn.execute(select(scores_table)).all() == []
+
+
+def test_rescore_with_nothing_selected_shows_the_same_message_as_bulk_archive(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    _add_application(client, title="Untouched")
+
+    response = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?bulk_error=none_selected"
+
+
+def test_rescore_cost_estimate_is_measured_from_the_users_own_runs(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Costed Role")
+    _mark_read_and_gave_a_requirement(engine, app_id)
+    _record_run(engine, _user_id_for(engine, app_id), stage="score", cost="0.30")
+
+    page = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [app_id]},
+    ).text
+    assert "$0.30" in page
+    assert "measured from your own recent runs" in page
+
+
+def test_rescore_cost_estimate_falls_back_with_no_history(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="No History Role")
+    _mark_read_and_gave_a_requirement(engine, app_id)
+
+    page = client.post(
+        "/applications/rescore/preview",
+        data={"csrf_token": _csrf(client), "application_id": [app_id]},
+    ).text
+    assert "$0.10-0.30 each" in page
+    assert "rough estimate" in page
+
+
+# -- retry everything that failed --------------------------------------------
+
+
+def test_retry_button_appears_only_once_something_has_failed(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="About To Fail")
+    # No key is stored in this suite, so a freshly pasted ad's read already
+    # fails with `no_api_key` by design (CLAUDE.md) -- start from a read that
+    # actually succeeded, so the "nothing has failed" half of this test means
+    # what it says.
+    _mark_read_and_gave_a_requirement(engine, app_id)
+
+    assert "Retry everything that failed" not in client.get("/applications").text
+
+    _fail_extraction(engine, app_id)
+    assert "Retry everything that failed (1)" in client.get("/applications").text
+
+
+def test_retry_preview_lists_failed_reads_and_failed_scores_in_separate_groups(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    read_failed_id = _add_application(client, title="Read Failed")
+    _fail_extraction(engine, read_failed_id, "model_error")
+    score_failed_id = _add_application(client, title="Score Failed")
+    _mark_read_and_gave_a_requirement(engine, score_failed_id)
+    _fail_score(engine, score_failed_id, "model_error")
+
+    response = client.post("/applications/retry-failed/preview", data={"csrf_token": _csrf(client)})
+    assert response.status_code == 200
+    assert "This will retry 2 applications" in response.text
+    assert "Read Failed" in response.text
+    assert "Score Failed" in response.text
+
+
+def test_retry_preview_excludes_description_unavailable_and_lists_it_separately(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    needs_paste_id = _add_application(client, title="Needs A Paste")
+    _fail_extraction(engine, needs_paste_id, "description_unavailable")
+    retryable_id = _add_application(client, title="Retryable Read")
+    _fail_extraction(engine, retryable_id, "model_error")
+
+    page = client.post(
+        "/applications/retry-failed/preview", data={"csrf_token": _csrf(client)}
+    ).text
+    assert "This will retry 1 application," in page
+    assert "Retryable Read" in page
+    assert "Needs A Paste" in page
+    assert "needs you to paste the ad" in page.lower() or "Needs you to paste the ad" in page
+
+
+def test_retry_preview_never_offers_a_successfully_read_application(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """Domain 3's standing rule, restated for scoring: retrying is only ever
+    for something that failed, never a quiet re-read of a good one."""
+    sign_in(client, google, subs)
+    fine_id = _add_application(client, title="Perfectly Fine")
+    _mark_read_and_gave_a_requirement(engine, fine_id)
+
+    response = client.post(
+        "/applications/retry-failed/preview",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    # Nothing at all failed, so the route bounces straight back.
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications"
+
+
+def test_retry_confirm_enqueues_a_read_retry_and_a_score_retry(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    read_failed_id = _add_application(client, title="Read Failed")
+    _fail_extraction(engine, read_failed_id, "model_error")
+    score_failed_id = _add_application(client, title="Score Failed")
+    _mark_read_and_gave_a_requirement(engine, score_failed_id)
+    _fail_score(engine, score_failed_id, "model_error")
+
+    response = client.post(
+        "/applications/retry-failed/confirm",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?queued_retries=2"
+
+    read_tasks = _extraction_tasks(engine, read_failed_id)
+    assert [t.kind for t in read_tasks] == ["extract_job_ad"]
+
+    score_tasks = _extraction_tasks_of_kind(engine, "score_application")
+    assert len(score_tasks) == 1
+
+    from jfl_core.db.tables import application_scores as scores_table
+
+    with engine.begin() as conn:
+        score_rows = conn.execute(
+            select(scores_table).where(scores_table.c.application_id == uuid.UUID(score_failed_id))
+        ).all()
+    # The old failed row, plus the freshly queued pending one.
+    assert len(score_rows) == 2
+    assert {r.status for r in score_rows} == {"failed", "pending"}
+
+
+def test_retry_confirm_retries_only_the_read_when_both_the_read_and_a_score_have_failed(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """A failed read wins: retrying it is enough, because a successful re-read
+    chains its own first score (`has_active`, not `has_any`). Firing a
+    separate score retry here as well would double the work.
+    """
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Both Failed")
+    _mark_read_and_gave_a_requirement(engine, app_id)
+    _fail_score(engine, app_id, "model_error")
+    _fail_extraction(engine, app_id, "model_error")
+
+    response = client.post(
+        "/applications/retry-failed/confirm",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == "/applications?queued_retries=1"
+
+    assert [t.kind for t in _extraction_tasks(engine, app_id)] == ["extract_job_ad"]
+    assert _extraction_tasks_of_kind(engine, "score_application") == []
+
+
+def test_retry_confirm_never_touches_an_archived_application(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Archived And Failed")
+    _fail_extraction(engine, app_id, "model_error")
+    client.post(f"/applications/{app_id}/archive", data={"csrf_token": _csrf(client)})
+
+    assert "Retry everything that failed" not in client.get("/applications").text
+
+    response = client.post(
+        "/applications/retry-failed/confirm",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == "/applications"
+    assert _extraction_tasks(engine, app_id) == []
+
+
+def test_retry_requires_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded Retry")
+    _fail_extraction(engine, app_id, "model_error")
+
+    for path in ("/applications/retry-failed/preview", "/applications/retry-failed/confirm"):
+        response = client.post(path, data={"csrf_token": "wrong"})
+        assert response.status_code == 403
+
+    assert _extraction_tasks(engine, app_id) == []
+
+
+def test_retry_ignores_another_users_failures(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    alice = sign_in(client, google, subs)
+    alice_id = _add_application(client, title="Alice's Failure")
+    _fail_extraction(engine, alice_id, "model_error")
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    bob_id = _add_application(client, title="Bob's Fine Role")
+    _mark_read_and_gave_a_requirement(engine, bob_id)
+
+    response = client.post(
+        "/applications/retry-failed/confirm",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    # Nothing has failed for Bob, so there is nothing to retry.
+    assert response.headers["location"] == "/applications"
+    assert _extraction_tasks(engine, alice_id) == []
+
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs, sub=alice.sub, email=alice.email)
+    # Alice's own failure is untouched by Bob's session -- her button still
+    # shows it, and pressing it now (as herself) is what would retry it.
+    assert "Retry everything that failed (1)" in client.get("/applications").text
+
+
+def test_retry_cost_estimate_sums_read_and_score_categories(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    read_failed_id = _add_application(client, title="Read Failed")
+    _fail_extraction(engine, read_failed_id, "model_error")
+    score_failed_id = _add_application(client, title="Score Failed")
+    _mark_read_and_gave_a_requirement(engine, score_failed_id)
+    _fail_score(engine, score_failed_id, "model_error")
+    user_id = _user_id_for(engine, read_failed_id)
+    _record_run(engine, user_id, stage="extract_requirements", cost="0.05")
+    _record_run(engine, user_id, stage="score", cost="0.20")
+
+    page = client.post(
+        "/applications/retry-failed/preview", data={"csrf_token": _csrf(client)}
+    ).text
+    assert "$0.25" in page
+    assert "measured from your own recent runs" in page

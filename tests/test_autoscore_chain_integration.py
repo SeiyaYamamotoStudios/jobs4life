@@ -328,6 +328,52 @@ def test_no_api_key_queues_no_score_and_the_read_says_why(
     assert score_tasks(engine, user) == []
 
 
+def test_a_failed_only_score_history_does_not_block_the_chained_score(
+    engine: Engine, user: uuid.UUID, master_key: MasterKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A score can fail with `no_requirements` before the ad has ever been read
+    successfully -- pressed early, or left over from a read that used to fail.
+    That dead row must not block the real first score once the read finally
+    succeeds: `PostgresScoreRepository.has_active` (pending or done), not
+    `has_any`, is what `_chain_first_score` checks -- a failed-only history
+    should not block the chained score. This is exactly the path the bulk
+    "retry everything that failed" action (`jfl_web.bulk_actions`) exercises:
+    it retries a failed read and relies on the chain to produce a fresh score
+    without a second, separate re-score press.
+    """
+    application_id = paste_application(engine, user)
+    run_worker(engine, user, master_key)  # no key stored: the read fails, no score queued
+    assert application_row(engine, application_id).extraction_error_code == "no_api_key"
+    assert score_rows(engine, user, application_id) == []
+
+    # A failed score, left over from before the read ever succeeded -- the same
+    # shape a stray early press of "Re-score" or a since-fixed scoring failure
+    # would leave behind.
+    with engine.begin() as conn:
+        score_repo = PostgresScoreRepository(conn, user)
+        dead_row = score_repo.create_pending(application_id)
+        score_repo.mark_failed(dead_row.id, "no_requirements")
+    assert len(score_rows(engine, user, application_id)) == 1
+
+    # The key is added and the read is retried -- what the single "Try reading
+    # it again" button, and the bulk retry action, both do.
+    store_key(engine, user, master_key)
+    with engine.begin() as conn:
+        assert PostgresApplicationRepository(conn, user).request_extraction(application_id)
+        PostgresTaskRepository(conn, user).enqueue(
+            kind=EXTRACT_JOB_AD, payload={"application_id": str(application_id)}
+        )
+    install_fake_client(monkeypatch, [EXTRACTED, COVERAGE, SCORE])
+    run_worker(engine, user, master_key)
+
+    assert application_row(engine, application_id).extraction_status == "done"
+    rows = score_rows(engine, user, application_id)
+    # The earlier dead row, still there (append-only), plus the freshly
+    # chained one that actually ran.
+    assert len(rows) == 2
+    assert {r.status for r in rows} == {"failed", "done"}
+
+
 def test_a_re_read_does_not_queue_a_second_score(
     engine: Engine, user: uuid.UUID, master_key: MasterKey, monkeypatch: pytest.MonkeyPatch
 ) -> None:

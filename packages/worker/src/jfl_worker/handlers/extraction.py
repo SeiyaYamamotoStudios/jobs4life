@@ -269,12 +269,20 @@ def _chain_first_score(
       * Same transaction as `finish_extraction`: the score row, its task and
         the `done` extraction commit together or not at all. A redelivered
         extraction finds `done` in `claim_extraction` and never reaches here.
-      * Only if the application has **no scoring run at all**. A re-read of the
-        ad (a button) or a run the user already started does not queue another
-        -- re-scoring after a re-read is the Re-score button, explicitly.
+      * Only if the application has no scoring run **that is not a dead end**
+        (`PostgresScoreRepository.has_active`: `pending` or `done`). A re-read
+        of the ad (a button) or a run the user already started does not queue
+        another -- re-scoring after a re-read is the Re-score button,
+        explicitly. A **failed-only** history does not count as "already
+        scored" here: a score can fail with `no_requirements` before the ad
+        has ever been read successfully (pressed early, or left over from a
+        read that used to fail), and that dead row must not block the real
+        first score once the read finally succeeds -- see the bulk "retry
+        everything that failed" action in `jfl_web.bulk_actions`, which is
+        exactly what surfaces this path.
       * Ordered after `finish_extraction`'s UPDATE, which row-locks the
         application: a second extraction racing this one blocks on that lock
-        until this commits, and its `has_any` (a fresh READ COMMITTED
+        until this commits, and its `has_active` (a fresh READ COMMITTED
         statement) then sees the row written here.
 
     No key, no chain: the key was needed to reach this point at all, so an
@@ -282,7 +290,7 @@ def _chain_first_score(
     page says so; nothing is queued behind it.
     """
     scores = PostgresScoreRepository(conn, ctx.user_id)
-    if scores.has_any(application_id):
+    if scores.has_active(application_id):
         return None
     row = scores.create_pending(application_id)
     PostgresTaskRepository(conn, ctx.user_id).enqueue(
