@@ -84,7 +84,9 @@
 
       {% if check.edited_unchecked or cvdoc.check_pending %}
       <h4>Your edits ({{ check.edited_unchecked | length }})</h4>
-      {% if cvdoc.check_pending %}
+      {% if cvdoc.check_pending and api_key_alert() %}
+      {% include "_key_waiting.html" %}
+      {% elif cvdoc.check_pending %}
       <p class="note" role="status">Checking your edits now. Reload the page in a minute to see the result.</p>
       {% endif %}
       <ul class="draft-sentences">

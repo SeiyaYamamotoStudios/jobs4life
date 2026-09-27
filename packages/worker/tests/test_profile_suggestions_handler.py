@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from jfl_core import model_api
 from jfl_generate.prompts import build_profile_suggestions_prompt
 from jfl_worker.handlers.profile_suggestions import _classify, _run_id
 from jfl_worker.registry import PermanentTaskError
@@ -55,6 +56,8 @@ def test_the_classifier_still_matches_what_the_call_actually_raises() -> None:
     from jfl_generate import profile_suggestions
 
     source = inspect.getsource(profile_suggestions)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "authentication_error",
         "permission_denied",

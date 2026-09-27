@@ -32,6 +32,7 @@ from jfl_core.fit import BREACH_CEILING
 from jfl_core.ids import content_hash, job_id, requirement_id
 from jfl_core.models import Job, JobRequirement
 from jfl_core.profile import Constraint, Objective, Profile
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository
 from jfl_core.storage.profile import PostgresProfileRepository
@@ -538,7 +539,7 @@ def test_an_unread_ad_fails_permanently_without_calling_anything(
 # --------------------------------------------------------------------------
 
 
-def test_a_rejected_key_fails_permanently(
+def test_a_rejected_key_parks_the_task_and_leaves_the_score_waiting(
     engine: Engine,
     user: uuid.UUID,
     master_key: MasterKey,
@@ -563,13 +564,22 @@ def test_a_rejected_key_fails_permanently(
     run_worker(engine, user, master_key, log_stream)
 
     task = task_row(engine, task_id)
-    assert task.status == "failed"
-    assert task.attempts == 1
-    # A closed-set code, never SDK text from a call made with the user's key.
+    # Parked, not failed: released with the attempt refunded, due again after
+    # the park delay, so it resumes by itself once the key works.
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert task.last_error == "parked: invalid_key"
+    # A category, never SDK text from a call made with the user's key.
     assert "invalid x-api-key" not in (task.last_error or "")
 
     row = score_row(engine, user, score_id)
-    assert row is not None and row.error_code == "api_key_rejected"
+    assert row is not None
+    assert row.status == "pending"
+    assert row.error_code is None
+    # And the user's key is marked, which is what puts the banner up.
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "invalid_key"
 
 
 def test_a_transient_failure_is_retried_rather_than_given_up_on(
@@ -738,3 +748,90 @@ def test_a_task_carrying_another_users_score_id_scores_nothing(
     finally:
         with engine.begin() as conn:
             conn.execute(delete(users_table).where(users_table.c.id == other))
+
+
+# --------------------------------------------------------------------------
+# Out of credits: the work waits, and resumes when the account does
+# --------------------------------------------------------------------------
+
+CREDIT_BODY: dict[str, Any] = {
+    "type": "error",
+    "error": {
+        "type": "invalid_request_error",
+        "message": (
+            "Your credit balance is too low to access the Anthropic API. "
+            "Please go to Plans & Billing to upgrade or purchase credits."
+        ),
+    },
+}
+
+
+def test_running_out_of_credits_parks_the_work_and_topping_up_resumes_it(
+    engine: Engine,
+    user: uuid.UUID,
+    master_key: MasterKey,
+    log_stream: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The owner's question, end to end: "If the calls fail due to lack of
+    credits, what then happens to the request waiting to happen?"
+
+    Before: three attempts in about three and a half minutes, then `failed`
+    for good, with "Scoring failed" on screen. Now: one refused call parks the
+    task and the same user's other queued model work with it, the key is
+    marked so every page says why, nothing is spent from the attempt budget --
+    and once the account accepts calls again, the same tasks finish.
+    """
+    import httpx2
+    from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
+
+    store_key(engine, user, master_key, FAKE_KEY)
+    first_app = add_application(engine, user)
+    record_coverage(engine, user, first_app)
+    first_score = add_pending_score(engine, user, first_app)
+    second_score = add_pending_score(engine, user, first_app)
+    first_task = enqueue(engine, user, first_score)
+    second_task = enqueue(engine, user, second_score)
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    calls = install_fake_client(
+        monkeypatch,
+        exception=anthropic.BadRequestError(
+            f"Error code: 400 - {CREDIT_BODY}",
+            response=httpx2.Response(400, request=request, json=CREDIT_BODY),
+            body=CREDIT_BODY,
+        ),
+    )
+    run_worker(engine, user, master_key, log_stream)
+
+    # One probe, not one per queued task: the second was parked with the first.
+    assert len(calls) == 1
+    for task_id in (first_task, second_task):
+        task = task_row(engine, task_id)
+        assert task.status == "pending"
+        assert task.attempts == 0
+        assert task.last_error == "parked: credits_exhausted"
+        assert task.scheduled_at > dt.datetime.now(dt.UTC) + dt.timedelta(minutes=14)
+    for score_id in (first_score, second_score):
+        row = score_row(engine, user, score_id)
+        assert row is not None and row.status == "pending" and row.error_code is None
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+        assert PostgresTaskRepository(conn, user).count_parked() == 2
+    assert health is not None and health.status == "credits_exhausted"
+    assert "credit balance" not in (task_row(engine, first_task).last_error or "")
+
+    # Topped up. "Retry now" (or the next probe) makes them due; they score.
+    with engine.begin() as conn:
+        assert PostgresTaskRepository(conn, user).resume_parked(now=dt.datetime.now(dt.UTC)) == 2
+    install_fake_client(monkeypatch, payloads=[SCORE_PAYLOAD, SCORE_PAYLOAD])
+    run_worker(engine, user, master_key, log_stream)
+
+    for task_id in (first_task, second_task):
+        assert task_row(engine, task_id).status == "succeeded"
+    for score_id in (first_score, second_score):
+        row = score_row(engine, user, score_id)
+        assert row is not None and row.status == "done"
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "ok"

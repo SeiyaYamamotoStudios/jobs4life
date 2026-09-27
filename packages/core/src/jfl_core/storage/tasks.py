@@ -56,6 +56,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import Connection
 
 from jfl_core.db.tables import tasks as tasks_table
+from jfl_core.model_api import PARKED_NOTE_PREFIX
 from jfl_core.models import ReclaimResult, Task, TaskStatus
 from jfl_core.storage.tenancy import TenantScopedRepository
 
@@ -242,6 +243,47 @@ class PostgresTaskRepository(TenantScopedRepository):
             .limit(1)
         ).first()
         return None if row is None else _task_from_row(row)
+
+    # -- parked work ------------------------------------------------------
+    #
+    # A task the worker parked because this user's Anthropic account refused
+    # the call is `pending`, scheduled some minutes out, with `last_error`
+    # starting `PARKED_NOTE_PREFIX` (see `jfl_core.model_api`). These two are
+    # the web's side of that: how many are waiting, and "try them now".
+
+    def count_parked(self) -> int:
+        """How many of this user's tasks are waiting on their API key."""
+        return int(
+            self._conn.execute(
+                select(func.count())
+                .select_from(tasks_table)
+                .where(
+                    tasks_table.c.user_id == self._user_id,
+                    tasks_table.c.status == "pending",
+                    tasks_table.c.last_error.startswith(PARKED_NOTE_PREFIX, autoescape=True),
+                )
+            ).scalar_one()
+        )
+
+    def resume_parked(self, *, now: dt.datetime) -> int:
+        """Make this user's parked tasks due now. Returns how many.
+
+        "Retry now" and saving a new key both land here. The note is left as
+        it is: if the account is still refused, the next attempt parks the
+        task again and rewrites it; if the call works, `mark_succeeded` leaves
+        `last_error` alone as the record of what happened, and the row is no
+        longer `pending` so it is no longer counted.
+        """
+        result = self._conn.execute(
+            update(tasks_table)
+            .where(
+                tasks_table.c.user_id == self._user_id,
+                tasks_table.c.status == "pending",
+                tasks_table.c.last_error.startswith(PARKED_NOTE_PREFIX, autoescape=True),
+            )
+            .values(scheduled_at=now)
+        )
+        return int(result.rowcount)
 
 
 class PostgresTaskQueue:
@@ -472,6 +514,42 @@ class PostgresTaskQueue:
             finished_at=None,
             last_error=note,
         )
+
+    def park_user_tasks(
+        self,
+        *,
+        user_id: uuid.UUID,
+        kinds: Sequence[str],
+        until: dt.datetime,
+        note: str,
+    ) -> int:
+        """Hold one user's other pending tasks of `kinds` until `until`.
+
+        When one task finds the user's Anthropic account refusing calls (credits
+        exhausted, key rejected), every other model-calling task queued for the
+        same user would find the same thing -- each one a probe call, each one
+        noise. So they wait with it, and the whole user's queue resumes together
+        on the next probe or when the user acts. Only rows due *sooner* than
+        `until` move; one already scheduled later keeps its own time.
+
+        Takes a `user_id`, which this class otherwise never does: it is the
+        worker acting on the user the claimed task already named, not a request
+        choosing a tenant, and like every method here it only moves rows between
+        queue states -- no content is read or returned.
+        """
+        if not kinds:
+            return 0
+        result = self._conn.execute(
+            update(tasks_table)
+            .where(
+                tasks_table.c.user_id == user_id,
+                tasks_table.c.status == "pending",
+                tasks_table.c.kind.in_(list(kinds)),
+                tasks_table.c.scheduled_at < until,
+            )
+            .values(scheduled_at=until, last_error=_clean_error(note))
+        )
+        return int(result.rowcount)
 
     def reclaim_stale(
         self,

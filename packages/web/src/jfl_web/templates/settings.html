@@ -25,7 +25,7 @@
     anyone with a copy of the database.
   </p>
 
-  {% if saved %}<p class="ok" role="status">Key saved.</p>{% endif %}
+  {% if saved %}<p class="ok" role="status">Key saved.{% if resumed %} {{ resumed }} waiting task{{ "s" if resumed != 1 }} will now run on it.{% endif %}</p>{% endif %}
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 
   {% if credential %}
@@ -36,6 +36,22 @@
     <dd>{% if credential.rotated_at %}{{ credential.rotated_at.strftime("%a %d %b %Y, %H:%M UTC") }}{% else %}never{% endif %}</dd>
     <dt>Last used</dt>
     <dd>{% if credential.last_used_at %}{{ credential.last_used_at.strftime("%a %d %b %Y, %H:%M UTC") }}{% else %}not yet{% endif %}</dd>
+    {#- What the last model call said about this key -- set by the worker, never
+        by this page (jfl_web.keyhealth). "Not checked yet" until something runs. -#}
+    <dt>Status</dt>
+    <dd>
+      {%- if not health -%}
+      not checked yet
+      {%- elif health.status == "ok" -%}
+      <span class="ok">working</span> <span class="note">(last checked {{ health.checked_at | humanize_dt }})</span>
+      {%- elif health.status == "credits_exhausted" -%}
+      <span class="error">credit balance run out</span> <span class="note">since {{ health.since | humanize_dt }} — <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer">top up at console.anthropic.com</a>; waiting work resumes on its own</span>
+      {%- elif health.status == "invalid_key" -%}
+      <span class="error">rejected by Anthropic</span> <span class="note">since {{ health.since | humanize_dt }} — replace it below; waiting work resumes when you do</span>
+      {%- else -%}
+      <span class="error">no access to the model</span> <span class="note">since {{ health.since | humanize_dt }} — replace it below; waiting work resumes when you do</span>
+      {%- endif -%}
+    </dd>
   </dl>
   {% else %}
   <p class="note">No key stored yet.</p>

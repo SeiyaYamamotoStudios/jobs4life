@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from jfl_core import model_api
 from jfl_worker.handlers.scoring import _classify, _score_id
 from jfl_worker.registry import PermanentTaskError
 
@@ -64,6 +65,8 @@ def test_the_classifier_still_matches_the_messages_the_generate_calls_raise() ->
     from jfl_generate import jobs, scoring
 
     scoring_source = inspect.getsource(scoring)
+    # The API-failure prefixes are built in one place now, for every call site.
+    scoring_source += inspect.getsource(model_api)
     for prefix in (
         "authentication_error",
         "permission_denied",

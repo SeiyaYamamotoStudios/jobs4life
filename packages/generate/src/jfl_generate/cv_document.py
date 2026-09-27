@@ -58,6 +58,7 @@ from anthropic.types import TextBlock
 from jfl_core.context import MODEL_EFFORT, RequestContext
 from jfl_core.cv_document import CvDocument, CvHeader, CvLine, CvRole, CvSkill
 from jfl_core.cv_skeleton import CvSkeleton, build_skeleton, name_from_title
+from jfl_core.model_api import ApiFailure, classify_api_error
 from jfl_core.models import RunRecord
 from jfl_core.profile import Capability
 from jfl_core.repositories import GroundingRepository, JobRepository, RunRepository
@@ -245,6 +246,7 @@ def generate_cv_document(
 
     outcome: Outcome = "ok"
     error_text: str | None = None
+    api_failure: ApiFailure | None = None
     response: anthropic.types.Message | None = None
     try:
         response = client.messages.create(
@@ -258,21 +260,13 @@ def generate_cv_document(
                 "effort": MODEL_EFFORT,
             },
         )
-    # Most-specific-first, as in generate_draft.
-    except anthropic.RateLimitError as e:
-        outcome, error_text = "error", f"rate_limited: {e}"
-    except anthropic.AuthenticationError as e:
-        outcome, error_text = "error", f"authentication_error: {e}"
-    except anthropic.PermissionDeniedError as e:
-        outcome, error_text = "error", f"permission_denied: {e}"
-    except anthropic.NotFoundError as e:
-        outcome, error_text = "error", f"not_found: {e}"
-    except anthropic.BadRequestError as e:
-        outcome, error_text = "error", f"bad_request: {e}"
-    except anthropic.APIStatusError as e:
-        outcome, error_text = "error", f"api_status_{e.status_code}: {e}"
-    except anthropic.APIConnectionError as e:
-        outcome, error_text = "error", f"connection_error: {e}"
+    # One classifier for every call site, and its answer travels on the
+    # exception rather than in a prefix someone downstream parses -- see
+    # jfl_core.model_api. Credits running out is a 400 like a malformed
+    # request, and only the classifier tells the two apart.
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+        api_failure = classify_api_error(e)
+        outcome, error_text = "error", f"{api_failure.label}: {e}"
 
     latency_ms = int((time.monotonic() - clock_start) * 1000)
 
@@ -306,7 +300,7 @@ def generate_cv_document(
 
     if response is None:
         record(outcome, error_text)
-        raise GenerateError(error_text)
+        raise GenerateError(error_text, api_failure=api_failure)
 
     usage = response.usage
     tokens_in = usage.input_tokens

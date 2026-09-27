@@ -25,6 +25,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
+from jfl_core.model_api import AccountBlock
 from jfl_core.models import Task
 from sqlalchemy.engine import Engine
 
@@ -84,6 +85,34 @@ class PermanentTaskError(Exception):
     """
 
 
+class AccountBlockedError(Exception):
+    """Raise from a handler when the user's Anthropic account refused the call
+    for an account-level reason: credits exhausted, key rejected, access denied
+    (`jfl_core.model_api.AccountBlock`).
+
+    Neither a retry nor a permanent failure. Nothing this worker does will make
+    the call succeed, and nothing is wrong with the task either: the moment the
+    user tops up or replaces the key, the same task works. So the runner
+    **parks** it -- released without spending an attempt, due again after
+    `WorkerSettings.park_delay` -- and pushes the same user's other queued
+    model work to the same time, so the queue resumes by itself once the
+    account accepts calls again. Before this existed, running out of credits
+    burned three attempts in about three and a half minutes and failed the work
+    permanently, with a message that said nothing about credits.
+
+    The handler must leave its own row in its waiting state (not `failed`)
+    before raising this, and record the block on the user's key health -- see
+    `jfl_worker.account.park_for_account`, which does both.
+
+    The message is built from the category alone; it reaches `last_error` only
+    through the runner's literal park note.
+    """
+
+    def __init__(self, block: AccountBlock) -> None:
+        super().__init__(f"account blocked: {block}")
+        self.block: AccountBlock = block
+
+
 # A handler returns whatever it wants recorded in the success log line -- counts,
 # ids, a cost. None means "nothing worth saying". It raises to fail; the worker
 # turns the exception into `last_error` and a retry -- or, for
@@ -123,6 +152,11 @@ class HandlerRegistry:
 
     def kinds(self) -> tuple[str, ...]:
         return tuple(sorted(self._specs))
+
+    def model_kinds(self) -> tuple[str, ...]:
+        """The kinds registered `calls_model=True` -- what parks together when
+        a user's account refuses calls."""
+        return tuple(sorted(spec.kind for spec in self._specs.values() if spec.calls_model))
 
     def runnable_kinds(self, *, allow_model_calls: bool) -> tuple[str, ...]:
         """The kinds this worker may claim right now.

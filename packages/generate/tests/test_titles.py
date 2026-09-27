@@ -312,6 +312,39 @@ def test_api_errors_record_an_error_run_and_raise_generate_error(
     assert run.tokens_in is None  # the call never returned usage
 
 
+def test_an_exhausted_credit_balance_travels_on_the_error_as_a_category(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one classifier (`jfl_core.model_api`), applied at the call site: a
+    400 that says the credit balance is too low is not a bad request, and the
+    worker must be able to tell without parsing the message."""
+    body = {
+        "type": "error",
+        "error": {
+            "type": "invalid_request_error",
+            "message": "Your credit balance is too low to access the Anthropic API.",
+        },
+    }
+    exc = anthropic.BadRequestError(
+        "Error code: 400",
+        response=httpx2.Response(
+            400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"), json=body
+        ),
+        body=body,
+    )
+    client = _FakeAnthropicClient(exception=exc)
+    _patch_client(monkeypatch, client)
+
+    runs = _FakeRunRepo()
+    with pytest.raises(GenerateError) as raised:
+        suggest_titles(_ctx(), runs, phrase="engineering manager", now=NOW)
+
+    assert raised.value.api_failure is not None
+    assert raised.value.api_failure.account_block == "credits_exhausted"
+    assert str(raised.value).startswith("credits_exhausted:")
+    assert (runs.recorded[0].error or "").startswith("credits_exhausted:")
+
+
 def test_refusal_records_a_refused_run_and_raises_generate_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -33,6 +33,10 @@
     <button type="submit">Score this application</button>
   </form>
 
+  {% elif score.status == "pending" and api_key_alert() %}
+  {# Parked by the worker: the user's Anthropic account is refusing calls. #}
+  {% include "_key_waiting.html" %}
+
   {% elif score.status == "pending" and score.error_code %}
   {# An attempt failed and the queue will try again. Not an error yet: the
      row only becomes `failed` when the attempts run out. #}

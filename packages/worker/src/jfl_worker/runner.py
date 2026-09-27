@@ -67,13 +67,19 @@ import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 
+from jfl_core.model_api import parked_note
 from jfl_core.models import Task
 from jfl_intake.scheduling import SCHEDULE_BOARD_CHECKS_KIND
 from sqlalchemy.engine import Engine
 
 from jfl_worker.log import LOGGER_NAME, log_event
 from jfl_worker.queue import EnqueuerScope, QueueScope
-from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
+from jfl_worker.registry import (
+    AccountBlockedError,
+    HandlerRegistry,
+    PermanentTaskError,
+    TaskContext,
+)
 from jfl_worker.settings import WorkerSettings, model_calls_disabled
 
 PURGE_SESSIONS_KIND = "purge_expired_sessions"
@@ -419,6 +425,9 @@ class Worker:
         )
 
     def _fail(self, task: Task, exc: Exception, *, elapsed_ms: int) -> None:
+        if isinstance(exc, AccountBlockedError):
+            self._park(task, exc, elapsed_ms=elapsed_ms)
+            return
         now = self._clock()
         # Type and message only. The traceback goes to the log line, not to the
         # database row, and neither carries the payload.
@@ -453,6 +462,45 @@ class Worker:
             permanent=permanent,
             retry_at=None if exhausted else retry_at.isoformat(),
             exc_info=True,
+        )
+
+    def _park(self, task: Task, exc: AccountBlockedError, *, elapsed_ms: int) -> None:
+        """The user's Anthropic account refused the call: out of credits, key
+        rejected, access denied. See `AccountBlockedError`.
+
+        Released, not failed -- the attempt is refunded, so a task can wait out
+        an empty balance for days without exhausting -- and due again after
+        `park_delay`, which is what makes the work resume by itself once the
+        user tops up. The same user's other queued model work moves to the same
+        time, so the next probe is one call rather than one per queued task.
+        The note is a literal plus the category; the SDK's text never reaches
+        `last_error`.
+        """
+        now = self._clock()
+        park_at = now + dt.timedelta(seconds=self._settings.park_delay)
+        note = parked_note(exc.block)
+        with self._queue_scope() as queue:
+            queue.release(task.id, retry_at=park_at, note=note)
+            others = queue.park_user_tasks(
+                user_id=task.user_id,
+                kinds=self._registry.model_kinds(),
+                until=park_at,
+                note=note,
+            )
+        log_event(
+            self._log,
+            # WARNING: expected operations for the service, but a user who
+            # cannot get anything done until they act.
+            logging.WARNING,
+            "task.parked",
+            task_id=str(task.id),
+            kind=task.kind,
+            user_id=str(task.user_id),
+            attempt=task.attempts,
+            duration_ms=elapsed_ms,
+            block=exc.block,
+            also_parked=others,
+            retry_at=park_at.isoformat(),
         )
 
     def _release(self, task: Task, now: dt.datetime, *, note: str) -> None:

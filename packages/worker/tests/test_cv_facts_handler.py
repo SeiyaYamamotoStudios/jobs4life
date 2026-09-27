@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from jfl_core import model_api
 from jfl_generate.prompts import build_cv_facts_prompt
 from jfl_worker.handlers.cv_facts import _classify, _sent_document_id
 from jfl_worker.registry import PermanentTaskError
@@ -57,6 +58,8 @@ def test_the_classifier_still_matches_the_messages_cv_facts_actually_raises() ->
     from jfl_generate import cv_facts
 
     source = inspect.getsource(cv_facts)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "no text found in the CV",
         "authentication_error",

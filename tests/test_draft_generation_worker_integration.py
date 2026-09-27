@@ -36,6 +36,7 @@ from jfl_core.db.tables import runs as runs_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.ids import requirement_id
 from jfl_core.models import JobRequirement, RequirementCoverage, RunRecord
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.postgres import PostgresJobRepository
@@ -522,7 +523,7 @@ def test_no_api_key_fails_once_and_is_never_retried(
     assert "draft generation failed permanently: no_api_key" in (task.last_error or "")
 
 
-def test_a_rejected_key_fails_permanently(
+def test_a_rejected_key_parks_the_task(
     engine: Engine,
     user: uuid.UUID,
     master_key: MasterKey,
@@ -546,8 +547,15 @@ def test_a_rejected_key_fails_permanently(
 
     task = get_task(engine, user, task_id)
     assert task is not None
-    assert task.status == "failed"
-    assert "draft generation failed permanently: api_key_rejected" in (task.last_error or "")
+    # Parked, not failed: released with the attempt refunded, due again after
+    # the park delay, so it resumes by itself once the key works.
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert task.last_error == "parked: invalid_key"
+    # And the user's key is marked, which is what puts the banner up.
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "invalid_key"
 
 
 def test_a_transient_failure_is_retried_rather_than_given_up_on(

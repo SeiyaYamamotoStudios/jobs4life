@@ -36,6 +36,7 @@ from jfl_core.db.tables import runs as runs_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
 from jfl_core.models import Job, JobRequirement
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.application_questions import PostgresApplicationQuestionRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
@@ -580,7 +581,7 @@ def test_a_refusal_on_the_gate_pass_fails_permanently(
     assert row.error_code == "model_refused"
 
 
-def test_a_rejected_key_fails_permanently(
+def test_a_rejected_key_parks_the_task_and_leaves_the_answer_waiting(
     engine: Engine,
     user: uuid.UUID,
     master_key: MasterKey,
@@ -603,13 +604,20 @@ def test_a_rejected_key_fails_permanently(
     run_worker(engine, user, master_key, log_stream)
 
     task = task_row(engine, task_id)
-    assert task.status == "failed"
-    assert task.attempts == 1
+    # Parked, not failed: released with the attempt refunded, due again after
+    # the park delay, so it resumes by itself once the key works.
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert task.last_error == "parked: invalid_key"
 
     row = answer_row(engine, user, answer_id)
     assert row is not None
-    assert row.status == "failed"
-    assert row.error_code == "api_key_rejected"
+    assert row.status == "pending"
+    assert row.error_code is None
+    # And the user's key is marked, which is what puts the banner up.
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "invalid_key"
 
 
 def test_a_transient_failure_is_retried_rather_than_given_up_on(

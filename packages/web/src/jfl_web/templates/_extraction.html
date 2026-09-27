@@ -39,6 +39,10 @@
   {% elif not extraction or not extraction.has_job_ad %}
   <p class="note">No job ad stored against this application.</p>
 
+  {% elif extraction.status == "pending" and api_key_alert() %}
+  {# Parked by the worker: the user's Anthropic account is refusing calls. #}
+  {% include "_key_waiting.html" %}
+
   {% elif extraction.status == "pending" and extraction.error_code %}
   {# A read attempt failed and the queue will try again -- not an error yet. #}
   <p class="note extraction-retrying" role="status">{{ extraction_retrying_note }}</p>

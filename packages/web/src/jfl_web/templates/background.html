@@ -74,7 +74,9 @@
           </td>
           <td class="col-updated">{{ cv.created_at | time_compact }}</td>
           <td class="col-reading">
-            {% if cv.extraction_status == "pending" %}
+            {% if cv.extraction_status == "pending" and api_key_alert() %}
+              <span class="status-badge status-failed">Waiting on your API key</span>
+            {% elif cv.extraction_status == "pending" %}
               <span class="status-badge">Queued</span>
             {% elif cv.extraction_status == "done" %}
               <span class="status-badge status-done">Read</span>

@@ -2091,3 +2091,37 @@ ui_section_states = Table(
     _ts("updated_at", nullable=False, server_default=text("now()")),
     UniqueConstraint("user_id", "section_key"),
 )
+
+# --------------------------------------------------------------------------
+# Anthropic key health: is this user's account accepting model calls? One row
+# per user, written by the worker when a model call is refused for an
+# account-level reason (credits exhausted, key rejected, access denied) and set
+# back to `ok` by the next successful call or by the user saving a new key.
+# It drives the banner on every signed-in page, so it is keyed by `user_id` and
+# read by primary key.
+#
+# A category only -- never the SDK's error text, which came back from a call
+# authenticated with the user's key. See `jfl_core.model_api`.
+# --------------------------------------------------------------------------
+
+_API_KEY_HEALTH_STATUSES = ("ok", "credits_exhausted", "invalid_key", "permission_denied")
+
+api_key_health = Table(
+    "api_key_health",
+    metadata,
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("status", Text, nullable=False),
+    # When `status` last changed -- "your credits ran out 3 hours ago".
+    _ts("since", nullable=False, server_default=func.now()),
+    # When a model call last reported on this key, either way.
+    _ts("checked_at", nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "status in ('" + "','".join(_API_KEY_HEALTH_STATUSES) + "')",
+        name="status",
+    ),
+)

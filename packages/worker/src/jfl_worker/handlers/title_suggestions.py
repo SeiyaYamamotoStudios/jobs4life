@@ -47,6 +47,7 @@ from jfl_generate.errors import GenerateError
 from jfl_generate.titles import suggest_titles as call_suggest_titles
 from sqlalchemy.engine import Engine
 
+from jfl_worker.account import blocked_by_account, note_model_call, park_for_account
 from jfl_worker.credentials import load_api_key
 from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
@@ -69,6 +70,8 @@ class _RunRecorder:
     def record(self, run: RunRecord) -> None:
         with self._engine.begin() as conn:
             PostgresRunRepository(conn).record(run)
+        # A call that went through clears a blocked key -- see jfl_worker.account.
+        note_model_call(self._engine, run)
 
 
 # Keys are the prefixes `jfl_generate.titles.suggest_titles` builds its
@@ -184,6 +187,11 @@ def _suggest_titles(ctx: TaskContext, *, master_key: MasterKey | None) -> Mappin
             now=ctx.now,
         )
     except GenerateError as exc:
+        if (block := blocked_by_account(exc)) is not None:
+            # The user's account refused the call (credits, key, access): the
+            # row stays waiting, not failed, and the runner parks the task
+            # until the account accepts calls again. See jfl_worker.account.
+            park_for_account(ctx, block)
         code, permanent = _classify(str(exc))
         _fail(ctx, suggestion_id, code)
         if permanent:

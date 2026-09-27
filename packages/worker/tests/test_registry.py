@@ -184,3 +184,12 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
             )
         )
     )
+
+
+def test_model_kinds_are_exactly_the_calls_model_registrations() -> None:
+    """What parks together when a user's account refuses calls."""
+    registry = HandlerRegistry()
+    registry.register("a_model_one", lambda ctx: None, calls_model=True)
+    registry.register("a_board_one", lambda ctx: None, calls_model=False)
+    registry.register("another_model_one", lambda ctx: None, calls_model=True)
+    assert registry.model_kinds() == ("a_model_one", "another_model_one")

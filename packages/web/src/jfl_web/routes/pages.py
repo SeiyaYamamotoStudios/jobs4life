@@ -11,6 +11,7 @@ than "the template happens not to print it".
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
@@ -23,7 +24,15 @@ from jfl_web.credentials import (
     store_api_key,
     validate_api_key,
 )
-from jfl_web.deps import CredentialRepoDep, CsrfDep, OptionalSessionDep, SessionDep, SettingsDep
+from jfl_web.deps import (
+    ApiKeyHealthRepoDep,
+    CredentialRepoDep,
+    CsrfDep,
+    OptionalSessionDep,
+    SessionDep,
+    SettingsDep,
+    TaskRepoDep,
+)
 from jfl_web.templating import render
 
 router = APIRouter()
@@ -48,6 +57,7 @@ def settings_page(
     session: SessionDep,
     credentials: CredentialRepoDep,
     settings: SettingsDep,
+    health: ApiKeyHealthRepoDep,
 ) -> Response:
     return render(
         request,
@@ -58,6 +68,8 @@ def settings_page(
             "credential": credentials.summary(ANTHROPIC_API_KEY),
             "validates": settings.validate_api_keys,
             "saved": "saved" in request.query_params,
+            "resumed": _resumed_count(request),
+            "health": health.get(),
         },
     )
 
@@ -68,6 +80,8 @@ def save_api_key(
     session: SessionDep,
     credentials: CredentialRepoDep,
     settings: SettingsDep,
+    health: ApiKeyHealthRepoDep,
+    tasks: TaskRepoDep,
     _csrf: CsrfDep,
     api_key: Annotated[str, Form()],
 ) -> Response:
@@ -89,10 +103,50 @@ def save_api_key(
                 "credential": credentials.summary(ANTHROPIC_API_KEY),
                 "validates": settings.validate_api_keys,
                 "error": str(exc),
+                "health": health.get(),
             },
             status_code=400,
         )
 
     store_api_key(credentials, settings.master_key, key)
+    # A new key is a fresh start: whatever the old one was refused for, this
+    # one has not been refused yet. Clear the alert and wake the work that was
+    # parked waiting on it, rather than leaving it to the next probe. If the
+    # new key is refused too, the first task to try it says so again.
+    now = dt.datetime.now(dt.UTC)
+    health.mark_ok(now=now)
+    resumed = tasks.resume_parked(now=now)
     # POST/redirect/GET: a refresh must not resubmit a credential.
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    return RedirectResponse(f"/settings?saved=1&resumed={resumed}", status_code=303)
+
+
+@router.post("/settings/api-key/retry")
+def retry_parked_work(
+    session: SessionDep,
+    tasks: TaskRepoDep,
+    _csrf: CsrfDep,
+    next_path: Annotated[str, Form(alias="next")] = "/settings",
+) -> Response:
+    """ "Retry now": make this user's parked tasks due immediately.
+
+    For the user who has just topped up and does not want to wait for the
+    worker's next probe. Only parked tasks move (see
+    `PostgresTaskRepository.resume_parked`), and only this user's. The health
+    row is left alone: whether the account works is for the next call to say,
+    not for a button press to assume.
+    """
+    tasks.resume_parked(now=dt.datetime.now(dt.UTC))
+    return RedirectResponse(_local_path(next_path), status_code=303)
+
+
+def _local_path(candidate: str) -> str:
+    """Only a path on this site -- never an absolute or scheme-relative URL,
+    which would make this form an open redirect."""
+    if candidate.startswith("/") and not candidate.startswith("//") and "\\" not in candidate:
+        return candidate
+    return "/settings"
+
+
+def _resumed_count(request: Request) -> int | None:
+    raw = request.query_params.get("resumed")
+    return int(raw) if raw is not None and raw.isdigit() else None

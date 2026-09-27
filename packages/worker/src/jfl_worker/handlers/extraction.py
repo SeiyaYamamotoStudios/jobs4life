@@ -63,6 +63,7 @@ from jfl_generate.errors import GenerateError
 from jfl_generate.jobs import add_job
 from sqlalchemy.engine import Connection, Engine
 
+from jfl_worker.account import blocked_by_account, note_model_call, park_for_account
 from jfl_worker.chain import queue_next
 from jfl_worker.credentials import load_api_key
 from jfl_worker.handlers.scoring import KIND as SCORE_APPLICATION_KIND
@@ -90,6 +91,8 @@ class _RunRecorder:
     def record(self, run: RunRecord) -> None:
         with self._engine.begin() as conn:
             PostgresRunRepository(conn).record(run)
+        # A call that went through clears a blocked key -- see jfl_worker.account.
+        note_model_call(self._engine, run)
 
 
 # How a failure from `extract_requirements` is classified. Keys are the prefixes
@@ -219,6 +222,11 @@ def _extract_job_ad(
             )
             scored = _chain_first_score(conn, ctx, application_id)
     except GenerateError as exc:
+        if (block := blocked_by_account(exc)) is not None:
+            # The user's account refused the call (credits, key, access): the
+            # row stays waiting, not failed, and the runner parks the task
+            # until the account accepts calls again. See jfl_worker.account.
+            park_for_account(ctx, block)
         code, permanent = _classify(str(exc))
         if permanent or ctx.is_last_attempt:
             _fail(ctx, application_id, code)

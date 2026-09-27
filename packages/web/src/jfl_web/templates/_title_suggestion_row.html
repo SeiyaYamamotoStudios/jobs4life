@@ -19,7 +19,10 @@
      hx-swap="outerHTML"
      {% endif %}>
 
-  {% if row.status == "pending" %}
+  {% if row.status == "pending" and api_key_alert() %}
+  {% include "_key_waiting.html" %}
+
+  {% elif row.status == "pending" %}
   <p class="note" role="status">Looking for titles adjacent to &ldquo;{{ phrase }}&rdquo;&hellip;</p>
 
   {% elif row.status == "failed" %}

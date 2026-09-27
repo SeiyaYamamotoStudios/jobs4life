@@ -18,7 +18,10 @@
      {% endif %}>
   <h3>{{ view.question.question_text }}</h3>
 
-  {% if view.latest and view.latest.status == "pending" %}
+  {% if view.latest and view.latest.status == "pending" and api_key_alert() %}
+  {% include "_key_waiting.html" %}
+
+  {% elif view.latest and view.latest.status == "pending" %}
   <p class="note" role="status">
     {% if view.latest.kind == "draft" %}Drafting an answer…{% else %}Checking your answer…{% endif %}
     this can take about half a minute.

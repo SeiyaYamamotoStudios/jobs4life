@@ -23,6 +23,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from jfl_core import model_api
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError, SecretUnsealError
 from jfl_core.models import Pushback
 from jfl_generate.errors import GenerateError
@@ -81,6 +82,8 @@ def test_the_classifier_still_matches_the_messages_classify_pushback_actually_ra
     from jfl_generate import pushback as pushback_module
 
     source = inspect.getsource(pushback_module)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "authentication_error",
         "permission_denied",

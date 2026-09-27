@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from jfl_core import model_api
 from jfl_worker.handlers.draft_generation import (
     _application_id,
     _classify,
@@ -77,6 +78,8 @@ def test_the_classifier_still_matches_the_messages_generate_draft_actually_raise
     from jfl_generate import draft
 
     source = inspect.getsource(draft) + inspect.getsource(gate)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "no job ",
         "job has no requirements to draft against",

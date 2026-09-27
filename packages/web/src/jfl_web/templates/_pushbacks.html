@@ -42,7 +42,11 @@
       {% else %}{{ c.change.before }} → <strong>{{ c.change.after }}</strong>{% if c.change.shown_as is not none %} (shown as {{ c.change.shown_as }}){% endif %}
       {% endif %}</p>
     {% endif %}
+    {% if c.state == "reading" and api_key_alert() %}
+    {% include "_key_waiting.html" %}
+    {% else %}
     {% for line in c.lines %}<p class="note">{{ line }}</p>{% endfor %}
+    {% endif %}
     {% if c.link %}<p class="note">{{ c.link[0] }} <a href="{{ c.link[2] }}">{{ c.link[1] }}</a>.</p>{% endif %}
 
     {% if c.rescore %}
