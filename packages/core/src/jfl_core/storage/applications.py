@@ -317,6 +317,67 @@ class PostgresApplicationRepository(TenantScopedRepository):
         """Restore an archived application to the owner's lists."""
         return self._set_archived(application_id, archived=False)
 
+    def archive_many(self, application_ids: Collection[uuid.UUID]) -> list[uuid.UUID]:
+        """Archive every one of these ids that belongs to this user, and silently
+        drop the rest. Bulk archiving is a selection the caller made, not a lookup:
+        an id belonging to someone else (or already gone) must never surface as an
+        error that would confirm it exists. Returns the ids actually archived, so
+        the caller can report a true count and build an undo list from exactly the
+        set that changed -- never from what was submitted.
+        """
+        if not application_ids:
+            return []
+        rows = self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id.in_(list(application_ids)),
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(
+                archived_at=func.now(),
+                # Same as `_set_archived`: archiving is housekeeping, not
+                # progress on the application, so it must not reorder the list.
+                updated_at=applications_table.c.updated_at,
+            )
+            .returning(applications_table.c.id)
+        ).all()
+        return [row.id for row in rows]
+
+    def unarchive_many(self, application_ids: Collection[uuid.UUID]) -> list[uuid.UUID]:
+        """The undo for `archive_many`, and also what a bulk restore from the
+        Archived view uses. Same tenancy and same "drop what is not ours" rule.
+        """
+        if not application_ids:
+            return []
+        rows = self._conn.execute(
+            update(applications_table)
+            .where(
+                applications_table.c.id.in_(list(application_ids)),
+                applications_table.c.user_id == self._user_id,
+            )
+            .values(archived_at=None, updated_at=applications_table.c.updated_at)
+            .returning(applications_table.c.id)
+        ).all()
+        return [row.id for row in rows]
+
+    def list_by_ids(self, application_ids: Collection[uuid.UUID]) -> list[Application]:
+        """These ids, filtered down to the ones that belong to this user. For
+        resolving a bulk action's redirect -- a list of ids carried in the
+        query string -- back into rows to show, the same "looked up, never
+        echoed" discipline as `_just_archived_title`: an id for someone else's
+        application, or one that no longer exists, is simply absent from the
+        result rather than an error.
+        """
+        if not application_ids:
+            return []
+        rows = self._conn.execute(
+            select(*_APPLICATION_COLUMNS).where(
+                applications_table.c.id.in_(list(application_ids)),
+                applications_table.c.user_id == self._user_id,
+            )
+        ).all()
+        return [_application_from_row(row) for row in rows]
+
     def _set_archived(self, application_id: uuid.UUID, *, archived: bool) -> Application:
         row = self._conn.execute(
             update(applications_table)

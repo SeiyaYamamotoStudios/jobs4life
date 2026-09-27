@@ -391,3 +391,117 @@ def test_a_user_cannot_archive_another_users_application(
         PostgresApplicationRepository(conn, bob).archive(theirs.id)
     with pytest.raises(ApplicationNotFoundError):
         PostgresApplicationRepository(conn, bob).unarchive(theirs.id)
+
+
+# --- bulk archive / unarchive / list_by_ids -- owner feedback, 2026-09-27 ---
+
+
+def test_archive_many_archives_only_the_given_ids(
+    repo: PostgresApplicationRepository,
+) -> None:
+    a = repo.create_application(title="A")
+    b = repo.create_application(title="B")
+    c = repo.create_application(title="C")
+
+    archived = repo.archive_many([a.id, b.id])
+
+    assert set(archived) == {a.id, b.id}
+    live_ids = {app.id for app in repo.list_applications()}
+    assert live_ids == {c.id}
+    archived_ids = {app.id for app in repo.list_applications(archived=True)}
+    assert archived_ids == {a.id, b.id}
+
+
+def test_archive_many_leaves_status_and_timeline_untouched(
+    repo: PostgresApplicationRepository,
+) -> None:
+    application = repo.create_application(title="Bulk archived")
+    repo.change_status(application.id, to_status="applied")
+    before = repo.get_application(application.id)
+    assert before is not None
+
+    repo.archive_many([application.id])
+
+    after = repo.get_application(application.id)
+    assert after is not None
+    assert after.application.status == "applied"
+    assert after.application.updated_at == before.application.updated_at
+    assert len(after.events) == len(before.events)
+
+
+def test_archive_many_with_an_empty_list_archives_nothing(
+    repo: PostgresApplicationRepository,
+) -> None:
+    live = repo.create_application(title="Untouched")
+    assert repo.archive_many([]) == []
+    assert [a.id for a in repo.list_applications()] == [live.id]
+
+
+def test_archive_many_silently_drops_ids_that_do_not_belong_to_this_user(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    """The tenancy acceptance criterion for the bulk route: ids for another
+    user's application are ignored rather than erroring, and that user's
+    application is untouched."""
+    alice_repo = PostgresApplicationRepository(conn, alice)
+    bob_repo = PostgresApplicationRepository(conn, bob)
+    alice_app = alice_repo.create_application(title="Alice's")
+    bob_app = bob_repo.create_application(title="Bob's")
+
+    archived = bob_repo.archive_many([alice_app.id, bob_app.id])
+
+    assert archived == [bob_app.id]
+    alice_fetched = alice_repo.get_application(alice_app.id)
+    assert alice_fetched is not None
+    assert alice_fetched.application.archived_at is None
+
+
+def test_unarchive_many_restores_only_the_given_ids(
+    repo: PostgresApplicationRepository,
+) -> None:
+    a = repo.create_application(title="A")
+    b = repo.create_application(title="B")
+    repo.archive_many([a.id, b.id])
+
+    restored = repo.unarchive_many([a.id])
+
+    assert restored == [a.id]
+    live_ids = {app.id for app in repo.list_applications()}
+    assert live_ids == {a.id}
+    archived_ids = {app.id for app in repo.list_applications(archived=True)}
+    assert archived_ids == {b.id}
+
+
+def test_unarchive_many_silently_drops_ids_that_do_not_belong_to_this_user(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    alice_repo = PostgresApplicationRepository(conn, alice)
+    bob_repo = PostgresApplicationRepository(conn, bob)
+    alice_app = alice_repo.create_application(title="Alice's")
+    alice_repo.archive(alice_app.id)
+
+    restored = bob_repo.unarchive_many([alice_app.id])
+
+    assert restored == []
+    alice_fetched = alice_repo.get_application(alice_app.id)
+    assert alice_fetched is not None
+    assert alice_fetched.application.archived_at is not None
+
+
+def test_list_by_ids_returns_only_this_users_matching_rows(
+    conn: Connection, alice: uuid.UUID, bob: uuid.UUID
+) -> None:
+    alice_repo = PostgresApplicationRepository(conn, alice)
+    bob_repo = PostgresApplicationRepository(conn, bob)
+    alice_app = alice_repo.create_application(title="Alice's")
+    bob_app = bob_repo.create_application(title="Bob's")
+
+    result = alice_repo.list_by_ids([alice_app.id, bob_app.id, uuid.uuid4()])
+
+    assert [a.id for a in result] == [alice_app.id]
+
+
+def test_list_by_ids_with_an_empty_list_returns_nothing(
+    repo: PostgresApplicationRepository,
+) -> None:
+    assert repo.list_by_ids([]) == []

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_score_cell.html" as score_cell_macros %}
+{% block title %}Archive by rule — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Archive by rule</h1>
+  <a href="/applications">Cancel</a>
+</div>
+
+{% if matched %}
+<p>
+  This will archive {{ matched|length }} application{{ "" if matched|length == 1 else "s" }}:
+</p>
+<ul class="rule-preview-list">
+  {% for application in matched %}
+  {% set rs = row_scores.get(application.id) if row_scores else none %}
+  <li>
+    <strong>{{ application.title }}</strong>{% if application.employer %} — {{ application.employer }}{% endif %}
+    <span class="status-badge status-{{ application.status }}">{{ application.status }}</span>
+    <span class="rule-preview-scores">
+      Could I get this: {{ score_cell_macros.score_cell(rs, rs.could_get if rs else none, application.extraction_status == "pending") }}
+      · Do I want this: {{ score_cell_macros.score_cell(rs, rs.want_it if rs else none, application.extraction_status == "pending") }}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+<form method="post" action="/applications/archive-by-rule/confirm">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  {#- The same rule, echoed back as hidden fields rather than a list of ids: the
+      confirm route re-runs the match itself against the live data, so nothing
+      here needs to be tamper-proof, and an application that changed between
+      preview and confirm is measured as it stands now, not as this page said. -#}
+  {% if rules.score %}
+  <input type="hidden" name="score_enabled" value="on">
+  <input type="hidden" name="score_axis" value="{{ rules.score.axis }}">
+  <input type="hidden" name="score_threshold" value="{{ rules.score.threshold }}">
+  {% endif %}
+  {% for status in rules.statuses %}
+  <input type="hidden" name="status" value="{{ status }}">
+  {% endfor %}
+  {% if rules.inactive_days is not none %}
+  <input type="hidden" name="activity_enabled" value="on">
+  <input type="hidden" name="activity_days" value="{{ rules.inactive_days }}">
+  {% endif %}
+  <button type="submit">Archive {{ matched|length }} application{{ "" if matched|length == 1 else "s" }}</button>
+</form>
+{% else %}
+<p class="note">No applications currently match these rules.</p>
+<a class="button" href="/applications">Back to applications</a>
+{% endif %}
+{% endblock %}

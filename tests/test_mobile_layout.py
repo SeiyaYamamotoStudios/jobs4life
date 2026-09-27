@@ -57,8 +57,10 @@ STACKED_TABLES = {
 SCROLLING_TABLE = "background.html"
 
 # Cells exempt from `data-label`, because what is in them names itself:
-# "Track as application", "Stop watching", "Restore", "Dismiss".
-SELF_NAMING_CELLS = ("col-actions", "col-track")
+# "Track as application", "Stop watching", "Restore", "Dismiss", and the
+# bulk-select checkbox (named per row by its own `aria-label`, same as the
+# per-row action buttons name themselves).
+SELF_NAMING_CELLS = ("col-actions", "col-track", "col-select")
 
 
 def _read(name: str) -> str:
