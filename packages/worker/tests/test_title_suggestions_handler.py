@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from jfl_core import model_api
 from jfl_generate.prompts import build_title_suggestion_prompt
 from jfl_worker.handlers.title_suggestions import _classify, _split_phrases, _suggestion_id
 from jfl_worker.registry import PermanentTaskError
@@ -54,6 +55,8 @@ def test_the_classifier_still_matches_the_messages_suggest_titles_actually_raise
     from jfl_generate import titles
 
     source = inspect.getsource(titles)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "authentication_error",
         "permission_denied",

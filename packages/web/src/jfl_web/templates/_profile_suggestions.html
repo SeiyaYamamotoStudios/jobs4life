@@ -59,7 +59,10 @@
   {% if suggestions and suggestions.run %}
   {% set run = suggestions.run %}
 
-  {% if run.status == "pending" %}
+  {% if run.status == "pending" and api_key_alert() %}
+  {% include "_key_waiting.html" %}
+
+  {% elif run.status == "pending" %}
   <p class="note" role="status">Reading your CVs… this takes a few seconds.</p>
 
   {% elif run.status == "failed" %}

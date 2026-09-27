@@ -402,6 +402,30 @@ def test_request_caches_the_corpus_and_keeps_sentences_out_of_the_cached_block(
     assert kwargs["output_config"]["effort"] == EFFORT
 
 
+def test_a_rejected_key_travels_on_the_gate_error_as_a_category(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate's automatic pass runs on the user's key too, so a rejected key
+    there must park the work exactly like a rejected key anywhere else."""
+    exc = anthropic.AuthenticationError(
+        "invalid x-api-key",
+        response=httpx2.Response(
+            401, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+        ),
+        body=None,
+    )
+    client = _FakeAnthropicClient(exception=exc)
+    _patch_client(monkeypatch, client)
+
+    with pytest.raises(GateError) as raised:
+        check_text(_ctx(), _FakeGroundingRepo([_span()]), _FakeRunRepo(), "Led the team.")
+
+    assert raised.value.api_failure is not None
+    assert raised.value.api_failure.account_block == "invalid_key"
+    # The prefix the handlers' own tables and the `runs` history are written in.
+    assert str(raised.value).startswith("authentication_error:")
+
+
 @pytest.mark.parametrize(
     "exception_factory",
     [

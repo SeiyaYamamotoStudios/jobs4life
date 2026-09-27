@@ -57,6 +57,7 @@ VALUE_SETS = [
     (models.ClassificationSource, tables._CLASSIFICATION_SOURCES),
     (models.CvDocumentStatus, tables._CV_DOCUMENT_STATUSES),
     (CvTemplate, tables._CV_TEMPLATES),
+    (models.ApiKeyHealthStatus, tables._API_KEY_HEALTH_STATUSES),
     # These three live beside the rule they belong to rather than in `models`:
     # `jfl_core.pushback` is what decides what a classification means, so the
     # closed set is declared where it is enforced.

@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from jfl_core import model_api
 from jfl_generate.extract import MAX_TOKENS
 from jfl_generate.prompts import build_extract_prompt
 from jfl_worker.handlers.extraction import _application_id, _classify
@@ -72,6 +73,8 @@ def test_the_classifier_still_matches_the_messages_extract_actually_raises() -> 
     from jfl_generate import extract
 
     source = inspect.getsource(extract)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "no text found in the job ad",
         "authentication_error",

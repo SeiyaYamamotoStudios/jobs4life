@@ -35,6 +35,7 @@ from jfl_core.db.tables import job_requirements as job_requirements_table
 from jfl_core.db.tables import runs as runs_table
 from jfl_core.db.tables import tasks as tasks_table
 from jfl_core.db.tables import users as users_table
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
@@ -463,14 +464,16 @@ def test_the_no_key_failure_reaches_the_page_with_a_link_to_settings(
 # --------------------------------------------------------------------------
 
 
-def test_a_rejected_key_fails_permanently_and_points_at_settings(
+def test_a_rejected_key_parks_the_task_and_leaves_extraction_waiting(
     engine: Engine,
     user: uuid.UUID,
     master_key: MasterKey,
     log_stream: io.StringIO,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A key Anthropic refuses is not going to be accepted on the third try."""
+    """A key Anthropic refuses is not going to be accepted on the third try --
+    but it will be once the user replaces it, so the work waits rather than
+    dying."""
     import httpx2
 
     store_key(engine, user, master_key, FAKE_KEY)
@@ -489,12 +492,19 @@ def test_a_rejected_key_fails_permanently_and_points_at_settings(
     run_worker(engine, user, master_key, log_stream)
 
     task = task_row(engine, task_id)
-    assert task.status == "failed"
-    assert task.attempts == 1
+    # Parked, not failed: released with the attempt refunded, due again after
+    # the park delay, so it resumes by itself once the key works.
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert task.last_error == "parked: invalid_key"
 
     row = application_row(engine, application_id)
-    assert row.extraction_status == "failed"
-    assert row.extraction_error_code == "api_key_rejected"
+    assert row.extraction_status == "pending"
+    assert row.extraction_error_code is None
+    # And the user's key is marked, which is what puts the banner up.
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "invalid_key"
 
 
 def test_a_transient_api_failure_is_retried_rather_than_given_up_on(
@@ -604,7 +614,7 @@ def test_a_failing_run_puts_no_key_in_the_error_it_records(
     run_worker(engine, user, master_key, log_stream)
 
     task = task_row(engine, task_id)
-    assert task.status == "failed"
+    assert task.status == "pending"  # parked -- see jfl_worker.account
     assert FAKE_KEY not in (task.last_error or "")
     assert FAKE_KEY not in log_stream.getvalue()
     assert FAKE_KEY not in str(dict(application_row(engine, application_id)._mapping))

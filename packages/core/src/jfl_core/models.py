@@ -1432,3 +1432,24 @@ class ScoreOverride(BaseModel):
     value: int | None = None
     note: str = ""
     created_at: dt.datetime
+
+
+# Whether the user's Anthropic account is currently accepting calls, as last
+# observed by the worker. `ok` plus the three account-level categories of
+# `jfl_core.model_api.AccountBlock` -- a category and nothing else: the SDK's
+# error text is never stored, because it came back from a call authenticated
+# with the user's key.
+ApiKeyHealthStatus = Literal["ok", "credits_exhausted", "invalid_key", "permission_denied"]
+
+
+class ApiKeyHealth(BaseModel):
+    """One user's key health. `since` is when the status last changed;
+    `checked_at` is when a model call last told us anything."""
+
+    status: ApiKeyHealthStatus
+    since: dt.datetime
+    checked_at: dt.datetime
+
+    @property
+    def blocked(self) -> bool:
+        return self.status != "ok"

@@ -1,0 +1,8 @@
+{#- One pending row that cannot move until the user's Anthropic account accepts
+    calls again. Included from each panel's pending branch, guarded by
+    `api_key_alert()`, so it reads the same everywhere. See jfl_web.keyhealth. -#}
+{% set key_alert = api_key_alert() %}
+{% if key_alert %}
+<p class="note key-waiting" role="status">{{ key_alert.row_note }}
+  <a href="{{ key_alert.action_url }}"{% if key_alert.external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ key_alert.action_label }}</a>.</p>
+{% endif %}

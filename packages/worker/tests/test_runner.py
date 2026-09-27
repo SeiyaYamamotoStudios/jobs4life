@@ -22,7 +22,12 @@ import pytest
 from jfl_core.models import ReclaimResult, Task
 from jfl_worker.log import configure_logging
 from jfl_worker.queue import TaskEnqueuer, TaskQueue
-from jfl_worker.registry import HandlerRegistry, PermanentTaskError, TaskContext
+from jfl_worker.registry import (
+    AccountBlockedError,
+    HandlerRegistry,
+    PermanentTaskError,
+    TaskContext,
+)
 from jfl_worker.runner import (
     BOARD_SCHEDULE_KIND,
     PURGE_FEED_MARKS_KIND,
@@ -120,6 +125,26 @@ class FakeQueue:
             started_at=None,
             last_error=note,
         )
+
+    def park_user_tasks(
+        self,
+        *,
+        user_id: uuid.UUID,
+        kinds: Sequence[str],
+        until: dt.datetime,
+        note: str,
+    ) -> int:
+        moved = 0
+        for task in list(self.tasks.values()):
+            if (
+                task.user_id == user_id
+                and task.status == "pending"
+                and task.kind in kinds
+                and task.scheduled_at < until
+            ):
+                self._update(task.id, scheduled_at=until, last_error=note)
+                moved += 1
+        return moved
 
     def reclaim_stale(
         self,
@@ -566,3 +591,84 @@ def test_a_failure_line_never_carries_the_payload(engine: Engine) -> None:
     output = stream.getvalue()
     assert "secret-looking" not in output
     assert "task.retrying" in output
+
+
+def test_an_account_block_parks_the_task_without_spending_an_attempt(engine: Engine) -> None:
+    """The owner's question: "if the calls fail due to lack of credits, what
+    happens to the request ... will it die and never recover?" It waits.
+
+    Released rather than failed, so the attempt is refunded and the task can sit
+    out an empty balance for as long as it takes; due again after `park_delay`,
+    so it resumes by itself once the user tops up.
+    """
+    queue = FakeQueue()
+    task = queue.add(make_task(kind="score", max_attempts=3))
+
+    def handler(ctx: TaskContext) -> Mapping[str, object]:
+        raise AccountBlockedError("credits_exhausted")
+
+    registry = HandlerRegistry()
+    registry.register("score", handler, calls_model=True)
+    settings = WorkerSettings(database_url="x", park_delay=900.0)
+    stream = io.StringIO()
+    worker, _ = build_worker(engine, registry, queue, settings=settings, stream=stream)
+
+    worker.run_once()
+
+    parked = queue.tasks[task.id]
+    assert parked.status == "pending"
+    assert parked.attempts == 0  # refunded
+    assert parked.scheduled_at == NOW + dt.timedelta(minutes=15)
+    assert parked.last_error == "parked: credits_exhausted"
+
+    line = json.loads(stream.getvalue().strip().splitlines()[-1])
+    assert line["event"] == "task.parked"
+    assert line["block"] == "credits_exhausted"
+
+    # However many times it is parked, it never runs out of attempts.
+    for n in range(1, 6):
+        later = NOW + dt.timedelta(minutes=15 * n)
+        worker, _ = build_worker(engine, registry, queue, settings=settings, clock=later)
+        assert worker.run_once() == 1
+        assert queue.tasks[task.id].status == "pending"
+        assert queue.tasks[task.id].attempts == 0
+
+
+def test_an_account_block_holds_the_same_users_other_model_work(engine: Engine) -> None:
+    """One probe per user, not one per queued task: the rest of that user's
+    model-calling queue moves to the park time with it. Another user's work,
+    the same user's non-model work, and anything already due later are left
+    alone.
+    """
+    queue = FakeQueue()
+    first = queue.add(make_task(kind="score"))
+    user = first.user_id
+    sibling = queue.add(make_task(kind="draft").model_copy(update={"user_id": user}))
+    later_one = queue.add(
+        make_task(kind="draft", scheduled_at=NOW + dt.timedelta(hours=2)).model_copy(
+            update={"user_id": user}
+        )
+    )
+    board = queue.add(make_task(kind="board").model_copy(update={"user_id": user}))
+    stranger = queue.add(make_task(kind="draft"))
+
+    def blocked(ctx: TaskContext) -> Mapping[str, object]:
+        raise AccountBlockedError("invalid_key")
+
+    registry = HandlerRegistry()
+    registry.register("score", blocked, calls_model=True)
+    registry.register("draft", blocked, calls_model=True)
+    registry.register("board", lambda ctx: None, calls_model=False)
+    settings = WorkerSettings(database_url="x", park_delay=900.0)
+    worker, _ = build_worker(engine, registry, queue, settings=settings)
+
+    worker.run_once()  # claims `first` (oldest), which parks
+
+    park_at = NOW + dt.timedelta(minutes=15)
+    assert queue.tasks[first.id].scheduled_at == park_at
+    assert queue.tasks[sibling.id].scheduled_at == park_at
+    assert queue.tasks[sibling.id].last_error == "parked: invalid_key"
+    assert queue.tasks[sibling.id].attempts == 0
+    assert queue.tasks[later_one.id].scheduled_at == NOW + dt.timedelta(hours=2)
+    assert queue.tasks[board.id].scheduled_at == NOW
+    assert queue.tasks[stranger.id].scheduled_at == NOW

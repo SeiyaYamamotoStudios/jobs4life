@@ -19,6 +19,7 @@ from jfl_core.storage.accounts import (
     PostgresSessionRepository,
     PostgresUserRepository,
 )
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.application_questions import PostgresApplicationQuestionRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.boards import PostgresBoardRepository
@@ -77,6 +78,10 @@ def db_conn(request: Request) -> Iterator[Connection]:
     a user row created but no session -- cannot survive an error.
     """
     with request.app.state.engine.begin() as conn:
+        # Left on the request for the one reader that is not a route argument:
+        # the API-key banner, rendered from `base.html` (see jfl_web.keyhealth),
+        # which must see what this request has just written.
+        request.state.db_conn = conn
         yield conn
 
 
@@ -134,6 +139,14 @@ def credential_repo(session: SessionDep, conn: ConnDep) -> PostgresCredentialRep
 
 
 CredentialRepoDep = Annotated[PostgresCredentialRepository, Depends(credential_repo)]
+
+
+def api_key_health_repo(session: SessionDep, conn: ConnDep) -> PostgresApiKeyHealthRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring."""
+    return PostgresApiKeyHealthRepository(conn, session.user.id)
+
+
+ApiKeyHealthRepoDep = Annotated[PostgresApiKeyHealthRepository, Depends(api_key_health_repo)]
 
 
 def application_repo(session: SessionDep, conn: ConnDep) -> PostgresApplicationRepository:

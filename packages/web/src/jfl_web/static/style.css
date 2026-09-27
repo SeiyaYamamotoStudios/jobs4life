@@ -100,6 +100,23 @@ a:hover { text-decoration-thickness: 2px; }
 .error { color: var(--bad); font-weight: 600; }
 .ok { color: var(--good); font-weight: 600; }
 
+/* The API-key alert (jfl_web.keyhealth): on every signed-in page while the
+   user's Anthropic account is refusing calls. Loud enough to be seen from any
+   screen, in the palette's own warning colour rather than a new one. */
+.key-alert {
+  border: 1px solid var(--bad);
+  border-left-width: 4px;
+  background: var(--panel);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+}
+.key-alert p { margin: 0 0 0.5rem; color: var(--ink); }
+.key-alert-actions { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; }
+.key-alert-actions form { margin: 0; }
+/* The per-row twin of the banner: "waiting on your API key" beside a pending
+   row, instead of a spinner that will not move. */
+.key-waiting { color: var(--bad); }
+
 .facts {
   display: grid;
   grid-template-columns: max-content 1fr;

@@ -24,7 +24,7 @@
       </span>
       <span class="step-label">{{ step.label }}</span>
       <span class="step-state">
-        {%- if step.state == "done" %}done{% elif step.state == "running" %}working on it{% elif step.state == "failed" %}stopped here{% elif step.state == "blocked" %}needs the ad{% elif step.state == "current" %}next{% else %}after that{% endif -%}
+        {%- if step.state == "done" %}done{% elif step.state == "running" and api_key_alert() %}waiting on your API key{% elif step.state == "running" %}working on it{% elif step.state == "failed" %}stopped here{% elif step.state == "blocked" %}needs the ad{% elif step.state == "current" %}next{% else %}after that{% endif -%}
       </span>
       {% if step.state != "done" %}<span class="step-cost">{{ step.cost }}</span>{% endif %}
       {% if step.detail %}

@@ -62,6 +62,7 @@ DEFAULT_RETRY_BASE = 30.0
 DEFAULT_RETRY_FACTOR = 2.0
 DEFAULT_RETRY_CAP = 10 * 60.0
 DEFAULT_KILL_SWITCH_RETRY_DELAY = 60.0
+DEFAULT_PARK_DELAY = 15 * 60.0
 DEFAULT_PURGE_INTERVAL = 60 * 60.0
 DEFAULT_FEED_MARK_PURGE_INTERVAL = 60 * 60.0
 DEFAULT_BOARD_SCHEDULE_INTERVAL = 15 * 60.0
@@ -123,6 +124,16 @@ class WorkerSettings:
     # again. It will not be claimed at all while the switch is on -- the claim
     # filters by kind -- so this only matters for the switch flipping mid-flight.
     kill_switch_retry_delay: float = DEFAULT_KILL_SWITCH_RETRY_DELAY
+
+    # How long a task waits when the user's Anthropic account refused the call
+    # for an account-level reason -- credits exhausted, key rejected, access
+    # denied (`jfl_core.model_api.AccountBlock`). The task is released without
+    # spending an attempt and probes again after this, so work resumes by
+    # itself within this long of the user topping up. Fifteen minutes: a
+    # refused call is not billed, but a probe every poll would be noise in the
+    # log and the `runs` table, and the user who wants it sooner has "Retry
+    # now" (and saving a new key does the same).
+    park_delay: float = DEFAULT_PARK_DELAY
 
     # How often the recurring session purge is enqueued. Hourly: expired
     # sessions are already refused at lookup (`expires_at <= now`), so purging
@@ -198,6 +209,7 @@ class WorkerSettings:
             board_schedule_interval=_seconds(
                 source, "JFL_WORKER_BOARD_SCHEDULE_INTERVAL", DEFAULT_BOARD_SCHEDULE_INTERVAL
             ),
+            park_delay=_seconds(source, "JFL_WORKER_PARK_DELAY", DEFAULT_PARK_DELAY),
         )
 
     def retry_delay(self, attempts: int) -> dt.timedelta:

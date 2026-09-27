@@ -43,6 +43,15 @@ class TaskQueue(Protocol):
         self, task_id: uuid.UUID, *, retry_at: dt.datetime, note: str | None = None
     ) -> Task: ...
 
+    def park_user_tasks(
+        self,
+        *,
+        user_id: uuid.UUID,
+        kinds: Sequence[str],
+        until: dt.datetime,
+        note: str,
+    ) -> int: ...
+
     def reclaim_stale(
         self,
         *,

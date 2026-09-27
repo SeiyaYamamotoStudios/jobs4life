@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from jfl_core import model_api
 from jfl_worker.handlers.coverage_generation import _classify, _job_id, _permanent
 from jfl_worker.registry import PermanentTaskError
 
@@ -55,6 +56,8 @@ def test_the_classifier_still_matches_the_messages_run_coverage_actually_raises(
     from jfl_generate import coverage, jobs
 
     source = inspect.getsource(jobs) + inspect.getsource(coverage)
+    # The API-failure prefixes are built in one place now, for every call site.
+    source += inspect.getsource(model_api)
     for prefix in (
         "no job ",
         "job has no requirements to check",

@@ -41,6 +41,27 @@
     {% endif %}
   </header>
   <main>
+    {#- The owner's feedback: nothing said when the credits ran out. When the
+        worker has seen this user's Anthropic account refuse a call, every page
+        says so, says what is waiting, and says what fixes it. See
+        jfl_web.keyhealth. -#}
+    {% set key_alert = api_key_alert() if user else none %}
+    {% if key_alert %}
+    <div class="key-alert" role="alert">
+      <p><strong>{{ key_alert.headline }}</strong> {{ key_alert.detail }}
+        <span class="note">Since {{ key_alert.since | humanize_dt }}.</span></p>
+      <div class="key-alert-actions">
+        <a href="{{ key_alert.action_url }}"{% if key_alert.external %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ key_alert.action_label }}</a>
+        {% if key_alert.waiting %}
+        <form method="post" action="/settings/api-key/retry">
+          <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+          <input type="hidden" name="next" value="{{ request.url.path }}">
+          <button type="submit">Retry now</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

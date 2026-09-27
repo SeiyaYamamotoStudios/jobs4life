@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from jfl_core import model_api
 from jfl_worker.handlers.application_questions import _answer_id, _classify
 from jfl_worker.registry import PermanentTaskError
 
@@ -63,6 +64,8 @@ def test_the_classifier_still_matches_the_messages_answers_and_gate_actually_rai
     from jfl_generate import answers as answers_module
 
     answers_source = inspect.getsource(answers_module)
+    # The API-failure prefixes are built in one place now, for every call site.
+    answers_source += inspect.getsource(model_api)
     for prefix in ("authentication_error", "permission_denied", "bad_request"):
         assert prefix in answers_source, f"answers.py no longer says {prefix!r}"
 

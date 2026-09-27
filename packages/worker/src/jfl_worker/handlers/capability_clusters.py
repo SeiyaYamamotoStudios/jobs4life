@@ -55,6 +55,7 @@ from jfl_generate.capabilities import unplaced_facts
 from jfl_generate.errors import GenerateError
 from sqlalchemy.engine import Engine
 
+from jfl_worker.account import blocked_by_account, note_model_call, park_for_account
 from jfl_worker.credentials import load_api_key
 from jfl_worker.registry import Handler, PermanentTaskError, TaskContext
 
@@ -78,6 +79,8 @@ class _RunRecorder:
     def record(self, run: RunRecord) -> None:
         with self._engine.begin() as conn:
             PostgresRunRepository(conn).record(run)
+        # A call that went through clears a blocked key -- see jfl_worker.account.
+        note_model_call(self._engine, run)
 
 
 # Keys are the prefixes `jfl_generate.capabilities` builds its `GenerateError`
@@ -187,6 +190,11 @@ def _cluster_capabilities(
     try:
         proposals = call_cluster_capabilities(request, recorder, facts=sending, now=ctx.now)
     except GenerateError as exc:
+        if (block := blocked_by_account(exc)) is not None:
+            # The user's account refused the call (credits, key, access): the
+            # row stays waiting, not failed, and the runner parks the task
+            # until the account accepts calls again. See jfl_worker.account.
+            park_for_account(ctx, block)
         code, permanent = _classify(str(exc))
         _fail(ctx, cluster_id, code)
         if permanent:

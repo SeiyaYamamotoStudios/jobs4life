@@ -24,6 +24,7 @@ from typing import Literal
 import anthropic
 from anthropic.types import TextBlock
 from jfl_core.context import RequestContext
+from jfl_core.model_api import ApiFailure, classify_api_error
 from jfl_core.models import RunRecord, SuggestedTitle
 from jfl_core.repositories import RunRepository
 from jfl_gate.pricing import compute_cost_usd
@@ -87,6 +88,7 @@ def suggest_titles(
 
     outcome: Outcome = "ok"
     error_text: str | None = None
+    api_failure: ApiFailure | None = None
     response: anthropic.types.Message | None = None
     try:
         response = client.messages.create(
@@ -104,22 +106,13 @@ def suggest_titles(
                 "format": {"type": "json_schema", "schema": TITLE_SUGGESTIONS_OUTPUT_SCHEMA}
             },
         )
-    # Most-specific-first: RateLimitError/AuthenticationError/etc. are themselves
-    # APIStatusError subclasses, so the broad catch must come last.
-    except anthropic.RateLimitError as e:
-        outcome, error_text = "error", f"rate_limited: {e}"
-    except anthropic.AuthenticationError as e:
-        outcome, error_text = "error", f"authentication_error: {e}"
-    except anthropic.PermissionDeniedError as e:
-        outcome, error_text = "error", f"permission_denied: {e}"
-    except anthropic.NotFoundError as e:
-        outcome, error_text = "error", f"not_found: {e}"
-    except anthropic.BadRequestError as e:
-        outcome, error_text = "error", f"bad_request: {e}"
-    except anthropic.APIStatusError as e:
-        outcome, error_text = "error", f"api_status_{e.status_code}: {e}"
-    except anthropic.APIConnectionError as e:
-        outcome, error_text = "error", f"connection_error: {e}"
+    # One classifier for every call site, and its answer travels on the
+    # exception rather than in a prefix someone downstream parses -- see
+    # jfl_core.model_api. Credits running out is a 400 like a malformed
+    # request, and only the classifier tells the two apart.
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+        api_failure = classify_api_error(e)
+        outcome, error_text = "error", f"{api_failure.label}: {e}"
 
     latency_ms = int((time.monotonic() - clock_start) * 1000)
 
@@ -153,7 +146,7 @@ def suggest_titles(
 
     if response is None:
         record(outcome, error_text)
-        raise GenerateError(error_text)
+        raise GenerateError(error_text, api_failure=api_failure)
 
     usage = response.usage
     tokens_in = usage.input_tokens

@@ -40,6 +40,7 @@ from jfl_core.db.tables import users as users_table
 from jfl_core.ids import requirement_id
 from jfl_core.models import JobRequirement, RequirementCoverage, RunRecord
 from jfl_core.profile import CvHeaderLink, CvHeaderSettings, Profile
+from jfl_core.storage.api_key_health import PostgresApiKeyHealthRepository
 from jfl_core.storage.applications import PostgresApplicationRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRepository
 from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
@@ -440,7 +441,7 @@ def test_missing_coverage_fails_permanently_before_any_call(
     assert "draft generation failed permanently: no_coverage" in (task.last_error or "")
 
 
-def test_a_rejected_key_fails_permanently_with_one_runs_row(
+def test_a_rejected_key_parks_the_task_with_one_runs_row(
     engine: Engine, user: uuid.UUID, master_key: MasterKey, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store_key(engine, user, master_key)
@@ -457,9 +458,16 @@ def test_a_rejected_key_fails_permanently_with_one_runs_row(
     run_worker(engine, user, master_key)
 
     task = get_task(engine, user, task_id)
-    assert task.status == "failed"
-    assert "draft generation failed permanently: api_key_rejected" in (task.last_error or "")
+    # Parked, not failed: released with the attempt refunded, due again after
+    # the park delay, so it resumes by itself once the key works.
+    assert task.status == "pending"
+    assert task.attempts == 0
+    assert task.last_error == "parked: invalid_key"
     assert FAKE_KEY not in (task.last_error or "")
+    # And the user's key is marked, which is what puts the banner up.
+    with engine.begin() as conn:
+        health = PostgresApiKeyHealthRepository(conn, user).get()
+    assert health is not None and health.status == "invalid_key"
     with engine.begin() as conn:
         runs = conn.execute(select(runs_table).where(runs_table.c.trace_id == task_id)).all()
     assert [(r.stage, r.outcome) for r in runs] == [("cv_document", "error")]

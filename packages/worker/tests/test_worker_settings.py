@@ -67,6 +67,14 @@ def test_from_env_takes_defaults_and_overrides() -> None:
     assert settings.model == DEFAULT_MODEL
 
 
+def test_the_park_delay_defaults_to_fifteen_minutes_and_is_configurable() -> None:
+    """How long work waits on a refused account before probing again -- see
+    `jfl_worker.registry.AccountBlockedError`."""
+    base = {"JFL_DATABASE_URL": "postgresql+psycopg://x/y", "JFL_MASTER_KEY": _MASTER_KEY}
+    assert WorkerSettings.from_env(base).park_delay == 15 * 60.0
+    assert WorkerSettings.from_env({**base, "JFL_WORKER_PARK_DELAY": "120"}).park_delay == 120.0
+
+
 def test_the_model_is_read_from_the_environment() -> None:
     settings = WorkerSettings.from_env(
         {

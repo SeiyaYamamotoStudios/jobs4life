@@ -27,6 +27,7 @@ from jfl_web.drafts import (
     usd,
 )
 from jfl_web.jobfilter import workplace_display
+from jfl_web.keyhealth import api_key_alert
 from jfl_web.timeformat import humanize, time_compact
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -95,6 +96,10 @@ def _asset_url(name: str) -> str:
 # Computed once at import: the files do not change while the process runs, and
 # the container is rebuilt for every deploy.
 _templates.env.globals["asset_url"] = _asset_url
+# `{% set key_alert = api_key_alert() %}` -> a KeyAlert when this user's
+# Anthropic account is refusing calls, else None. One cached lookup per request;
+# see jfl_web.keyhealth.
+_templates.env.globals["api_key_alert"] = api_key_alert
 
 
 def render(

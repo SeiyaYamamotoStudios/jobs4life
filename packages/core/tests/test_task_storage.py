@@ -118,5 +118,8 @@ def test_the_worker_side_queue_is_deliberately_outside_the_tenancy_scheme() -> N
         "mark_failed",
         "fail_permanently",
         "release",
+        # Moves one user's pending model work to a park time -- still only a
+        # state transition, on the user the claimed task already named.
+        "park_user_tasks",
         "reclaim_stale",
     }
