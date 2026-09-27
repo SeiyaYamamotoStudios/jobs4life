@@ -299,6 +299,55 @@ table.applications .row-archive-toggle:hover { border-color: var(--muted); color
 table.applications .row-archive[open] .row-archive-toggle { color: var(--muted); }
 table.applications .row-archive button.secondary { padding: 0.3rem 0.7rem; font-size: 0.85rem; }
 
+/* Bulk select and bulk archive/restore -- owner feedback, 2026-09-27. The
+   checkbox column carries no visible header text (`col-select-head` holds
+   only a `.visually-hidden` label, same convention as `col-actions-head`);
+   the real "select all" control lives in the toolbar above the table so it
+   stays reachable when the header turns into a row of sort links on a
+   phone. */
+table.applications th.col-select-head,
+table.applications td.col-select { width: 1.6rem; text-align: center; }
+table.applications td.col-select input[type="checkbox"] { margin: 0; }
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+.select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* "Archived N. Undo" -- the bulk equivalent of the single-archive banner
+   above it, with its own undo form inline rather than nested in the <p>
+   (a <form> is not allowed inside <p> content). */
+.bulk-archived-banner { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+.bulk-archived-banner p { margin: 0; }
+.inline-form { display: inline; margin: 0; }
+
+/* "Archive every application where..." -- a plain <details>, styled like
+   `.confirm-remove` above rather than given its own look. */
+details.rule-archive { margin: 0.75rem 0 1rem; }
+details.rule-archive summary { cursor: pointer; color: var(--muted); }
+details.rule-archive[open] summary { margin-bottom: 0.5rem; color: var(--ink); }
+details.rule-archive fieldset { margin: 0 0 0.75rem; }
+details.rule-archive input[type="number"] { width: 4.5rem; display: inline-block; }
+
+/* The preview list: company, title, status and both scores per matched row,
+   never a combined verdict. */
+ul.rule-preview-list { list-style: none; padding: 0; margin: 0 0 1rem; }
+ul.rule-preview-list li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.rule-preview-scores { display: block; color: var(--muted); font-size: 0.9rem; margin-top: 0.2rem; }
+
 /* What adding or tracking sets off, said before it is pressed. */
 .add-cost { margin-top: 1rem; }
 .add-cost-no-key { color: var(--ink); }
@@ -1512,7 +1561,8 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
     font-size: 0.8rem;
   }
   table.applications thead th { display: inline; padding: 0; border: none; }
-  table.applications thead th.col-actions-head { display: none; }
+  table.applications thead th.col-actions-head,
+  table.applications thead th.col-select-head { display: none; }
   table.applications thead .col-score-head { display: inline; max-width: none; }
 
   table.applications tbody,
@@ -1555,6 +1605,21 @@ nav { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
 
   /* The status picker is the whole point of an applications row. */
   table.applications td select { width: 100%; }
+
+  /* The select checkbox: a bigger tap target than the browser default, and
+     its own line at the top of the card rather than squeezed against the
+     status badge. */
+  table.applications td.col-select {
+    flex: 1 1 100%;
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  table.applications td.col-select input[type="checkbox"] {
+    width: 1.4rem;
+    height: 1.4rem;
+    vertical-align: middle;
+  }
 
   /* The two scores sit side by side on the card, each under its own label --
      two halves of one line, never merged into one value. */

@@ -33,6 +33,26 @@ Screens:
   POST /applications/{id}/archive    -- soft delete: off the lists, status and
                                          timeline untouched, reversible
   POST /applications/{id}/unarchive  -- restore it
+  POST /applications/bulk-archive    -- archive every checked row at once
+  POST /applications/bulk-unarchive  -- the undo for the above, and what the
+                                         Archived view's own bulk restore uses
+  POST /applications/archive-by-rule/preview  -- "this will archive N" -- reads
+                                         only, never writes
+  POST /applications/archive-by-rule/confirm  -- re-runs the same rule and
+                                         archives what it matches
+
+Bulk archiving (owner feedback, 2026-09-27) adds a second way onto the same
+`archive_many`/`unarchive_many` repository methods the per-row buttons already
+use: pick rows by hand, or describe them with a rule ("scored below 6",
+"rejected", "no activity in 30 days" -- see `jfl_web.archive_rules`). Both
+paths end at the same place, so both get the same undo: the redirect carries
+the ids that actually changed, resolved back through this user's own
+repository rather than trusted from the request, and the banner's "Undo"
+button is `bulk-unarchive` with exactly that set of ids as hidden fields.
+Rule matching never trusts an id list either -- `archive-by-rule/confirm`
+re-parses the same rule fields the preview showed and recomputes the match at
+write time, so there is nothing to tamper with between "this will archive"
+and the button that does it.
 
 `POST /applications/{id}/status` answers two different callers with one route
 rather than two: the **list** screen calls it over htmx (`HX-Request` header
@@ -45,6 +65,7 @@ about what a status change does, two response shapes.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Annotated, get_args
 from urllib.parse import urlencode
@@ -52,6 +73,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.models import (
+    Application,
     ApplicationDetail,
     ApplicationExtraction,
     ApplicationScore,
@@ -63,6 +85,15 @@ from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_core.storage.ui_sections import SectionState
 
 from jfl_web.applicationanswers import question_views
+from jfl_web.archive_rules import (
+    AXIS_LABELS,
+    RULE_ERROR_MESSAGES,
+    SCORE_AXES,
+    TERMINAL_STATUSES,
+    ArchiveRules,
+    matching_applications,
+    parse_rule_form,
+)
 from jfl_web.deps import (
     ApplicationQuestionRepoDep,
     ApplicationRepoDep,
@@ -212,6 +243,7 @@ def list_applications(
     # Always known, even on the live list, so the "Archived (N)" link can
     # decide whether to render itself without a second round trip.
     archived_count = len(applications.list_applications(archived=True))
+    bulk_archived = _bulk_archived_context(applications, request)
     return render(
         request,
         "applications_list.html",
@@ -229,6 +261,13 @@ def list_applications(
             # carries the sort, and the headers carry the filter.
             "sort_headers": sort_headers(sort, direction, status=status),
             "status_links": _status_links(status, sort_query(sort, direction)),
+            **bulk_archived,
+            # The "Archive by rule..." form -- live view only, but harmless to
+            # hand the archived view too since it never renders the fieldset.
+            "score_axes": SCORE_AXES,
+            "axis_labels": AXIS_LABELS,
+            "terminal_statuses": TERMINAL_STATUSES,
+            "rule_error": RULE_ERROR_MESSAGES.get(request.query_params.get("rule_error", "")),
         },
     )
 
@@ -271,6 +310,56 @@ def _just_archived_title(applications: ApplicationRepoDep, request: Request) -> 
     if detail is None or detail.application.archived_at is None:
         return None
     return detail.application.title
+
+
+# Shown next to the bulk toolbar when a bulk action could not do anything --
+# a fixed set of codes, never a message built from the request, same
+# discipline as `ExtractionErrorCode`/`ScoreErrorCode`.
+BULK_ERROR_MESSAGES: dict[str, str] = {
+    "none_selected": "Select at least one application first.",
+}
+
+
+def _parse_ids(raw: list[str] | None) -> list[uuid.UUID]:
+    """Form values -> ids, dropping anything that is not a UUID. A tampered or
+    stale checkbox value must not 500 the request -- it just does not match
+    any application this user owns, which `list_by_ids`/`archive_many` already
+    handle by silently ignoring it.
+    """
+    ids: list[uuid.UUID] = []
+    for value in raw or []:
+        try:
+            ids.append(uuid.UUID(value))
+        except ValueError:
+            continue
+    return ids
+
+
+def _bulk_redirect(path: str, ids: list[uuid.UUID]) -> str:
+    """`path` plus one `bulk_archived=<id>` per id -- what a bulk archive (by
+    selection or by rule) redirects to, so the list page can look the ids back
+    up and show "Archived N. Undo" for exactly the set that changed.
+    """
+    if not ids:
+        return path
+    return path + "?" + urlencode({"bulk_archived": [str(i) for i in ids]}, doseq=True)
+
+
+def _bulk_archived_context(applications: ApplicationRepoDep, request: Request) -> dict[str, object]:
+    """The "Archived N. Undo" banner's data, resolved through this user's own
+    repository rather than trusted from the query string -- same "looked up,
+    never echoed" discipline as `_just_archived_title`, extended to a list.
+    Ids for another user, or ids that are no longer archived (raced with an
+    unarchive elsewhere), are simply absent, so the count can never overstate
+    what is really sitting in Archived right now.
+    """
+    raw_ids = _parse_ids(request.query_params.getlist("bulk_archived"))
+    resolved = [a for a in applications.list_by_ids(raw_ids) if a.archived_at is not None]
+    bulk_error_code = request.query_params.get("bulk_error")
+    return {
+        "bulk_archived_applications": resolved,
+        "bulk_error": BULK_ERROR_MESSAGES.get(bulk_error_code) if bulk_error_code else None,
+    }
 
 
 @router.get("/applications/new")
@@ -883,3 +972,150 @@ def unarchive_application(
         context = {"session": session, "user": session.user, "message": _NOT_FOUND}
         return render(request, "error.html", context, status_code=404)
     return RedirectResponse(f"/applications/{application_id}", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Bulk archive: select a batch of rows and archive them together, plus the
+# undo for that batch. Owner feedback, 2026-09-27.
+# --------------------------------------------------------------------------
+
+
+@router.post("/applications/bulk-archive")
+def bulk_archive(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    _csrf: CsrfDep,
+    application_id: Annotated[list[str] | None, Form()] = None,
+) -> Response:
+    """Archive every checked row at once. Ids for another user's application,
+    or a stale id, are silently dropped by `archive_many` -- the response is
+    the same either way, so this cannot be used to probe which ids exist.
+    """
+    ids = _parse_ids(application_id)
+    archived = applications.archive_many(ids) if ids else []
+    if not archived:
+        return RedirectResponse("/applications?bulk_error=none_selected", status_code=303)
+    return RedirectResponse(_bulk_redirect("/applications", archived), status_code=303)
+
+
+@router.post("/applications/bulk-unarchive")
+def bulk_unarchive(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    _csrf: CsrfDep,
+    application_id: Annotated[list[str] | None, Form()] = None,
+    back: Annotated[str, Form()] = "/applications?archived=1",
+) -> Response:
+    """The undo for `bulk_archive` (redirected back to the live list, where the
+    "Archived N. Undo" banner lives), and also what the Archived view's own
+    "Restore selected" button uses (redirected back to `?archived=1`, via
+    `back`). `back` is never trusted as an arbitrary redirect target -- it is
+    accepted only if it already starts with `/applications`, so a tampered
+    value falls back to the live list rather than sending a signed-in session
+    somewhere else.
+    """
+    ids = _parse_ids(application_id)
+    if ids:
+        applications.unarchive_many(ids)
+    destination = back if back.startswith("/applications") else "/applications"
+    return RedirectResponse(destination, status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Archive by rule: "archive every application where ..." -- preview, then
+# confirm. See `jfl_web.archive_rules` for the matching logic.
+# --------------------------------------------------------------------------
+
+
+def _rule_matches(
+    applications: ApplicationRepoDep, scores: ScoreRepoDep, rules: ArchiveRules
+) -> list[Application]:
+    """Read the live list fresh and apply `rules` to it -- called from both the
+    preview and the confirm route, so "what this will archive" and "what this
+    archives" are always the exact same computation.
+    """
+    items = applications.list_applications(archived=False)
+    row_scores = _row_scores(scores, [a.id for a in items])
+    return matching_applications(items, row_scores, rules, now=dt.datetime.now(dt.UTC))
+
+
+@router.post("/applications/archive-by-rule/preview")
+def archive_by_rule_preview(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    _csrf: CsrfDep,
+    score_enabled: Annotated[str | None, Form()] = None,
+    score_axis: Annotated[str, Form()] = "either",
+    score_threshold: Annotated[str, Form()] = "",
+    status: Annotated[list[str] | None, Form()] = None,
+    activity_enabled: Annotated[str | None, Form()] = None,
+    activity_days: Annotated[str, Form()] = "",
+) -> Response:
+    """ "This will archive N applications:" -- read-only. Nothing here calls
+    `archive_many`; the confirm route below is the only write, and it
+    recomputes the match itself rather than trusting a list of ids this page
+    handed back, so nothing here needs to be tamper-proof to stay safe.
+    """
+    rules, error = parse_rule_form(
+        score_enabled=bool(score_enabled),
+        score_axis=score_axis,
+        score_threshold=score_threshold,
+        statuses=status,
+        activity_enabled=bool(activity_enabled),
+        activity_days=activity_days,
+    )
+    if error is not None or rules is None:
+        return RedirectResponse(f"/applications?rule_error={error}", status_code=303)
+
+    matched = _rule_matches(applications, scores, rules)
+    return render(
+        request,
+        "archive_rule_preview.html",
+        {
+            "session": session,
+            "user": session.user,
+            "matched": matched,
+            "row_scores": _row_scores(scores, [a.id for a in matched]),
+            "rules": rules,
+        },
+    )
+
+
+@router.post("/applications/archive-by-rule/confirm")
+def archive_by_rule_confirm(
+    request: Request,
+    session: SessionDep,
+    applications: ApplicationRepoDep,
+    scores: ScoreRepoDep,
+    _csrf: CsrfDep,
+    score_enabled: Annotated[str | None, Form()] = None,
+    score_axis: Annotated[str, Form()] = "either",
+    score_threshold: Annotated[str, Form()] = "",
+    status: Annotated[list[str] | None, Form()] = None,
+    activity_enabled: Annotated[str | None, Form()] = None,
+    activity_days: Annotated[str, Form()] = "",
+) -> Response:
+    """The confirm button on the preview page. Parses the same hidden fields
+    the preview rendered and re-runs the same match -- an application that
+    changed state between preview and confirm (a score landed, a status
+    changed) is measured as it is now, never as the stale preview said, and an
+    id is never read off the request at all.
+    """
+    rules, error = parse_rule_form(
+        score_enabled=bool(score_enabled),
+        score_axis=score_axis,
+        score_threshold=score_threshold,
+        statuses=status,
+        activity_enabled=bool(activity_enabled),
+        activity_days=activity_days,
+    )
+    if error is not None or rules is None:
+        return RedirectResponse(f"/applications?rule_error={error}", status_code=303)
+
+    matched = _rule_matches(applications, scores, rules)
+    archived = applications.archive_many([a.id for a in matched])
+    return RedirectResponse(_bulk_redirect("/applications", archived), status_code=303)

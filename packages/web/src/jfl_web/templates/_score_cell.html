@@ -1,0 +1,31 @@
+{# One score cell: a number out of 10, or the state that explains why there
+   is not one yet. Shared by the applications list row (`_application_row.html`)
+   and the "archive by rule" preview (`archive_rule_preview.html`), so the two
+   screens can never show a different number, or a different silence, for the
+   same application.
+
+   Needs: `rs` (a `jfl_web.scores.RowScore` or none), the axis's own value
+   (`rs.could_get` or `rs.want_it` -- the caller picks, this macro never
+   reaches into `rs` for a specific axis, so it stays axis-agnostic and
+   nothing here can mix the two up), and whether the application is still
+   waiting on its ad to be read. #}
+{% macro score_cell(rs, value, awaiting_ad) -%}
+  {%- if rs and rs.has_numbers -%}
+    {%- if value is not none -%}
+    <span class="row-score-number"><strong>{{ value }}</strong><span class="score-of">/10</span></span>
+    {%- else -%}
+    <span class="row-score-state" title="Nothing recorded for this ad to be measured against">no number</span>
+    {%- endif -%}
+    {%- if rs.state in ("scoring", "retrying") %}<span class="row-score-state">re-scoring…</span>{% endif -%}
+  {%- elif rs and rs.state == "scoring" -%}
+    <span class="row-score-state">scoring…</span>
+  {%- elif rs and rs.state == "retrying" -%}
+    <span class="row-score-state">scoring… retrying</span>
+  {%- elif rs and rs.state == "failed" -%}
+    <span class="row-score-state">not scored — failed</span>
+  {%- elif awaiting_ad -%}
+    <span class="row-score-state">scoring once the ad is read</span>
+  {%- else -%}
+    <span class="row-score-state">not scored</span>
+  {%- endif -%}
+{%- endmacro %}

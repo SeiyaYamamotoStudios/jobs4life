@@ -29,7 +29,7 @@ from jfl_core.storage.credentials import ANTHROPIC_API_KEY, PostgresCredentialRe
 from jfl_web.app import create_app
 from jfl_web.oauth import GoogleIdentity, OAuthError
 from jfl_web.settings import WebSettings
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.engine import Engine
 
 pytestmark = pytest.mark.integration
@@ -822,3 +822,483 @@ def test_the_archive_confirmation_is_looked_up_never_echoed_from_the_url(
 
     live_id = _add_application(client, title="Still Live")
     assert "Restore it from" not in client.get(f"/applications?just_archived={live_id}").text
+
+
+# --------------------------------------------------------------------------
+# Bulk archive: select several rows and archive them at once, plus the undo
+# banner. Owner feedback, 2026-09-27.
+# --------------------------------------------------------------------------
+
+
+def test_bulk_archive_archives_only_the_checked_rows_and_offers_undo(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    _add_application(client, title="Keep This One")
+    a_id = _add_application(client, title="Bulk A")
+    b_id = _add_application(client, title="Bulk B")
+
+    response = client.post(
+        "/applications/bulk-archive",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/applications?bulk_archived=")
+
+    page = client.get(response.headers["location"]).text
+    assert "Archived 2 applications." in page
+    assert "Bulk A" not in page
+    assert "Bulk B" not in page
+    assert "Keep This One" in page
+
+    archived_page = client.get("/applications?archived=1").text
+    assert "Bulk A" in archived_page
+    assert "Bulk B" in archived_page
+    assert "Keep This One" not in archived_page
+
+    # The undo form carries exactly the two archived ids.
+    assert page.count(f'value="{a_id}"') >= 1
+    assert page.count(f'value="{b_id}"') >= 1
+    assert 'action="/applications/bulk-unarchive"' in page
+
+
+def test_bulk_archive_ignores_ids_belonging_to_another_user(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    """The tenancy acceptance criterion: an id for another user's application
+    in the submitted batch is dropped, never archived, and the requester's own
+    valid ids are still archived."""
+    alice = sign_in(client, google, subs)
+    alice_app_id = _add_application(client, title="Alice Role")
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    bob_app_id = _add_application(client, title="Bob Role")
+
+    response = client.post(
+        "/applications/bulk-archive",
+        data={"csrf_token": _csrf(client), "application_id": [alice_app_id, bob_app_id]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    # Only Bob's id comes back in the redirect -- Alice's was silently dropped.
+    assert alice_app_id not in response.headers["location"]
+    assert bob_app_id in response.headers["location"]
+
+    assert "Bob Role" not in client.get("/applications").text  # archived
+    assert "Bob Role" in client.get("/applications?archived=1").text
+
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs, sub=alice.sub, email=alice.email)
+    # Alice's application was never touched.
+    assert "Alice Role" in client.get("/applications").text
+
+
+def test_bulk_archive_with_nothing_selected_shows_a_message_and_archives_nothing(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    _add_application(client, title="Untouched")
+
+    response = client.post(
+        "/applications/bulk-archive",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?bulk_error=none_selected"
+
+    page = client.get(response.headers["location"]).text
+    assert "Select at least one application" in page
+    assert "Untouched" in page  # still live
+
+
+def test_bulk_archive_requires_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded Bulk")
+
+    response = client.post(
+        "/applications/bulk-archive",
+        data={"csrf_token": "wrong", "application_id": [app_id]},
+    )
+    assert response.status_code == 403
+    assert "CSRF Guarded Bulk" in client.get("/applications").text  # still live
+
+
+def test_undo_after_bulk_archive_restores_exactly_that_set(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    other_id = _add_application(client, title="Archived Earlier, Not Part Of Undo")
+    client.post(f"/applications/{other_id}/archive", data={"csrf_token": _csrf(client)})
+    a_id = _add_application(client, title="Undo A")
+    b_id = _add_application(client, title="Undo B")
+
+    bulk_response = client.post(
+        "/applications/bulk-archive",
+        data={"csrf_token": _csrf(client), "application_id": [a_id, b_id]},
+        follow_redirects=False,
+    )
+    banner_page = client.get(bulk_response.headers["location"]).text
+    match = re.search(r'action="/applications/bulk-unarchive"(.*?)</form>', banner_page, re.DOTALL)
+    assert match is not None, "no undo form found in the banner"
+    undo_html = match.group(1)
+    csrf_token = re.search(r'name="csrf_token" value="([^"]+)"', undo_html)
+    assert csrf_token is not None
+    ids = re.findall(r'name="application_id" value="([^"]+)"', undo_html)
+    assert set(ids) == {a_id, b_id}
+
+    undo_response = client.post(
+        "/applications/bulk-unarchive",
+        data={"csrf_token": csrf_token.group(1), "application_id": ids, "back": "/applications"},
+        follow_redirects=False,
+    )
+    assert undo_response.status_code == 303
+
+    live_page = client.get("/applications").text
+    assert "Undo A" in live_page
+    assert "Undo B" in live_page
+
+    # The one archived before the bulk action, and not part of the undo,
+    # stays archived -- undo restores exactly the ids it names.
+    archived_page = client.get("/applications?archived=1").text
+    assert "Archived Earlier, Not Part Of Undo" in archived_page
+
+
+def test_bulk_unarchive_from_the_archived_view_restores_selected_rows(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    a_id = _add_application(client, title="Restore A")
+    b_id = _add_application(client, title="Restore B")
+    client.post(f"/applications/{a_id}/archive", data={"csrf_token": _csrf(client)})
+    client.post(f"/applications/{b_id}/archive", data={"csrf_token": _csrf(client)})
+
+    response = client.post(
+        "/applications/bulk-unarchive",
+        data={
+            "csrf_token": _csrf(client),
+            "application_id": [a_id, b_id],
+            "back": "/applications?archived=1",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?archived=1"
+
+    live_page = client.get("/applications").text
+    assert "Restore A" in live_page
+    assert "Restore B" in live_page
+    assert "Restore A" not in client.get("/applications?archived=1").text
+
+
+def test_bulk_unarchive_ignores_ids_belonging_to_another_user(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    alice = sign_in(client, google, subs)
+    alice_app_id = _add_application(client, title="Alice Archived Role")
+    client.post(f"/applications/{alice_app_id}/archive", data={"csrf_token": _csrf(client)})
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+
+    sign_in(client, google, subs)
+    client.post(
+        "/applications/bulk-unarchive",
+        data={"csrf_token": _csrf(client), "application_id": [alice_app_id]},
+    )
+
+    client.post("/logout", data={"csrf_token": _csrf(client)})
+    sign_in(client, google, subs, sub=alice.sub, email=alice.email)
+    # Still archived: the other account's bulk-unarchive could not reach it.
+    assert "Alice Archived Role" in client.get("/applications?archived=1").text
+
+
+def test_bulk_unarchive_requires_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded Restore")
+    client.post(f"/applications/{app_id}/archive", data={"csrf_token": _csrf(client)})
+
+    response = client.post(
+        "/applications/bulk-unarchive",
+        data={"csrf_token": "wrong", "application_id": [app_id]},
+    )
+    assert response.status_code == 403
+    assert "CSRF Guarded Restore" in client.get("/applications?archived=1").text
+
+
+def test_bulk_archive_and_unarchive_require_a_session(client: TestClient) -> None:
+    random_id = str(uuid.uuid4())
+    for path in ("/applications/bulk-archive", "/applications/bulk-unarchive"):
+        response = client.post(
+            path,
+            data={"csrf_token": "whatever", "application_id": [random_id]},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+
+# --------------------------------------------------------------------------
+# Archive by rule: preview never writes, confirm re-runs the same match.
+# --------------------------------------------------------------------------
+
+
+def _set_score(engine: Engine, application_id: str, *, could: int | None, want: int | None) -> None:
+    """A finished scoring run, written directly -- no model call, same
+    shortcut `test_a_finished_extraction_renders_its_result_and_stops_polling`
+    already uses for extraction.
+    """
+    from jfl_core.db.tables import application_scores as scores_table
+    from jfl_core.db.tables import applications as applications_table
+
+    with engine.begin() as conn:
+        user_id = conn.execute(
+            select(applications_table.c.user_id).where(
+                applications_table.c.id == uuid.UUID(application_id)
+            )
+        ).scalar_one()
+        conn.execute(
+            scores_table.insert().values(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                application_id=uuid.UUID(application_id),
+                status="done",
+                could_get_score=could,
+                want_it_score=want,
+            )
+        )
+
+
+def test_rule_preview_shows_matches_and_writes_nothing(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    low_id = _add_application(client, title="Low Scored Role")
+    _set_score(engine, low_id, could=3, want=3)
+    high_id = _add_application(client, title="High Scored Role")
+    _set_score(engine, high_id, could=9, want=9)
+
+    response = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "either",
+            "score_threshold": "6",
+        },
+    )
+    assert response.status_code == 200
+    assert "This will archive 1 application" in response.text
+    assert "Low Scored Role" in response.text
+    assert "High Scored Role" not in response.text
+
+    # Read-only: neither application was archived by the preview.
+    live_page = client.get("/applications").text
+    assert "Low Scored Role" in live_page
+    assert "High Scored Role" in live_page
+
+
+def test_rule_preview_excludes_unscored_applications_from_a_score_rule(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """Not yet scored is not a low score -- the acceptance criterion from the
+    brief, through the actual route."""
+    sign_in(client, google, subs)
+    _add_application(client, title="Never Scored Role")
+
+    response = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "either",
+            "score_threshold": "10",  # would catch anything with a number
+        },
+    )
+    assert response.status_code == 200
+    assert "No applications currently match" in response.text
+    assert "Never Scored Role" not in response.text
+
+
+def test_rule_confirm_axis_choice_is_explicit_not_averaged(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """A role that would love-average below the threshold but has one strong
+    axis must survive a "both axes" rule and only a "both axes" rule."""
+    sign_in(client, google, subs)
+    mixed_id = _add_application(client, title="Mixed Axes Role")
+    _set_score(engine, mixed_id, could=2, want=9)  # average 5.5, "both" is false
+
+    either_preview = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "either",
+            "score_threshold": "6",
+        },
+    ).text
+    assert "Mixed Axes Role" in either_preview  # could_get alone is below 6
+
+    both_preview = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "both",
+            "score_threshold": "6",
+        },
+    ).text
+    assert "Mixed Axes Role" not in both_preview  # want_it is not below 6
+
+
+def test_rule_confirm_archives_the_match_and_offers_undo(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    sign_in(client, google, subs)
+    rejected_id = _add_application(client, title="Rejected Role")
+    client.post(
+        f"/applications/{rejected_id}/status",
+        data={"csrf_token": _csrf(client), "to_status": "rejected"},
+    )
+    _add_application(client, title="Still Active Role")
+
+    response = client.post(
+        "/applications/archive-by-rule/confirm",
+        data={"csrf_token": _csrf(client), "status": ["rejected"]},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/applications?bulk_archived=")
+
+    page = client.get(response.headers["location"]).text
+    assert "Archived 1 application." in page
+    assert "Rejected Role" not in page
+
+    live_page = client.get("/applications").text
+    assert "Still Active Role" in live_page
+    assert "Rejected Role" not in live_page
+    assert "Rejected Role" in client.get("/applications?archived=1").text
+
+
+def test_rule_confirm_recomputes_rather_than_trusting_a_stale_preview(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    """Between preview and confirm the world can change; confirm must measure
+    it as it is now."""
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="Changes After Preview")
+
+    preview = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "either",
+            "score_threshold": "10",
+        },
+    ).text
+    assert "No applications currently match" in preview  # unscored, excluded
+
+    # Now it gets a low score before confirm is pressed.
+    _set_score(engine, app_id, could=1, want=1)
+
+    confirm = client.post(
+        "/applications/archive-by-rule/confirm",
+        data={
+            "csrf_token": _csrf(client),
+            "score_enabled": "on",
+            "score_axis": "either",
+            "score_threshold": "10",
+        },
+        follow_redirects=False,
+    )
+    assert confirm.status_code == 303
+    assert "Changes After Preview" not in client.get("/applications").text
+    assert "Changes After Preview" in client.get("/applications?archived=1").text
+
+
+def test_rule_with_no_condition_checked_archives_nothing_and_shows_an_error(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    _add_application(client, title="Untouched By Empty Rule")
+
+    response = client.post(
+        "/applications/archive-by-rule/preview",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/applications?rule_error=no_rule"
+
+    page = client.get(response.headers["location"]).text
+    assert "Choose at least one rule" in page
+    assert "Untouched By Empty Rule" in page  # still live
+
+
+def test_rule_preview_and_confirm_require_a_csrf_token(
+    client: TestClient, google: StubGoogle, subs: list[str]
+) -> None:
+    sign_in(client, google, subs)
+    app_id = _add_application(client, title="CSRF Guarded Rule")
+    client.post(
+        f"/applications/{app_id}/status",
+        data={"csrf_token": _csrf(client), "to_status": "rejected"},
+    )
+
+    preview = client.post(
+        "/applications/archive-by-rule/preview",
+        data={"csrf_token": "wrong", "status": ["rejected"]},
+    )
+    assert preview.status_code == 403
+
+    confirm = client.post(
+        "/applications/archive-by-rule/confirm",
+        data={"csrf_token": "wrong", "status": ["rejected"]},
+    )
+    assert confirm.status_code == 403
+
+    # Still live -- neither request archived it.
+    assert "CSRF Guarded Rule" not in client.get("/applications?archived=1").text
+
+
+def test_rule_by_status_and_activity_can_be_combined_with_and(
+    client: TestClient, google: StubGoogle, subs: list[str], engine: Engine
+) -> None:
+    from jfl_core.db.tables import applications as applications_table
+
+    sign_in(client, google, subs)
+    stale_rejected_id = _add_application(client, title="Stale Rejected Role")
+    client.post(
+        f"/applications/{stale_rejected_id}/status",
+        data={"csrf_token": _csrf(client), "to_status": "rejected"},
+    )
+    fresh_rejected_id = _add_application(client, title="Fresh Rejected Role")
+    client.post(
+        f"/applications/{fresh_rejected_id}/status",
+        data={"csrf_token": _csrf(client), "to_status": "rejected"},
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            applications_table.update()
+            .where(applications_table.c.id == uuid.UUID(stale_rejected_id))
+            .values(updated_at=text("now() - interval '60 days'"))
+        )
+
+    response = client.post(
+        "/applications/archive-by-rule/preview",
+        data={
+            "csrf_token": _csrf(client),
+            "status": ["rejected"],
+            "activity_enabled": "on",
+            "activity_days": "30",
+        },
+    )
+    assert "Stale Rejected Role" in response.text
+    assert "Fresh Rejected Role" not in response.text

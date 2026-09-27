@@ -22,14 +22,47 @@
 </p>
 
 {% if applications %}
+{#- The page-level form the row checkboxes and the toolbar's button both name
+    via their `form` attribute -- see `_application_row.html`'s comment on why
+    a checkbox cannot simply live inside the row's own `<form>`. There is no
+    per-row form on the archived view, but the same pattern is used for
+    consistency with the live view and so the toolbar can sit above the
+    table, clear of the cards on a phone. #}
+<form id="bulk-unarchive-form" method="post" action="/applications/bulk-unarchive">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <input type="hidden" name="back" value="/applications?archived=1">
+</form>
+
+{% if bulk_error %}
+<p class="error" role="alert">{{ bulk_error }}</p>
+{% endif %}
+
+<div class="bulk-actions">
+  <label class="select-all-label">
+    <input type="checkbox" data-select-all aria-label="Select all archived applications">
+    Select all
+  </label>
+  <button type="submit" form="bulk-unarchive-form" class="secondary">
+    Restore selected (<span data-selected-count>0</span>)
+  </button>
+</div>
+
 <div class="table-wrap">
   <table class="applications">
     <thead>
-      <tr><th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col">Archived</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+      <tr>
+        <th scope="col" class="col-select-head"><span class="visually-hidden">Select</span></th>
+        <th scope="col">Title</th><th scope="col">Employer</th><th scope="col">Status</th><th scope="col">Archived</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+      </tr>
     </thead>
     <tbody>
       {% for application in applications %}
       <tr id="application-{{ application.id }}">
+        <td class="col-select">
+          <input type="checkbox" name="application_id" value="{{ application.id }}"
+                 form="bulk-unarchive-form" class="row-select"
+                 aria-label="Select {{ application.title }}">
+        </td>
         <td class="col-title col-primary" data-label="Title"><a href="/applications/{{ application.id }}">{{ application.title }}</a></td>
         <td class="col-employer" data-label="Employer">{{ application.employer or "—" }}</td>
         <td class="col-status" data-label="Status">
@@ -69,13 +102,113 @@
 </p>
 {% endif %}
 
+{% if bulk_error %}
+<p class="error" role="alert">{{ bulk_error }}</p>
+{% endif %}
+
+{% if bulk_archived_applications %}
+{#- Same "looked up, never echoed" banner as `just_archived` above, extended to
+    a batch: the ids came back through this user's own repository, so the
+    count can never be inflated by a tampered redirect. Undo re-uses
+    `bulk-unarchive` with exactly this set of ids, nothing recomputed. #}
+<div class="ok bulk-archived-banner" role="status">
+  <p>Archived {{ bulk_archived_applications|length }} application{{ "" if bulk_archived_applications|length == 1 else "s" }}.</p>
+  <form method="post" action="/applications/bulk-unarchive" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="back" value="/applications">
+    {% for application in bulk_archived_applications %}
+    <input type="hidden" name="application_id" value="{{ application.id }}">
+    {% endfor %}
+    <button type="submit" class="link">Undo</button>
+  </form>
+</div>
+{% endif %}
+
 <nav class="status-filter" aria-label="Filter applications by status">
   {% for label, href, active in status_links %}
   <a href="{{ href }}" class="{{ 'active' if active else '' }}"{% if active %} aria-current="true"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
 
+{# "Archive every application where..." -- owner feedback, 2026-09-27. Plain
+   `<details>`, like the per-row archive confirm, rather than the tracked
+   `_sections.html` component: there is nothing here to remember being open,
+   forced open, or marked with a change count -- it is a form, not a panel
+   over data. #}
+<details class="rule-archive">
+  <summary>Archive every application where…</summary>
+  {% if rule_error %}<p class="error" role="alert">{{ rule_error }}</p>{% endif %}
+  <form method="post" action="/applications/archive-by-rule/preview">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <fieldset class="rule-score">
+      <legend>
+        <label class="inline">
+          <input type="checkbox" name="score_enabled" value="on">
+          A score is low --
+        </label>
+      </legend>
+      {% for axis in score_axes %}
+      <label class="inline">
+        <input type="radio" name="score_axis" value="{{ axis }}" {% if axis == "either" %}checked{% endif %}>
+        {{ axis_labels[axis] }}
+      </label>
+      {% endfor %}
+      <input type="number" name="score_threshold" min="1" max="10" value="6" aria-label="Score threshold, out of 10">
+      <p class="note">
+        Never an averaged score -- choose which axis matters, or "either"/"both"
+        of them. Not yet scored is not a low score: an application with no
+        finished run never matches this rule, on either axis.
+      </p>
+    </fieldset>
+
+    <fieldset class="rule-status">
+      <legend>Status is one of --</legend>
+      {% for status in terminal_statuses %}
+      <label class="inline">
+        <input type="checkbox" name="status" value="{{ status }}">
+        {{ status }}
+      </label>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset class="rule-activity">
+      <legend>
+        <label class="inline">
+          <input type="checkbox" name="activity_enabled" value="on">
+          No activity for at least
+        </label>
+      </legend>
+      <input type="number" name="activity_days" min="1" max="3650" value="30"> days
+    </fieldset>
+
+    <p class="note">
+      Rules combine with AND -- ticking more than one narrows what matches, and
+      ticking none matches nothing rather than everything.
+    </p>
+    <button type="submit" class="secondary">Preview</button>
+  </form>
+</details>
+
 {% if applications %}
+{#- The page-level form every row checkbox and the toolbar's button name via
+    `form="bulk-archive-form"` -- it cannot wrap the table itself because each
+    row already nests the status form and the per-row archive-confirm form,
+    and HTML forms cannot nest. #}
+<form id="bulk-archive-form" method="post" action="/applications/bulk-archive">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+</form>
+
+<div class="bulk-actions">
+  <label class="select-all-label">
+    <input type="checkbox" data-select-all aria-label="Select all applications">
+    Select all
+  </label>
+  <button type="submit" form="bulk-archive-form" class="secondary">
+    Archive selected (<span data-selected-count>0</span>)
+  </button>
+</div>
+
 <div class="table-wrap">
   <table class="applications">
     <thead>
@@ -86,6 +219,7 @@
           axis alone -- there is no blended order, and ties fall back to most
           recently updated, never to the other axis. #}
       <tr>
+        <th scope="col" class="col-select-head"><span class="visually-hidden">Select</span></th>
         <th scope="col" class="sortable"{{ aria_sort(sort_headers.title) }}><a href="{{ sort_headers.title.href }}">Title{{ sort_arrow(sort_headers.title) }}</a></th>
         <th scope="col" class="sortable"{{ aria_sort(sort_headers.employer) }}><a href="{{ sort_headers.employer.href }}">Employer{{ sort_arrow(sort_headers.employer) }}</a></th>
         <th scope="col" class="sortable"{{ aria_sort(sort_headers.status) }}><a href="{{ sort_headers.status.href }}">Status{{ sort_arrow(sort_headers.status) }}</a></th>
@@ -110,4 +244,5 @@
 </p>
 {% endif %}
 {% endif %}
+<script src="{{ asset_url('bulk_select.js') }}" defer></script>
 {% endblock %}
