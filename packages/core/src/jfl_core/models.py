@@ -1453,3 +1453,11 @@ class ApiKeyHealth(BaseModel):
     @property
     def blocked(self) -> bool:
         return self.status != "ok"
+
+
+# A closed set, unlike `ui_section_states.section_key`: a table's columns are
+# fixed by its template, not opened per row the way a per-draft section is, so
+# there is a real list to check a CHECK constraint against. See
+# `jfl_web.sorting` for the per-table column specs and
+# `jfl_core.storage.ui_table_sorts` for where a saved sort is read and written.
+TableKey = Literal["applications", "jobs", "boards", "changes", "cvs"]

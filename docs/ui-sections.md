@@ -254,13 +254,30 @@ default direction (words A to Z, scores and recency highest/newest first). The
 active header carries `aria-sort` and a visible ▲/▼; the others carry no
 `aria-sort` (ARIA: one header at a time) and a faint ↕ so they read as
 clickable. The key and direction come from a closed set
-(`jfl_web.scores.parse_sort`); anything else is the default order. Filters
-carry the sort and the headers carry the filters. A separate "Sort:" row of
-links above the table was tried first and the owner never found it. On a phone
-the header row is kept, as one wrapped "Sort by" row above the cards. For the
-two score columns the standing rule applies: each sorts by its own axis alone,
-ties fall back to most recently updated (never to the other axis), and rows
-with nothing to sort on go last in both directions.
+(`jfl_web.scores.parse_sort` for applications, `jfl_web.sorting.parse_sort` for
+every table added since); anything else is the default order. Filters carry
+the sort and the headers carry the filters. A separate "Sort:" row of links
+above the table was tried first and the owner never found it. On a phone the
+header row is kept, as one wrapped "Sort by" row above the cards -- `table.cvs`
+excepted, since it does not stack (below) and keeps ordinary column heads at
+every width. For the two score columns the standing rule applies: each sorts
+by its own axis alone, ties fall back to most recently updated (never to the
+other axis), and rows with nothing to sort on go last in both directions.
+
+**The chosen sort is persisted, per user, per table** (`ui_table_sorts` --
+owner feedback: *"the sorting of the applications isn't persistent ... it
+needs to be persistent on any tables"*). A click saves it; a plain visit reads
+it back; a saved column a screen has since dropped falls back to that table's
+default silently, the same way an unrecognised `?sort=` always has. Every
+header link on a table added through `jfl_web.sorting` states its sort
+explicitly (`sort` and `dir` both, never omitted at the default) -- once an
+omitted `?sort=` means "apply what was saved" rather than "use the default",
+the one link that would otherwise land back on a bare URL has to say so, or a
+click from a different saved sort would silently do nothing. Applications keeps
+`jfl_web.scores`'s original, shorter hrefs (a unit test pins their exact
+shape) and gets the same guarantee from a route-level rewrite
+(`jfl_web.routes.applications._persistent_sort_headers`) rather than a change
+to that module.
 
 **Every table scrolls inside `.table-wrap`** — at narrow widths only. It
 keeps `min-width: 34rem` so a narrow window scrolls it rather than crushing

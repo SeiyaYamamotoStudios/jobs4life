@@ -64,6 +64,7 @@ VALUE_SETS = [
     (pushback.PushbackKind, tables._PUSHBACK_CLASSIFICATIONS),
     (pushback.Disposition, tables._PUSHBACK_DISPOSITIONS),
     (pushback.Axis, tables._SCORE_AXES),
+    (models.TableKey, tables._TABLE_KEYS),
 ]
 
 

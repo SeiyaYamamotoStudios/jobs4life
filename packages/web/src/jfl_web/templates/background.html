@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sort_headers.html" as sorting %}
 {% block title %}Your CVs — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -62,7 +63,13 @@
   <div class="table-wrap">
     <table class="cvs">
       <thead>
-        <tr><th scope="col">CV</th><th scope="col">Uploaded</th><th scope="col">Reading</th><th scope="col">Facts proposed</th></tr>
+        {#- The headers are the sort control -- see docs/ui-sections.md. #}
+        <tr>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.cv) }}><a href="{{ sort_headers.cv.href }}">CV{{ sorting.sort_arrow(sort_headers.cv) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.uploaded) }}><a href="{{ sort_headers.uploaded.href }}">Uploaded{{ sorting.sort_arrow(sort_headers.uploaded) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.reading) }}><a href="{{ sort_headers.reading.href }}">Reading{{ sorting.sort_arrow(sort_headers.reading) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.facts) }}><a href="{{ sort_headers.facts.href }}">Facts proposed{{ sorting.sort_arrow(sort_headers.facts) }}</a></th>
+        </tr>
       </thead>
       <tbody>
         {% for cv in cvs %}

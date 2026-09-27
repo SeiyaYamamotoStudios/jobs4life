@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sort_headers.html" as sorting %}
 {% block title %}Jobs — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -112,14 +113,23 @@
   {% endif %}
 
   {% if capped %}
-  <p class="note">Showing the first {{ cap }} of {{ result.matches | length }} matching jobs, newest first. Narrow the filter to see the rest.</p>
+  <p class="note">Showing the first {{ cap }} of {{ result.matches | length }} matching jobs, in the order shown below. Narrow the filter to see the rest.</p>
   {% endif %}
 
   {% if rows %}
   <div class="table-wrap">
     <table class="boards jobs">
       <thead>
-        <tr><th scope="col">Job</th><th scope="col">Board</th><th scope="col">Workplace</th><th scope="col">Locations</th><th scope="col">Seen since</th><th scope="col">Track</th></tr>
+        {#- The headers are the sort control -- see docs/ui-sections.md. Track
+            names its own action and sorts nothing, so it carries no link. #}
+        <tr>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.job) }}><a href="{{ sort_headers.job.href }}">Job{{ sorting.sort_arrow(sort_headers.job) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.board) }}><a href="{{ sort_headers.board.href }}">Board{{ sorting.sort_arrow(sort_headers.board) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.workplace) }}><a href="{{ sort_headers.workplace.href }}">Workplace{{ sorting.sort_arrow(sort_headers.workplace) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.locations) }}><a href="{{ sort_headers.locations.href }}">Locations{{ sorting.sort_arrow(sort_headers.locations) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.seen_since) }}><a href="{{ sort_headers.seen_since.href }}">Seen since{{ sorting.sort_arrow(sort_headers.seen_since) }}</a></th>
+          <th scope="col" class="col-actions-head">Track</th>
+        </tr>
       </thead>
       <tbody>
         {% for match in rows %}

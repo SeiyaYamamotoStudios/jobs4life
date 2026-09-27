@@ -63,6 +63,7 @@ CONSTRAINED_COLUMNS = [
     ("score_pushbacks", "axis", tables._SCORE_AXES),
     ("score_overrides", "axis", tables._SCORE_AXES),
     ("api_key_health", "status", tables._API_KEY_HEALTH_STATUSES),
+    ("ui_table_sorts", "table_key", tables._TABLE_KEYS),
 ]
 
 

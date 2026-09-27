@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sort_headers.html" as sorting %}
 {% block title %}Boards — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -59,9 +60,15 @@
 <div class="table-wrap">
   <table class="boards">
     <thead>
+      {#- The headers are the sort control -- see docs/ui-sections.md. #}
       <tr>
-        <th scope="col">Board</th><th scope="col">Last check</th><th scope="col">Last checked</th><th scope="col">Added</th>
-        <th scope="col">Open jobs</th><th scope="col">Matching</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.board) }}><a href="{{ sort_headers.board.href }}">Board{{ sorting.sort_arrow(sort_headers.board) }}</a></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.status) }}><a href="{{ sort_headers.status.href }}">Last check{{ sorting.sort_arrow(sort_headers.status) }}</a></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.checked) }}><a href="{{ sort_headers.checked.href }}">Last checked{{ sorting.sort_arrow(sort_headers.checked) }}</a></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.added) }}><a href="{{ sort_headers.added.href }}">Added{{ sorting.sort_arrow(sort_headers.added) }}</a></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.open_jobs) }}><a href="{{ sort_headers.open_jobs.href }}">Open jobs{{ sorting.sort_arrow(sort_headers.open_jobs) }}</a></th>
+        <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.matching) }}><a href="{{ sort_headers.matching.href }}">Matching{{ sorting.sort_arrow(sort_headers.matching) }}</a></th>
+        <th scope="col" class="col-actions-head"><span class="visually-hidden">Actions</span></th>
       </tr>
     </thead>
     <tbody>

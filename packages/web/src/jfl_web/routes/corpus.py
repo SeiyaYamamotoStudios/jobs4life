@@ -58,6 +58,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.cv_limits import MAX_CV_READ_CHARS
+from jfl_core.models import StoredCv, TableKey
 
 from jfl_web.corpus import (
     MAX_CV_CHARS,
@@ -79,13 +80,17 @@ from jfl_web.deps import (
     CsrfDep,
     SentDocumentRepoDep,
     SessionDep,
+    TableSortRepoDep,
     TaskRepoDep,
 )
+from jfl_web.sorting import SortColumn, SortSpec, resolve_sort, sort_headers, sort_rows
 from jfl_web.templating import render
 
 router = APIRouter()
 
 CV_FACTS_KIND = "extract_cv_facts"
+
+_SORT_TABLE_KEY: TableKey = "cvs"
 
 # A count read back off the URL after a redirect. Parsed as an integer and
 # clamped, so what reaches the template is a number this code produced -- never
@@ -102,16 +107,40 @@ def _count(request: Request, name: str) -> int:
     return max(0, min(value, _MAX_REPORTED))
 
 
+def _cvs_sort_spec() -> SortSpec[StoredCv]:
+    """Default is "uploaded", newest first -- `list_cvs`'s own order, so a
+    first visit looks exactly as it did before this table became sortable."""
+    return SortSpec(
+        columns={
+            "cv": SortColumn("CV", value=lambda cv: (cv.title or cv.path).casefold()),
+            "uploaded": SortColumn(
+                "Uploaded", value=lambda cv: cv.created_at, default_direction="desc"
+            ),
+            "reading": SortColumn("Reading", value=lambda cv: cv.extraction_status),
+            "facts": SortColumn(
+                "Facts proposed", value=lambda cv: cv.facts_proposed, default_direction="desc"
+            ),
+        },
+        default_key="uploaded",
+        tiebreak=lambda cv: cv.created_at,
+    )
+
+
 def _context(
+    request: Request,
     session: SessionDep,
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
+    table_sorts: TableSortRepoDep,
     **extra: Any,
 ) -> dict[str, Any]:
+    spec = _cvs_sort_spec()
+    sort, direction = resolve_sort(request, table_sorts, _SORT_TABLE_KEY, spec)
     ctx: dict[str, Any] = {
         "session": session,
         "user": session.user,
-        "cvs": cvs.list_cvs(),
+        "cvs": sort_rows(spec, cvs.list_cvs(), sort, direction),
+        "sort_headers": sort_headers(spec, sort, direction, base_path="/background"),
         "counts": facts.counts(),
         "roles": facts.roles(),
         "max_cv_chars": MAX_CV_CHARS,
@@ -132,14 +161,17 @@ def background_page(
     session: SessionDep,
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
+    table_sorts: TableSortRepoDep,
 ) -> Response:
     return render(
         request,
         "background.html",
         _context(
+            request,
             session,
             cvs,
             facts,
+            table_sorts,
             added=_count(request, "added"),
             already=_count(request, "already"),
         ),
@@ -151,12 +183,13 @@ def _error(
     session: SessionDep,
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
+    table_sorts: TableSortRepoDep,
     message: str,
 ) -> Response:
     return render(
         request,
         "background.html",
-        _context(session, cvs, facts, error=message),
+        _context(request, session, cvs, facts, table_sorts, error=message),
         status_code=400,
     )
 
@@ -195,18 +228,20 @@ async def upload_cvs(
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
     tasks: TaskRepoDep,
+    table_sorts: TableSortRepoDep,
     _csrf: CsrfDep,
     files: list[UploadFile] | None = None,
 ) -> Response:
     chosen = [f for f in (files or []) if f.filename]
     if not chosen:
-        return _error(request, session, cvs, facts, "Choose at least one file.")
+        return _error(request, session, cvs, facts, table_sorts, "Choose at least one file.")
     if len(chosen) > MAX_FILES_PER_UPLOAD:
         return _error(
             request,
             session,
             cvs,
             facts,
+            table_sorts,
             f"That is {len(chosen)} files; {MAX_FILES_PER_UPLOAD} at a time is the limit.",
         )
 
@@ -223,7 +258,7 @@ async def upload_cvs(
     except UploadRejected as exc:
         # Nothing is stored when one file is rejected: a partial upload the user
         # has to reason about is worse than doing it again.
-        return _error(request, session, cvs, facts, str(exc))
+        return _error(request, session, cvs, facts, table_sorts, str(exc))
 
     if not any(item.extracted for item in uploaded):
         # Plain text: the bytes are the author's own words already, so there is
@@ -233,7 +268,7 @@ async def upload_cvs(
     return render(
         request,
         "background_review.html",
-        _context(session, cvs, facts, review=uploaded),
+        _context(request, session, cvs, facts, table_sorts, review=uploaded),
     )
 
 
@@ -244,6 +279,7 @@ def confirm_cvs(
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
     tasks: TaskRepoDep,
+    table_sorts: TableSortRepoDep,
     _csrf: CsrfDep,
     filenames: Annotated[list[str] | None, Form()] = None,
     texts: Annotated[list[str] | None, Form()] = None,
@@ -262,6 +298,7 @@ def confirm_cvs(
             session,
             cvs,
             facts,
+            table_sorts,
             "That upload could not be confirmed. Choose the files again.",
         )
 
@@ -271,7 +308,7 @@ def confirm_cvs(
             name = clean_filename(filename)
             confirmed.append(UploadedCv(filename=name, text=check_length(name, text)))
     except UploadRejected as exc:
-        return _error(request, session, cvs, facts, str(exc))
+        return _error(request, session, cvs, facts, table_sorts, str(exc))
 
     return _done(*_store(confirmed, cvs, tasks))
 
@@ -283,6 +320,7 @@ def paste_cv(
     cvs: SentDocumentRepoDep,
     facts: CandidateFactRepoDep,
     tasks: TaskRepoDep,
+    table_sorts: TableSortRepoDep,
     _csrf: CsrfDep,
     cv_text: Annotated[str, Form()] = "",
     name: Annotated[str, Form()] = "",
@@ -291,7 +329,7 @@ def paste_cv(
     try:
         text = check_length(label, cv_text)
     except UploadRejected as exc:
-        return _error(request, session, cvs, facts, str(exc))
+        return _error(request, session, cvs, facts, table_sorts, str(exc))
 
     return _done(*_store([UploadedCv(filename=f"{label}.txt", text=text)], cvs, tasks))
 
