@@ -44,6 +44,7 @@ from jfl_core.storage.sent_documents import PostgresSentDocumentRepository
 from jfl_core.storage.tasks import PostgresTaskRepository
 from jfl_core.storage.title_suggestions import PostgresTitleSuggestionRepository
 from jfl_core.storage.ui_sections import PostgresUiSectionRepository
+from jfl_core.storage.ui_table_sorts import PostgresUiTableSortRepository
 from jfl_core.storage.user_corpus import PostgresUserCorpusRepository
 from sqlalchemy.engine import Connection
 
@@ -327,6 +328,19 @@ def section_repo(session: SessionDep, conn: ConnDep) -> PostgresUiSectionReposit
 
 
 SectionRepoDep = Annotated[PostgresUiSectionRepository, Depends(section_repo)]
+
+
+def table_sort_repo(session: SessionDep, conn: ConnDep) -> PostgresUiTableSortRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    Which column and direction this person last sorted each table by -- see
+    `jfl_web.sorting` for how a saved value is validated against a table's
+    current columns and applied.
+    """
+    return PostgresUiTableSortRepository(conn, session.user.id)
+
+
+TableSortRepoDep = Annotated[PostgresUiTableSortRepository, Depends(table_sort_repo)]
 
 
 def job_repo(conn: ConnDep) -> PostgresJobRepository:

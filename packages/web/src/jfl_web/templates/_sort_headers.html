@@ -1,0 +1,20 @@
+{#- Two macros shared by every sortable table's header row: the `aria-sort`
+    attribute for the active column, and the arrow shown after its label --
+    filled for the active column, faint for the rest, so an unsorted column
+    still reads as clickable before anyone hovers. See docs/ui-sections.md's
+    "a sortable table sorts from its column headers" and `jfl_web.sorting`.
+
+    `applications_list.html` keeps its own copy of these two macros rather
+    than importing this file -- see `jfl_web.scores`'s module docstring for
+    why that table's sort helpers were left as they were. Every table added
+    since imports this one. #}
+{% macro aria_sort(h) -%}
+  {%- if h.aria_sort %} aria-sort="{{ h.aria_sort }}"{% endif -%}
+{%- endmacro -%}
+{% macro sort_arrow(h) -%}
+  {%- if h.active -%}
+  <span class="sort-arrow" aria-hidden="true">{{ "▲" if h.direction == "asc" else "▼" }}</span>
+  {%- else -%}
+  <span class="sort-arrow sort-arrow-idle" aria-hidden="true">↕</span>
+  {%- endif -%}
+{%- endmacro %}

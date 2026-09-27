@@ -62,6 +62,7 @@ CONSTRAINED_COLUMNS = [
     ("cv_documents", "template", tables._CV_TEMPLATES),
     ("score_pushbacks", "axis", tables._SCORE_AXES),
     ("score_overrides", "axis", tables._SCORE_AXES),
+    ("ui_table_sorts", "table_key", tables._TABLE_KEYS),
 ]
 
 

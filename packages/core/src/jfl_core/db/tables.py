@@ -2091,3 +2091,49 @@ ui_section_states = Table(
     _ts("updated_at", nullable=False, server_default=text("now()")),
     UniqueConstraint("user_id", "section_key"),
 )
+
+# --------------------------------------------------------------------------
+# Per-user table sort, persisted -- the owner's complaint that "the sorting of
+# the applications isn't persistent" (and applies to every sortable table, not
+# just that one). One row per (user, table), upserted on a header click, and
+# read once per render -- same shape as `ui_section_states` above, and for the
+# same reason: a `WHERE` clause a reviewer has to spot is not enforcement, and
+# this table holds nothing more sensitive than "which column you last sorted
+# by", so it gets the identical structural tenancy anyway.
+#
+# Unlike `section_key`, `table_key` DOES carry a CHECK: a table's sortable
+# columns are fixed by its own template, not opened per row the way a
+# per-draft section is, so there is a real closed list to check against. See
+# `jfl_core.models.TableKey`, kept in step by
+# `packages/core/tests/test_value_lists_agree.py` and
+# `tests/test_check_constraints_match_models_integration.py`.
+#
+# `sort_key` carries no CHECK -- a table's own sortable columns already come
+# from a closed set at the Python level (`jfl_web.sorting.SortSpec`), and a
+# saved key no longer in that set is read back and silently ignored rather
+# than rejected: see `jfl_web.sorting.parse_sort`. A migration is a snapshot;
+# tying this column's constraint to columns a future screen might add or
+# remove would need a migration every time one did.
+# --------------------------------------------------------------------------
+
+_TABLE_KEYS = ("applications", "jobs", "boards", "changes", "cvs")
+
+ui_table_sorts = Table(
+    "ui_table_sorts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("table_key", Text, nullable=False),
+    Column("sort_key", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    _ts("created_at", nullable=False, server_default=text("clock_timestamp()")),
+    _ts("updated_at", nullable=False, server_default=text("now()")),
+    CheckConstraint(
+        "table_key in ('" + "','".join(_TABLE_KEYS) + "')",
+        name="table_key",
+    ),
+    CheckConstraint("direction in ('asc','desc')", name="direction"),
+    UniqueConstraint("user_id", "table_key"),
+)

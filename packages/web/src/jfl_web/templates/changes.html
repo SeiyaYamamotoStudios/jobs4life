@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sort_headers.html" as sorting %}
 {% block title %}Changes — jobs4life{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -47,7 +48,16 @@
   <div class="table-wrap">
     <table class="boards jobs changes">
       <thead>
-        <tr><th scope="col">Change</th><th scope="col">Job</th><th scope="col">Board</th><th scope="col">Workplace</th><th scope="col">Locations</th><th scope="col">When</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+        {#- The headers are the sort control -- see docs/ui-sections.md. #}
+        <tr>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.kind) }}><a href="{{ sort_headers.kind.href }}">Change{{ sorting.sort_arrow(sort_headers.kind) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.job) }}><a href="{{ sort_headers.job.href }}">Job{{ sorting.sort_arrow(sort_headers.job) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.board) }}><a href="{{ sort_headers.board.href }}">Board{{ sorting.sort_arrow(sort_headers.board) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.workplace) }}><a href="{{ sort_headers.workplace.href }}">Workplace{{ sorting.sort_arrow(sort_headers.workplace) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.locations) }}><a href="{{ sort_headers.locations.href }}">Locations{{ sorting.sort_arrow(sort_headers.locations) }}</a></th>
+          <th scope="col" class="sortable"{{ sorting.aria_sort(sort_headers.when) }}><a href="{{ sort_headers.when.href }}">When{{ sorting.sort_arrow(sort_headers.when) }}</a></th>
+          <th scope="col" class="col-actions-head"><span class="visually-hidden">Actions</span></th>
+        </tr>
       </thead>
       <tbody>
         {% for row in rows %}

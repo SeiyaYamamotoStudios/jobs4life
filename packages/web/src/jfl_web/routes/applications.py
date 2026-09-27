@@ -45,6 +45,7 @@ about what a status change does, two response shapes.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from typing import Annotated, get_args
 from urllib.parse import urlencode
@@ -56,6 +57,7 @@ from jfl_core.models import (
     ApplicationExtraction,
     ApplicationScore,
     ApplicationStatus,
+    TableKey,
 )
 from jfl_core.storage.accounts import AuthenticatedSession
 from jfl_core.storage.applications import ApplicationNotFoundError
@@ -74,6 +76,7 @@ from jfl_web.deps import (
     ScoreRepoDep,
     SectionRepoDep,
     SessionDep,
+    TableSortRepoDep,
     TaskRepoDep,
 )
 from jfl_web.jobads import (
@@ -109,6 +112,9 @@ from jfl_web.scores import (
     WANT_IT_LABEL,
     WANT_IT_SUBTITLE,
     RowScore,
+    SortDirection,
+    SortHeader,
+    SortKey,
     parse_sort,
     row_score,
     score_failure,
@@ -185,6 +191,61 @@ def next_status(current: ApplicationStatus) -> ApplicationStatus | None:
 # real, which is a tenancy leak in miniature.
 _NOT_FOUND = "No application found -- it may belong to another account."
 
+# The table key this list's sort is saved under -- see
+# `jfl_core.storage.ui_table_sorts` and CLAUDE.md's owner feedback that
+# sorting "needs to be persistent on any tables".
+_SORT_TABLE_KEY: TableKey = "applications"
+
+
+def _resolved_sort(
+    request: Request, table_sorts: TableSortRepoDep
+) -> tuple[SortKey, SortDirection]:
+    """The sort in effect for this render.
+
+    A header click puts `?sort=` on the URL, so its presence (not its value)
+    is what triggers a save -- `parse_sort` still normalises whatever value
+    arrived. A plain visit (`?sort=` absent) reads back what was last saved; no
+    saved row, or one naming a column this list no longer has, falls back to
+    the default silently. See `jfl_web.sorting.resolve_sort`, which this
+    mirrors for `jfl_web.scores`'s own (differently shaped) sort helpers --
+    kept separate because `packages/web/tests/test_list_scores.py` pins their
+    exact public signatures.
+    """
+    raw_sort = request.query_params.get("sort")
+    if raw_sort is not None:
+        sort, direction = parse_sort(raw_sort, request.query_params.get("dir"))
+        table_sorts.save_sort(_SORT_TABLE_KEY, sort, direction)
+        return sort, direction
+    saved = table_sorts.get_sort(_SORT_TABLE_KEY)
+    if saved is None:
+        return parse_sort(None, None)
+    return parse_sort(saved.sort_key, saved.direction)
+
+
+def _persistent_sort_headers(
+    sort: SortKey, direction: SortDirection, *, status: str | None
+) -> dict[SortKey, SortHeader]:
+    """`jfl_web.scores.sort_headers`, with every href made explicit.
+
+    That function omits `?sort=` for the one link that lands on the table's
+    global default, to keep that single URL clean -- fine when sort is
+    stateless. Once sort is persisted, that omission makes the click
+    indistinguishable from a plain visit: `_resolved_sort` would read back the
+    previously *saved* order instead of the column just clicked, so clicking
+    "Updated" from any other sort would silently do nothing. So every header
+    this list renders carries its sort explicitly, and only the `href` field
+    is rewritten -- `active`, `direction` and `aria_sort` come straight from
+    the wrapped call.
+    """
+    headers = sort_headers(sort, direction, status=status)
+    rewritten: dict[SortKey, SortHeader] = {}
+    for key, header in headers.items():
+        params: dict[str, str] = {"status": status} if status else {}
+        params["sort"] = header.key
+        params["dir"] = header.next_direction
+        rewritten[key] = dataclasses.replace(header, href=f"/applications?{urlencode(params)}")
+    return rewritten
+
 
 @router.get("/applications")
 def list_applications(
@@ -192,6 +253,7 @@ def list_applications(
     session: SessionDep,
     applications: ApplicationRepoDep,
     scores: ScoreRepoDep,
+    table_sorts: TableSortRepoDep,
 ) -> Response:
     # `archived=1` swaps the whole screen for the archived list rather than
     # combining with the status filter -- the archived list is not another
@@ -200,7 +262,7 @@ def list_applications(
     show_archived = request.query_params.get("archived") == "1"
     raw_status = request.query_params.get("status")
     status = raw_status if raw_status in STATUSES else None
-    sort, direction = parse_sort(request.query_params.get("sort"), request.query_params.get("dir"))
+    sort, direction = _resolved_sort(request, table_sorts)
     items = applications.list_applications(
         status=None if show_archived else status, archived=show_archived
     )
@@ -226,8 +288,10 @@ def list_applications(
             "just_archived": _just_archived_title(applications, request),
             "row_scores": row_scores,
             # The column headers are the sort control; the status filter
-            # carries the sort, and the headers carry the filter.
-            "sort_headers": sort_headers(sort, direction, status=status),
+            # carries the sort, and the headers carry the filter. Every link
+            # is explicit about the sort it sets, so a click always overrides
+            # whatever was last saved -- see `_persistent_sort_headers`.
+            "sort_headers": _persistent_sort_headers(sort, direction, status=status),
             "status_links": _status_links(status, sort_query(sort, direction)),
         },
     )

@@ -31,11 +31,14 @@ note is stored exactly as submitted -- no model, no tidying.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
+from jfl_core.models import BoardJob, TableKey, WatchedBoard
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY
+from jfl_intake.filtering import Match
 from jfl_intake.normalise import normalise
 
 from jfl_web.boards import platform_label
@@ -46,6 +49,7 @@ from jfl_web.deps import (
     CsrfDep,
     JobFilterRepoDep,
     SessionDep,
+    TableSortRepoDep,
     TaskRepoDep,
     TitleSuggestionRepoDep,
 )
@@ -62,10 +66,50 @@ from jfl_web.jobfilter import (
     parse_workplaces,
 )
 from jfl_web.scores import track_context
+from jfl_web.sorting import SortColumn, SortSpec, resolve_sort, sort_headers, sort_rows
 from jfl_web.templating import render
 from jfl_web.titlesuggestions import split_phrases, suggestion_panel
 
 router = APIRouter()
+
+_SORT_TABLE_KEY: TableKey = "jobs"
+
+
+def _job_locations_text(job: BoardJob) -> str | None:
+    """ "; "-joined, like the cell itself -- empty (nothing recorded) sorts
+    last in both directions rather than reading as a low value."""
+    return "; ".join(job.locations or ([job.location] if job.location else [])) or None
+
+
+def _jobs_sort_spec(board_by_id: Mapping[uuid.UUID, WatchedBoard]) -> SortSpec[Match[BoardJob]]:
+    """Every column but Track, which names its own action and sorts nothing.
+
+    Default is "seen since", newest first -- the order `list_open_jobs`
+    already returns rows in, so a first visit looks exactly as it did before
+    this table became sortable.
+    """
+
+    def board_label(match: Match[BoardJob]) -> str:
+        board = board_by_id[match.job.board_id]
+        return (board.label or board.board_url).casefold()
+
+    return SortSpec(
+        columns={
+            "job": SortColumn("Job", value=lambda m: m.job.title.casefold()),
+            "board": SortColumn("Board", value=board_label),
+            "workplace": SortColumn(
+                "Workplace",
+                value=lambda m: (m.job.workplace_label or m.job.workplace).casefold(),
+            ),
+            "locations": SortColumn("Locations", value=lambda m: _job_locations_text(m.job)),
+            "seen_since": SortColumn(
+                "Seen since", value=lambda m: m.job.first_seen_at, default_direction="desc"
+            ),
+        },
+        default_key="seen_since",
+        tiebreak=lambda m: m.job.first_seen_at,
+    )
+
 
 # The worker's kind for "suggest titles adjacent to this phrase" -- slice C7a.
 # A string on both sides, same reason `applications.py`'s EXTRACT_JOB_AD_KIND
@@ -94,6 +138,7 @@ def list_jobs(
     suggestions: TitleSuggestionRepoDep,
     applications: ApplicationRepoDep,
     credentials: CredentialRepoDep,
+    table_sorts: TableSortRepoDep,
 ) -> Response:
     show_unstated = request.query_params.get("show_unstated") == "1"
     saved = filters.get_filter()
@@ -107,6 +152,9 @@ def list_jobs(
         exceptions,
         show_hidden_unstated=show_unstated,
     )
+    spec = _jobs_sort_spec(board_by_id)
+    sort, direction = resolve_sort(request, table_sorts, _SORT_TABLE_KEY, spec)
+    result.matches = sort_rows(spec, result.matches, sort, direction)
     rows = result.matches[:JOBS_PAGE_CAP]
     return render(
         request,
@@ -122,6 +170,13 @@ def list_jobs(
             "capped": len(result.matches) > JOBS_PAGE_CAP,
             "cap": JOBS_PAGE_CAP,
             "board_by_id": board_by_id,
+            "sort_headers": sort_headers(
+                spec,
+                sort,
+                direction,
+                base_path="/jobs",
+                extra_params={"show_unstated": "1"} if show_unstated else None,
+            ),
             "checked_board_count": sum(1 for b in all_boards if b.baseline_check_id is not None),
             "pending_boards": [b for b in all_boards if b.baseline_check_id is None],
             "held_boards": [

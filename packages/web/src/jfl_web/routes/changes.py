@@ -32,11 +32,12 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.models import BoardJob, BoardJobEvent, JobFeedMark
+from jfl_core.models import BoardJob, BoardJobEvent, JobFeedMark, TableKey, WatchedBoard
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_intake.feed import (
     FIRST_VISIT_LOOKBACK,
@@ -57,12 +58,16 @@ from jfl_web.deps import (
     JobFeedRepoDep,
     JobFilterRepoDep,
     SessionDep,
+    TableSortRepoDep,
 )
 from jfl_web.jobfilter import filter_open_jobs
 from jfl_web.scores import track_context
+from jfl_web.sorting import SortColumn, SortSpec, resolve_sort, sort_headers, sort_rows
 from jfl_web.templating import render
 
 router = APIRouter()
+
+_SORT_TABLE_KEY: TableKey = "changes"
 
 _MARK_NOT_FOUND = "No change found -- it may belong to another account."
 
@@ -82,6 +87,37 @@ class FeedRow:
     seen_before: bool
 
 
+def _changes_locations_text(job: BoardJob) -> str | None:
+    return "; ".join(job.locations or ([job.location] if job.location else [])) or None
+
+
+def _changes_sort_spec(board_by_id: Mapping[uuid.UUID, WatchedBoard]) -> SortSpec[FeedRow]:
+    """Every column but Actions (Track / Dismiss, both self-naming). Default
+    is "when", newest first -- events already arrive in that order."""
+
+    def board_label(row: FeedRow) -> str | None:
+        board = board_by_id.get(row.event.job.board_id)
+        return None if board is None else (board.label or board.board_url).casefold()
+
+    return SortSpec(
+        columns={
+            "kind": SortColumn("Change", value=lambda r: r.event.kind),
+            "job": SortColumn("Job", value=lambda r: r.event.job.title.casefold()),
+            "board": SortColumn("Board", value=board_label),
+            "workplace": SortColumn(
+                "Workplace",
+                value=lambda r: (r.event.job.workplace_label or r.event.job.workplace).casefold(),
+            ),
+            "locations": SortColumn(
+                "Locations", value=lambda r: _changes_locations_text(r.event.job)
+            ),
+            "when": SortColumn("When", value=lambda r: r.event.at, default_direction="desc"),
+        },
+        default_key="when",
+        tiebreak=lambda r: r.event.at,
+    )
+
+
 @router.get("/changes")
 def list_changes(
     request: Request,
@@ -91,6 +127,7 @@ def list_changes(
     feed: JobFeedRepoDep,
     applications: ApplicationRepoDep,
     credentials: CredentialRepoDep,
+    table_sorts: TableSortRepoDep,
 ) -> Response:
     now = dt.datetime.now(dt.UTC)
     show_unstated = request.query_params.get("show_unstated") == "1"
@@ -130,6 +167,11 @@ def list_changes(
     ]
     feed.set_last_looked_at(now)
 
+    board_by_id = {b.id: b for b in all_boards}
+    spec = _changes_sort_spec(board_by_id)
+    sort, direction = resolve_sort(request, table_sorts, _SORT_TABLE_KEY, spec)
+    rows = sort_rows(spec, rows, sort, direction)
+
     return render(
         request,
         "changes.html",
@@ -147,10 +189,17 @@ def list_changes(
             # change is actionable where it is read.
             "tracked": applications.tracked_board_jobs([r.event.job.id for r in rows]),
             **track_context(credentials.summary(ANTHROPIC_API_KEY) is not None),
-            "board_by_id": {b.id: b for b in all_boards},
+            "board_by_id": board_by_id,
             "board_count": len(all_boards),
             "platform_label": platform_label,
             "status_message": _STATUS_MESSAGES.get(request.query_params.get("status", "")),
+            "sort_headers": sort_headers(
+                spec,
+                sort,
+                direction,
+                base_path="/changes",
+                extra_params={"show_unstated": "1"} if show_unstated else None,
+            ),
         },
     )
 

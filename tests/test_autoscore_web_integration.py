@@ -461,16 +461,23 @@ def test_every_column_header_is_a_sort_link_that_reverses_when_active(
     ]
     # One header carries aria-sort: the active one.
     assert [k for k, (aria, _) in default.items() if aria] == ["Updated"]
+    # Every link names its sort explicitly, `dir` included, even where a
+    # stateless list could omit it at its own default -- once sort persists
+    # (`ui_table_sorts`), an omitted `?sort=` on a plain visit means "apply
+    # what was saved", so the one link that would otherwise land back on this
+    # exact bare state has to say so, or it would silently do nothing the
+    # next time somebody had a different sort saved. See
+    # `jfl_web.routes.applications._persistent_sort_headers`.
     assert default["Updated"] == ("descending", "/applications?sort=updated&dir=asc")
-    assert default["Title"] == (None, "/applications?sort=title")
-    assert default["Could I get this"] == (None, "/applications?sort=could_get")
-    assert default["Do I want this"] == (None, "/applications?sort=want_it")
+    assert default["Title"] == (None, "/applications?sort=title&dir=asc")
+    assert default["Could I get this"] == (None, "/applications?sort=could_get&dir=desc")
+    assert default["Do I want this"] == (None, "/applications?sort=want_it&dir=desc")
 
     by_could = _headers(client.get("/applications?sort=could_get").text)
     assert by_could["Could I get this"] == ("descending", "/applications?sort=could_get&dir=asc")
-    assert by_could["Updated"] == (None, "/applications")
+    assert by_could["Updated"] == (None, "/applications?sort=updated&dir=desc")
     reversed_ = _headers(client.get("/applications?sort=could_get&dir=asc").text)
-    assert reversed_["Could I get this"] == ("ascending", "/applications?sort=could_get")
+    assert reversed_["Could I get this"] == ("ascending", "/applications?sort=could_get&dir=desc")
 
     # The separate "Sort:" row is gone; the headers are the control.
     page = client.get("/applications").text
@@ -488,9 +495,9 @@ def test_sorting_keeps_the_status_filter_and_filtering_keeps_the_sort(
     headers = _headers(page)
     assert headers["Do I want this"] == (
         "ascending",
-        "/applications?status=interested&sort=want_it",
+        "/applications?status=interested&sort=want_it&dir=desc",
     )
-    assert headers["Title"][1] == "/applications?status=interested&sort=title"
+    assert headers["Title"][1] == "/applications?status=interested&sort=title&dir=asc"
     nav = page[page.index('aria-label="Filter applications by status"') :]
     nav = html.unescape(nav[: nav.index("</nav>")])
     assert 'href="/applications?status=applied&sort=want_it&dir=asc"' in nav

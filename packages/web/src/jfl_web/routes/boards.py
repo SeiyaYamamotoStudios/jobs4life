@@ -46,11 +46,11 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
-from jfl_core.models import BoardCheck, WatchedBoard
+from jfl_core.models import BoardCheck, TableKey, WatchedBoard
 from jfl_core.storage.boards import PostgresBoardRepository
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY
 from jfl_intake.detect import BoardRef, BoardUrlError, detect_board
@@ -64,6 +64,7 @@ from jfl_web.deps import (
     CsrfDep,
     JobFilterRepoDep,
     SessionDep,
+    TableSortRepoDep,
     TaskRepoDep,
 )
 from jfl_web.jobfilter import (
@@ -75,9 +76,61 @@ from jfl_web.jobfilter import (
     unstated_setting_view,
 )
 from jfl_web.scores import track_context
+from jfl_web.sorting import SortColumn, SortSpec, resolve_sort, sort_headers, sort_rows
 from jfl_web.templating import render
 
 router = APIRouter()
+
+_SORT_TABLE_KEY: TableKey = "boards"
+
+# One row is `_board_view`'s dict -- `board`, `platform_label`, `last_check`,
+# `open_job_count`, `held`, `checking`, `match_count`. A dict rather than a
+# dataclass because that is what the route already builds; the sort spec reads
+# it the same way the template does.
+_BoardRow = dict[str, Any]
+
+
+def _boards_sort_spec() -> SortSpec[_BoardRow]:
+    """Every column but Actions, which names its own controls and sorts
+    nothing. Default is "added", oldest first -- `list_boards`'s own order,
+    so a first visit looks exactly as it did before this table became
+    sortable.
+    """
+
+    def board_label(row: _BoardRow) -> str:
+        board: WatchedBoard = row["board"]
+        return (board.label or board.board_url).casefold()
+
+    def last_check_status(row: _BoardRow) -> str | None:
+        check: BoardCheck | None = row["last_check"]
+        return check.status if check is not None else None
+
+    def last_checked_at(row: _BoardRow) -> dt.datetime | None:
+        check: BoardCheck | None = row["last_check"]
+        return check.finished_at if check is not None else None
+
+    def matching(row: _BoardRow) -> int | None:
+        count: BoardMatchCount | None = row["match_count"]
+        return None if count is None else count.matching
+
+    return SortSpec(
+        columns={
+            "board": SortColumn("Board", value=board_label),
+            "status": SortColumn("Last check", value=last_check_status),
+            "checked": SortColumn("Last checked", value=last_checked_at, default_direction="desc"),
+            "added": SortColumn(
+                "Added", value=lambda row: row["board"].created_at, default_direction="asc"
+            ),
+            "open_jobs": SortColumn(
+                "Open jobs", value=lambda row: row["open_job_count"], default_direction="desc"
+            ),
+            "matching": SortColumn("Matching", value=matching, default_direction="desc"),
+        },
+        default_key="added",
+        tiebreak=lambda row: row["board"].created_at,
+        tiebreak_reverse=False,
+    )
+
 
 # Same message whether the id never existed or belongs to another user -- see
 # applications.py's `_NOT_FOUND` for why distinguishing the two is a tenancy
@@ -141,16 +194,21 @@ def _list_context(
     session: SessionDep,
     boards: PostgresBoardRepository,
     filters: JobFilterRepoDep,
+    table_sorts: TableSortRepoDep,
     **extra: object,
 ) -> dict[str, object]:
     all_boards = boards.list_boards()
     counts = match_counts_by_board(
         boards.list_open_jobs(), filters.get_filter(), all_boards, filters.list_exceptions()
     )
+    rows = [_board_view(boards, b, counts.get(b.id)) for b in all_boards]
+    spec = _boards_sort_spec()
+    sort, direction = resolve_sort(request, table_sorts, _SORT_TABLE_KEY, spec)
     return {
         "session": session,
         "user": session.user,
-        "boards": [_board_view(boards, b, counts.get(b.id)) for b in all_boards],
+        "boards": sort_rows(spec, rows, sort, direction),
+        "sort_headers": sort_headers(spec, sort, direction, base_path="/boards"),
         **extra,
     }
 
@@ -172,7 +230,11 @@ def _count_param(request: Request, name: str) -> int:
 
 @router.get("/boards")
 def list_boards(
-    request: Request, session: SessionDep, boards: BoardRepoDep, filters: JobFilterRepoDep
+    request: Request,
+    session: SessionDep,
+    boards: BoardRepoDep,
+    filters: JobFilterRepoDep,
+    table_sorts: TableSortRepoDep,
 ) -> Response:
     return render(
         request,
@@ -182,6 +244,7 @@ def list_boards(
             session,
             boards,
             filters,
+            table_sorts,
             checked_status=request.query_params.get("status"),
             check_all_queued=_count_param(request, "queued"),
             check_all_skipped=_count_param(request, "skipped"),
@@ -196,6 +259,7 @@ def add_board(
     boards: BoardRepoDep,
     filters: JobFilterRepoDep,
     tasks: TaskRepoDep,
+    table_sorts: TableSortRepoDep,
     _csrf: CsrfDep,
     url: Annotated[str, Form()],
 ) -> Response:
@@ -212,7 +276,9 @@ def add_board(
         return render(
             request,
             "boards_list.html",
-            _list_context(request, session, boards, filters, error=str(exc), url_value=url),
+            _list_context(
+                request, session, boards, filters, table_sorts, error=str(exc), url_value=url
+            ),
             status_code=400,
         )
 
