@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Retry everything that failed — jobs4life{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Retry everything that failed</h1>
+  <a href="/applications">Cancel</a>
+</div>
+
+{% if plan.count %}
+<p>
+  This will retry {{ plan.count }} application{{ "" if plan.count == 1 else "s" }},
+  {% if estimate.measured %}
+  about ${{ estimate.total }} on your API key (measured from your own recent runs).
+  {% else %}
+  about {{ estimate.fallback }} on your API key -- a rough estimate, since there is no cost history yet to measure from.
+  {% endif %}
+</p>
+
+{% if plan.retry_reads %}
+<h2>Reading the ad again ({{ plan.retry_reads|length }})</h2>
+<ul class="rule-preview-list">
+  {% for application in plan.retry_reads %}
+  <li>
+    <strong>{{ application.title }}</strong>{% if application.employer %} — {{ application.employer }}{% endif %}
+    — {{ read_failures[application.id].message }}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if plan.retry_scores %}
+<h2>Scoring again ({{ plan.retry_scores|length }})</h2>
+<ul class="rule-preview-list">
+  {% for application in plan.retry_scores %}
+  <li>
+    <strong>{{ application.title }}</strong>{% if application.employer %} — {{ application.employer }}{% endif %}
+    — {{ score_failures[application.id].message }}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" action="/applications/retry-failed/confirm">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  {#- No ids carried: the confirm route re-reads the live list and recomputes
+      this exact plan itself, so there is nothing here to tamper with between
+      "this will retry" and the button that does it -- same discipline as
+      archive-by-rule's rule fields. -#}
+  <button type="submit">Retry {{ plan.count }} application{{ "" if plan.count == 1 else "s" }}</button>
+</form>
+{% else %}
+<p class="note">Nothing eligible to retry right now.</p>
+{% endif %}
+
+{% if plan.needs_paste %}
+<h2>Needs you to paste the ad ({{ plan.needs_paste|length }})</h2>
+<p class="note">
+  Retrying cannot fix these -- there is no ad text stored at all, so open each
+  one and paste it in.
+</p>
+<ul class="rule-preview-list">
+  {% for application in plan.needs_paste %}
+  <li>
+    <a href="/applications/{{ application.id }}"><strong>{{ application.title }}</strong></a>{% if application.employer %} — {{ application.employer }}{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if not plan.count and not plan.needs_paste %}
+<a class="button" href="/applications">Back to applications</a>
+{% endif %}
+{% endblock %}

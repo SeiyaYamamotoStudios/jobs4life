@@ -14,6 +14,7 @@ connection, inside its transaction, so tearing that down undoes everything.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -327,6 +328,39 @@ class PostgresRunRepository:
             )
         ).scalar_one()
         return None if total is None else Decimal(total)
+
+    def recent_costs(
+        self, user_id: uuid.UUID, *, stages: Sequence[str], limit: int = 20
+    ) -> list[Decimal]:
+        """The measured cost of this user's most recent runs whose `stage` is
+        one of `stages`, summed per `trace_id` -- so a button press that
+        chained more than one call (a score that had to run coverage first)
+        counts once, at what pressing it actually cost, the same total
+        `application_scores.cost_usd` records for that run.
+
+        Used only to estimate what a bulk action (`jfl_web.bulk_actions`) is
+        about to cost, on the user's own measured history -- never the rate
+        card, and never to bill anything. `limit` traces, newest first, is
+        plenty for a rough estimate; the whole history is not needed and
+        would only make an old, no-longer-representative run count as much as
+        a recent one.
+        """
+        per_trace = (
+            select(
+                runs_table.c.trace_id,
+                func.sum(runs_table.c.cost_usd).label("total_cost"),
+                func.max(runs_table.c.started_at).label("last_at"),
+            )
+            .where(runs_table.c.user_id == user_id, runs_table.c.stage.in_(stages))
+            .group_by(runs_table.c.trace_id)
+            .order_by(func.max(runs_table.c.started_at).desc())
+            .limit(limit)
+            .subquery()
+        )
+        rows = self._conn.execute(
+            select(per_trace.c.total_cost).where(per_trace.c.total_cost.is_not(None))
+        ).all()
+        return [Decimal(row.total_cost) for row in rows]
 
 
 def _row_to_job(row: Any) -> Job:

@@ -245,12 +245,40 @@ class PostgresScoreRepository(TenantScopedRepository):
 
     def has_any(self, application_id: uuid.UUID) -> bool:
         """Whether this application has ever had a scoring run, in any state --
-        what keeps the automatic first score to exactly one.
+        kept for callers that mean literally that. The automatic first score's
+        own guard is `has_active` below, not this: a failed-only history must
+        not count as "already scored" there.
         """
         return (
             self._conn.execute(
                 select(table.c.id)
                 .where(table.c.application_id == application_id, table.c.user_id == self._user_id)
+                .limit(1)
+            ).first()
+            is not None
+        )
+
+    def has_active(self, application_id: uuid.UUID) -> bool:
+        """Whether this application has a scoring run that is not a dead end --
+        `pending` or `done`. What `_chain_first_score` checks before queuing
+        the automatic first score after a successful read.
+
+        Deliberately **not** the same as `has_any`. A run that failed produced
+        nothing usable, so a failed-only history must not block the chain: a
+        user who pressed Re-score before the ad had any requirements (or
+        before a retryable read failure was fixed) gets a `no_requirements` (or
+        similar) row and nothing else, and when the read later succeeds the
+        first real score must still be able to start by itself -- "a
+        failed-only history should not block the chained score."
+        """
+        return (
+            self._conn.execute(
+                select(table.c.id)
+                .where(
+                    table.c.application_id == application_id,
+                    table.c.user_id == self._user_id,
+                    table.c.status != "failed",
+                )
                 .limit(1)
             ).first()
             is not None

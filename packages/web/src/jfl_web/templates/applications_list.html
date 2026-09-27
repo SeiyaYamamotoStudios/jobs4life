@@ -124,6 +124,18 @@
 </div>
 {% endif %}
 
+{% if queued_rescores is not none %}
+<p class="ok" role="status">
+  Queued {{ queued_rescores }} re-score{{ "" if queued_rescores == 1 else "s" }}.
+</p>
+{% endif %}
+
+{% if queued_retries is not none %}
+<p class="ok" role="status">
+  Queued {{ queued_retries }} retr{{ "y" if queued_retries == 1 else "ies" }}.
+</p>
+{% endif %}
+
 <nav class="status-filter" aria-label="Filter applications by status">
   {% for label, href, active in status_links %}
   <a href="{{ href }}" class="{{ 'active' if active else '' }}"{% if active %} aria-current="true"{% endif %}>{{ label }}</a>
@@ -190,11 +202,26 @@
   </form>
 </details>
 
+{% if retry_failed_count %}
+{#- Global, not selection-based: there is nothing to check, only "everything
+    that has currently failed" -- see `jfl_web.routes.applications._retry_plan`.
+    Its own small form, separate from `bulk-archive-form`, since it carries no
+    row ids at all. #}
+<form id="retry-failed-form" method="post" action="/applications/retry-failed/preview" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+  <button type="submit" class="secondary">Retry everything that failed ({{ retry_failed_count }})</button>
+</form>
+{% endif %}
+
 {% if applications %}
-{#- The page-level form every row checkbox and the toolbar's button name via
+{#- The page-level form every row checkbox and the toolbar's buttons name via
     `form="bulk-archive-form"` -- it cannot wrap the table itself because each
     row already nests the status form and the per-row archive-confirm form,
-    and HTML forms cannot nest. #}
+    and HTML forms cannot nest. Its own `action`/`method` are what "Archive
+    selected" submits to; "Re-score selected" points the same submission at a
+    different route with `formaction`, the same trick a card's secondary
+    action uses elsewhere (see docs/ui-sections.md) -- one form, one set of
+    checked ids, two places they can be sent. #}
 <form id="bulk-archive-form" method="post" action="/applications/bulk-archive">
   <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
 </form>
@@ -206,6 +233,9 @@
   </label>
   <button type="submit" form="bulk-archive-form" class="secondary">
     Archive selected (<span data-selected-count>0</span>)
+  </button>
+  <button type="submit" form="bulk-archive-form" formaction="/applications/rescore/preview" class="secondary">
+    Re-score selected (<span data-selected-count>0</span>)
   </button>
 </div>
 
