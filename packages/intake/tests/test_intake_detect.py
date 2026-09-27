@@ -24,6 +24,13 @@ NVIDIA = {"tenant": "nvidia", "wd": "wd5", "site": "NVIDIAExternalCareerSite"}
             {"token": "anthropic"},
         ),
         ("boards.greenhouse.io/Anthropic?gh_src=abc", "greenhouse", {"token": "anthropic"}),
+        # EU-hosted: same boards, same API (verified 2026-09-27, see detect.py).
+        ("https://job-boards.eu.greenhouse.io/aisi", "greenhouse", {"token": "aisi"}),
+        (
+            "https://job-boards.eu.greenhouse.io/iai/jobs/4751364101",
+            "greenhouse",
+            {"token": "iai"},
+        ),
         (
             "https://boards.greenhouse.io/embed/job_board?for=anthropic",
             "greenhouse",
@@ -130,7 +137,7 @@ def test_linkedin_and_indeed_are_rejected_with_a_clear_message(url: str) -> None
     [
         "https://careers.example.com/jobs",
         "https://notlinkedin.com/jobs",  # the suffix match is on a label boundary
-        "https://job-boards.eu.greenhouse.io/anthropic",  # unverified, so unsupported
+        "https://jobs.eu.lever.co/anthropic",  # unverified, so unsupported
         "https://boards.greenhouse.io/",
         "https://jobs.lever.co/",
         "https://jobs.ashbyhq.com",

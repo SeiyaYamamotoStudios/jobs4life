@@ -29,9 +29,13 @@ Supported, each verified live on 2026-09-10:
   * Workable -- `apply.workable.com/{subdomain}` (a posting URL such as
     `apply.workable.com/huggingface/j/9E2A4C02C7` resolves to the same board).
 
-EU-hosted variants (`job-boards.eu.greenhouse.io`, `jobs.eu.lever.co`) exist but
-were not verified, so they are rejected as unsupported rather than mapped to an
-API host nobody has seen answer.
+Greenhouse's EU-hosted boards (`job-boards.eu.greenhouse.io/{token}`) are the
+same boards behind the same API: verified 2026-09-27 against `aisi` and `iai`,
+`boards-api.greenhouse.io/v1/boards/{token}/jobs` answers for both (and so does
+the per-job description endpoint), while `boards-api.eu.greenhouse.io` does not
+resolve at all. So an EU URL maps to the ordinary adapter. Lever's EU host
+(`jobs.eu.lever.co`) is still unverified, so it stays unsupported rather than
+mapped to an API host nobody has seen answer.
 
 **LinkedIn and Indeed are rejected, in any form** -- including their short-link
 hosts. Not only for legal reasons: a scraper in this architecture is a judgement
@@ -147,7 +151,7 @@ def detect_board(url: str) -> BoardRef:
 
     segments = [unquote(s) for s in parts.path.split("/") if s]
 
-    if host in ("boards.greenhouse.io", "job-boards.greenhouse.io"):
+    if host in ("boards.greenhouse.io", "job-boards.greenhouse.io", "job-boards.eu.greenhouse.io"):
         return _greenhouse(url.strip(), segments, parts.query)
     if host == "jobs.ashbyhq.com":
         return _single_segment(url.strip(), "ashby", "name", segments)
