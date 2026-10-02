@@ -272,3 +272,32 @@ def test_a_note_beneath_a_qualification_is_never_an_education_line() -> None:
         "BSc (Hons), Computing — Example Polytechnic, 2006",
     )
     assert not any("should not be represented" in line for line in skeleton.education)
+
+
+def test_a_completed_course_outside_a_job_is_a_credential_line() -> None:
+    """The owner's complaint: "my qualifications only ever show my degrees, and
+    my AI safety + deep learning credentials are missing". His record files
+    those under "Independent / Non-Employment Activity", which was skipped
+    whole. A heading there ending in one date is something completed and is
+    listed, before the degrees; a date range is an activity, an undated heading
+    is a project, and the notes beneath any of them are never printed."""
+    corpus = (
+        "# Test Person — Verification Record\n\n"
+        "## Independent / Non-Employment Activity\n\n"
+        "### Example Institute — Technical Safety Course, 2026\n\n"
+        "- Completed, certificate held. Should not be represented as research.\n\n"
+        "### Example xPro — Deep Learning, 2025\n\n"
+        "### Open-source maintainer, 2019 – Present\n\n"
+        "- Maintains a small scheduling library.\n\n"
+        "### Personal project — local inference experiment\n\n"
+        "- Ran a model locally.\n\n"
+        "## Education\n\n"
+        "### BSc (Hons), Computing — Example Polytechnic, 2006\n"
+    )
+    skeleton = build_skeleton(parse_document("corpus/record.md", corpus, USER).spans)
+    assert skeleton.education == (
+        "Example Institute — Technical Safety Course, 2026",
+        "Example xPro — Deep Learning, 2025",
+        "BSc (Hons), Computing — Example Polytechnic, 2006",
+    )
+    assert skeleton.roles == ()

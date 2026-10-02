@@ -118,6 +118,16 @@ _NOT_A_ROLE_SECTION = re.compile(
     r"|contact.*|(?:side |personal )?projects)$",
     re.IGNORECASE,
 )
+# Where a hand-written record keeps what was done outside a job. A heading
+# under it that ends in ONE date -- "Technical AI Safety Course, 2026" -- is
+# something completed: a course, a certificate, a programme. It is a credential
+# line. One that ends in a range ("Open-source maintainer, 2019 - Present") is
+# an activity, and an undated one is a project; neither is a credential, and
+# neither is printed. Observed, not invented: 45 of the owner's 46 own CVs list
+# these courses beside the degrees, and the CV built here listed none of them,
+# because this section was skipped whole as "not a role".
+_CREDENTIAL_SECTION = re.compile(r"^independent\b|non-employment", re.IGNORECASE)
+_SINGLE_DATE = re.compile(r"^(?:[A-Za-z]{3,9}\.?\s+)?\d{4}$")
 _GENERIC_PARENT = re.compile(
     r"^(?:(?:professional\s+|work\s+)?experience|employment(?:\s+history)?|career(?:\s+history)?"
     r"|work\s+history|roles|positions)$",
@@ -312,6 +322,7 @@ def _read_document(
         order += 1
 
     education: list[str] = []
+    credentials: list[str] = []
     boundaries: list[str] = []
     for span in spans:
         if _is_title_heading(span):
@@ -345,6 +356,18 @@ def _read_document(
         if path[:1] in education_paths:
             education.append(span.text)
             continue
+        credential_at = special(path, _CREDENTIAL_SECTION)
+        if credential_at is not None:
+            # The heading only, verbatim -- the notes beneath it are caveats
+            # for the tool, exactly as under a qualification above.
+            dates = split_trailing_dates(path[-1])[1]
+            if (
+                span.kind == "heading"
+                and len(path) - (credential_at + 1) == 1
+                and _SINGLE_DATE.match(dates.strip())
+            ):
+                credentials.append(span.text)
+            continue
         if span.kind == "heading":
             continue
         owner = next((roles[path[:i]] for i in range(len(path), 0, -1) if path[:i] in roles), None)
@@ -357,7 +380,9 @@ def _read_document(
         owner.facts.append(span.text)
         owner.fact_span_ids.append(span.id)
 
-    return list(roles.values()), education, boundaries, title
+    # Courses first: they are the recent ones, and that is the order the
+    # owner's own CVs use.
+    return list(roles.values()), credentials + education, boundaries, title
 
 
 def build_skeleton(spans: Sequence[Span]) -> CvSkeleton:
