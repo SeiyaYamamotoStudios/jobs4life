@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Unsubscribe — jobs4life{% endblock %}
+{% block content %}
+{% if done %}
+<h1>Unsubscribed</h1>
+<p class="ok" role="status">You will not get the jobs4life digest email any more.</p>
+<p class="note">You can switch it back on any time in Settings, once signed in.</p>
+{% else %}
+<h1>Unsubscribe from the digest email</h1>
+<p class="lede">Press the button to stop the daily jobs4life digest email. Nothing else about your account changes.</p>
+{#- No CSRF token, deliberately: this form is authenticated by the signed token in
+    its own URL, as the one-click unsubscribe header requires. -#}
+<form method="post" action="/email/unsubscribe/{{ token }}">
+  <button type="submit">Unsubscribe</button>
+</form>
+{% endif %}
+{% endblock %}

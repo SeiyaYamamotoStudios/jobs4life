@@ -465,6 +465,93 @@ shape, which is what tripped the `reasoning_extraction` classifier before.
 - ~~Scoring on arrival~~ — **superseded 2026-09-15**: scoring happens only when the user
   turns a job into an application (see C7).
 
+### C9 — the digest email
+
+**Built 2026-10-30.** The owner is putting his search on ice and wants what the daily
+board checks find to come to him. Settled with him the same day; the reasons are the
+point, so they are recorded.
+
+**Daily, and covering what is new since that user's own cursor.** Sent once a day at a
+configured local hour (`JFL_DIGEST_HOUR`, default 08:00 `Europe/London` —
+`JFL_DIGEST_TIMEZONE`; the deployment's zone, not a per-user setting, because users have
+none and the feature is owner-sized). Each user has a *notified-up-to* cursor and a
+*last-evaluated* time (`digest_settings`); the first digest covers the time since they
+opted in, never the history, and re-enabling resets it so nobody is mailed the weeks it
+was off. The window ends five minutes before the run (`SETTLE`), because a check stamps
+its events with the time it finished and commits a moment later — a window ending at
+"now" would skip such an event for good. Events after the window go in the next day's.
+
+**Only `new` and `returned`.** A job going away is not worth waking an inbox for, and a
+repost is a role the owner has already seen. `gone` and `reposted` stay in the feed.
+
+**The same saved filter and per-board exceptions as `/changes` and `/jobs`** — without them
+one Workday board floods the email. `filter_open_jobs` moved from `jfl_web.jobfilter` into
+`jfl_intake.boardfilter` (the worker must not import the web package) and the web module
+re-imports it; the words a job's workplace and a failed check are *said* in moved with it
+(`jfl_intake.display`), so the email cannot claim more about a workplace than the page does
+— "Hybrid — days not stated" is in the email as it is on the page. Hidden-unstated jobs stay
+hidden, and the email says "N matching your filter of M", never N alone.
+
+**Independent of the feed.** The email never touches `job_feed_state.last_looked_at` and
+never creates or dismisses a `job_feed_marks` row, and a test holds those tables at zero
+rows across a send. Otherwise sending would silently mark changes as read, and opening
+`/changes` later would show a different set than it would have.
+
+**Honest about failures.** A quiet inbox must not imply "nothing changed" when the truth
+is "we could not look". A board is named — by label, with the Boards page's plain words for
+the cause — when the **latest** check of it that finished in the window was not `complete`:
+`incomplete`, `truncated`, `unreachable`, `failed`, and **`held`**. `held` counts because
+a held check changes no job's state, so new jobs on that board were not recorded and
+"nothing new" would be false. *Latest, not any*: a board that failed at 07:00 and checked
+complete at 19:00 lost nothing — a complete check re-derives the whole board — so naming it
+would be a warning about a problem that fixed itself. A board that keeps failing is named
+every day it does; that is the point, and it is noisy by design.
+
+**When it sends.** A digest if there are matching events or named boards. Otherwise a
+weekly heartbeat ("still watching 12 boards — nothing new") if no email of any kind went to
+that user in the last week, so an owner on a quiet board list can tell "nothing happened"
+from "the digest broke". Never an email to a user who watches no boards. All of this is one
+pure function (`jfl_intake.digest.plan_digest`), tested without a mail server.
+
+**Opt-in per user, default off**, on the existing settings page: the address it goes to
+(the account's own, Google-verified), when it goes, when the last one did, and a **Send a
+test email** button. **The test email is a preview of the real thing**: the digest the
+last 7 days would produce, through the same filter and failure rules, bannered and
+subject-tagged as a test, and it never moves the cursor (owner, 2026-10-30: checking the
+content should not mean waiting for 08:00). A user with no boards gets a plain delivery
+check. Nothing is sent in a request: the button enqueues `send_test_email`
+and the worker sends it. Without SMTP configured the section says so and the controls are
+disabled. **Unsubscribe needs no login**: a link carrying an HMAC token over the user id
+and the purpose (`JFL_EMAIL_LINK_SECRET`, dedicated, not the OAuth state secret; no expiry,
+because an unsubscribe link that dies is how mail gets reported as spam). A GET shows a
+button and changes nothing — link scanners prefetch GETs — and only the POST unsubscribes.
+The POST also serves `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) and is
+the one route that acts with no session and no CSRF token, authenticated by the token
+alone; the exemption is that route not depending on `CsrfDep`, so it cannot spread.
+
+**Delivery is at-least-once, and the duplicate window is stated.** The cursor and the send
+record (`email_sends`: kind, time, counts — never an address or a title) are advanced in
+one transaction **after** SMTP accepts the message; a refusal raises and the queue retries
+the same window. A crash between SMTP accept and that commit mails the window twice. That is
+the right side to fail on — a duplicate costs a glance, a lost digest is a job missed — and
+closing it would need a two-phase protocol SMTP does not offer.
+
+**Provider-agnostic.** Python's stdlib `smtplib` and `EmailMessage`, no vendor SDK; Brevo
+today (`smtp-relay.brevo.com:587`, STARTTLS), one environment change to move. TLS is
+mandatory: `ssl.create_default_context()`, STARTTLS (implicit TLS on 465), a timeout, and a
+server that does not offer STARTTLS is refused before any credential is sent. The SMTP
+password is a server credential on the master key's footing: worker environment only,
+out of every `repr`, never logged, never in `runs`, never in an exception message. No
+corpus, CV, application or score content is ever in an email; no images, no tracking pixel,
+no click tracking (and Brevo's own tracking is switched off — `docs/hosting.md`).
+
+**Mechanism.** A cheap `schedule_digests` pass every fifteen minutes (the same ticker shape
+as the board pass) finds opted-in users whose last completed run is older than the most
+recent digest hour and enqueues a `send_digest` for each; a user whose send keeps failing is
+retried hourly, not every pass. A quiet day still completes the run, or the scheduler would
+re-enqueue the user until midnight. None of the three kinds calls a model, so the kill
+switch does not hold them.
+
 ## Slice D — the loops that close
 
 ### D1 — interview preparation

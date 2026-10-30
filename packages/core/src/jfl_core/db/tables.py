@@ -2171,3 +2171,73 @@ ui_table_sorts = Table(
     CheckConstraint("direction in ('asc','desc')", name="direction"),
     UniqueConstraint("user_id", "table_key"),
 )
+
+# --------------------------------------------------------------------------
+# The emailed digest of watched-board changes (PLAN.md C9).
+#
+# `digest_settings` is one row per user, created the first time they opt in.
+# Two timestamps, because they answer different questions and conflating them
+# was the first design's bug:
+#
+#   * `notified_up_to` -- the cursor. Events (and failed checks) after this have
+#     not been considered for an email. It sits a few minutes behind the run
+#     that advanced it (see `jfl_worker.handlers.digest`, "settling"), so a
+#     check that finished just before a run but committed just after is not
+#     skipped for ever.
+#   * `last_evaluated_at` -- when a digest run last COMPLETED for this user,
+#     whether or not it sent anything. A quiet day sends nothing and must still
+#     count as "today's digest is done", or the scheduling pass would enqueue
+#     the same user every fifteen minutes until midnight.
+#
+# Opting in sets both to now: the first digest covers the time since opting in,
+# never the history. Opting out only clears `enabled`; the cursor is left, and
+# opting back in resets it, so a re-subscribing user is not mailed the weeks
+# they had switched it off for.
+#
+# Entirely separate from `job_feed_state`: the email must not move the feed's
+# last-looked time or mint feed marks, or sending would silently mark the
+# changes as read.
+# --------------------------------------------------------------------------
+
+digest_settings = Table(
+    "digest_settings",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    ),
+    Column("enabled", Boolean, nullable=False, server_default=text("false")),
+    _ts("opted_in_at"),
+    _ts("notified_up_to"),
+    _ts("last_evaluated_at"),
+    _ts("created_at", nullable=False, server_default=func.now()),
+    _ts("updated_at", nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+# What was sent, and nothing about its content: counts only. The rows serve
+# three readers -- the weekly heartbeat rule ("was anything sent in the last
+# seven days?"), the settings page ("last sent"), and anyone asking why a user
+# got or did not get an email. No address, no job title, no body.
+_EMAIL_SEND_KINDS = ("digest", "heartbeat", "test")
+
+email_sends = Table(
+    "email_sends",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("kind", Text, nullable=False),
+    _ts("sent_at", nullable=False),
+    # Jobs listed in the email / new-or-returned events found before the filter /
+    # boards reported as not checked. All zero for a test email.
+    Column("jobs_listed", Integer, nullable=False, server_default=text("0")),
+    Column("events_found", Integer, nullable=False, server_default=text("0")),
+    Column("boards_failed", Integer, nullable=False, server_default=text("0")),
+    CheckConstraint("kind in ('" + "','".join(_EMAIL_SEND_KINDS) + "')", name="kind"),
+    Index("ix_email_sends_user_id_sent_at", "user_id", "sent_at"),
+)

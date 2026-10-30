@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from jfl_core.crypto.envelope import MasterKey, MasterKeyError
+from jfl_core.digest_schedule import DigestSchedule, DigestScheduleError
 
 # Exactly these three, and never a Gmail scope: restricted scopes require an
 # annual CASA security assessment, and email intake is a forwarding address.
@@ -55,6 +56,14 @@ class WebSettings:
     insecure_cookies: bool
     # One free Models-API call when a key is entered, so a typo fails at the form.
     validate_api_keys: bool
+    # The emailed digest (PLAN.md C9). The web app never sends mail -- the worker
+    # does -- so it needs only three things: whether the server can send at all
+    # (so the settings page can say so and disable the controls), the secret that
+    # verifies unsubscribe links, and the digest hour to tell the user when to
+    # expect the email. The SMTP password is NOT read here: it is the worker's.
+    mail_configured: bool = False
+    email_link_secret: str | None = field(default=None, repr=False)
+    digest_schedule: DigestSchedule = field(default_factory=DigestSchedule)
 
     @property
     def session_cookie_name(self) -> str:
@@ -101,7 +110,27 @@ class WebSettings:
             )
         assert master_key is not None  # unreachable: absence was collected above
 
+        link_secret = source.get("JFL_EMAIL_LINK_SECRET", "").strip()
+        try:
+            digest_schedule = DigestSchedule.from_env(source)
+        except DigestScheduleError as exc:
+            raise ConfigError(str(exc)) from None
+        # The same four facts the worker needs before it will send; the worker is
+        # the stricter judge (it also validates the URL and the sender).
+        mail_configured = all(
+            source.get(name, "").strip()
+            for name in (
+                "JFL_SMTP_HOST",
+                "JFL_MAIL_FROM",
+                "JFL_PUBLIC_BASE_URL",
+                "JFL_EMAIL_LINK_SECRET",
+            )
+        )
+
         return cls(
+            mail_configured=mail_configured,
+            email_link_secret=link_secret or None,
+            digest_schedule=digest_schedule,
             database_url=database_url,
             google_client_id=client_id,
             google_client_secret=client_secret,

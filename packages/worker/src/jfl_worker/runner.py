@@ -3,8 +3,8 @@
 Shape of one iteration, all on the loop thread:
 
   1. maintenance, if due -- reclaim rows a dead worker left `running`, and
-     enqueue the three recurring tasks: the session purge, the feed-mark purge,
-     and the watched-board scheduling pass;
+     enqueue the four recurring tasks: the session purge, the feed-mark purge,
+     the watched-board scheduling pass, and the digest scheduling pass;
   2. count the free slots (`concurrency` minus tasks in flight), and if there
      are any, claim up to that many due tasks of the kinds this worker can run;
   3. hand each claimed task to a pool thread, which dispatches it and records
@@ -69,6 +69,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, wait
 
 from jfl_core.model_api import parked_note
 from jfl_core.models import Task
+from jfl_intake.digest import SCHEDULE_DIGESTS_KIND
 from jfl_intake.scheduling import SCHEDULE_BOARD_CHECKS_KIND
 from sqlalchemy.engine import Engine
 
@@ -85,6 +86,7 @@ from jfl_worker.settings import WorkerSettings, model_calls_disabled
 PURGE_SESSIONS_KIND = "purge_expired_sessions"
 PURGE_FEED_MARKS_KIND = "purge_stale_feed_marks"
 BOARD_SCHEDULE_KIND = SCHEDULE_BOARD_CHECKS_KIND
+DIGEST_SCHEDULE_KIND = SCHEDULE_DIGESTS_KIND
 
 
 def _utcnow() -> dt.datetime:
@@ -150,6 +152,7 @@ class Worker:
         self._next_purge_at: dt.datetime | None = None
         self._next_feed_mark_purge_at: dt.datetime | None = None
         self._next_board_schedule_at: dt.datetime | None = None
+        self._next_digest_schedule_at: dt.datetime | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -309,6 +312,14 @@ class Worker:
             self._enqueue_recurring(BOARD_SCHEDULE_KIND, now)
             self._next_board_schedule_at = now + dt.timedelta(
                 seconds=self._settings.board_schedule_interval
+            )
+        if self._next_digest_schedule_at is None or now >= self._next_digest_schedule_at:
+            # The emailed digest's scheduling pass (PLAN.md C9). Enqueued even
+            # with mail unconfigured: the handler then returns at once, and a
+            # registry without it would leave the row pending for ever.
+            self._enqueue_recurring(DIGEST_SCHEDULE_KIND, now)
+            self._next_digest_schedule_at = now + dt.timedelta(
+                seconds=self._settings.digest_schedule_interval
             )
 
     def _reclaim(self, now: dt.datetime) -> None:

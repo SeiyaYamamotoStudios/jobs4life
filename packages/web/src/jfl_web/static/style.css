@@ -1942,3 +1942,7 @@ ul.cv-versions li {
   .cv-header-contact,
   .cv-header-link { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Settings > Email digest: the toggle and the test button side by side. */
+.inline-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.inline-actions form { margin: 0; }

@@ -44,6 +44,14 @@ from jfl_worker.handlers.cv_facts import KIND as EXTRACT_CV_FACTS
 from jfl_worker.handlers.cv_facts import build_extract_cv_facts
 from jfl_worker.handlers.description import KIND as FETCH_JOB_DESCRIPTION
 from jfl_worker.handlers.description import build_fetch_job_description
+from jfl_worker.handlers.digest import SCHEDULE_KIND as SCHEDULE_DIGESTS
+from jfl_worker.handlers.digest import SEND_KIND as SEND_DIGEST
+from jfl_worker.handlers.digest import TEST_KIND as SEND_TEST_EMAIL
+from jfl_worker.handlers.digest import (
+    build_schedule_digests,
+    build_send_digest,
+    build_send_test_email,
+)
 from jfl_worker.handlers.draft_generation import KIND as GENERATE_CV_DRAFT
 from jfl_worker.handlers.draft_generation import build_generate_cv_draft
 from jfl_worker.handlers.extraction import KIND as EXTRACT_JOB_AD
@@ -60,6 +68,7 @@ from jfl_worker.handlers.sessions import KIND as PURGE_EXPIRED_SESSIONS
 from jfl_worker.handlers.sessions import purge_expired_sessions
 from jfl_worker.handlers.title_suggestions import KIND as SUGGEST_TITLES
 from jfl_worker.handlers.title_suggestions import build_suggest_titles
+from jfl_worker.mailer import SmtpSender
 from jfl_worker.registry import HandlerRegistry
 from jfl_worker.settings import WorkerSettings
 
@@ -78,6 +87,9 @@ __all__ = [
     "PURGE_EXPIRED_SESSIONS",
     "PURGE_STALE_FEED_MARKS",
     "SCHEDULE_BOARD_CHECKS",
+    "SCHEDULE_DIGESTS",
+    "SEND_DIGEST",
+    "SEND_TEST_EMAIL",
     "SCORE_APPLICATION",
     "SUGGEST_PROFILE_SETTINGS",
     "SUGGEST_TITLES",
@@ -94,6 +106,9 @@ __all__ = [
     "build_generate_cv_draft",
     "build_registry",
     "build_schedule_board_checks",
+    "build_schedule_digests",
+    "build_send_digest",
+    "build_send_test_email",
     "build_score_application",
     "build_suggest_profile_settings",
     "build_suggest_titles",
@@ -108,14 +123,16 @@ def build_registry(
     board_transport: TransportFactory | None = None,
     description_transport: TransportFactory | None = None,
     board_owners: Collection[uuid.UUID] | None = None,
+    digest_sender: SmtpSender | None = None,
 ) -> HandlerRegistry:
     """The worker's handlers. `main()` passes settings and nothing else.
 
     The keyword arguments exist so a test can run the REAL registry without it
     being able to reach a job board: `board_transport` replaces the httpx
     transport `check_board` would otherwise open, `description_transport` does
-    the same for `fetch_job_description`, and `board_owners` confines the
-    scheduling pass to the test's own users. All default to production.
+    the same for `fetch_job_description`, `board_owners` confines the
+    scheduling pass to the test's own users, and `digest_sender` replaces the SMTP
+    sender so no test opens a mail connection. All default to production.
     """
     registry = HandlerRegistry()
     registry.register(
@@ -141,6 +158,24 @@ def build_registry(
     registry.register(
         SCHEDULE_BOARD_CHECKS,
         build_schedule_board_checks(only_owners=board_owners),
+        calls_model=False,
+    )
+    registry.register(
+        SCHEDULE_DIGESTS,
+        build_schedule_digests(mail=settings.mail),
+        # False: a read of Postgres and an enqueue; nothing is sent from here.
+        calls_model=False,
+    )
+    registry.register(
+        SEND_DIGEST,
+        build_send_digest(mail=settings.mail, sender=digest_sender),
+        # False: SMTP to the owner's mail provider, no Anthropic call, nobody's
+        # key spent -- the kill switch must not silence the digest.
+        calls_model=False,
+    )
+    registry.register(
+        SEND_TEST_EMAIL,
+        build_send_test_email(mail=settings.mail, sender=digest_sender),
         calls_model=False,
     )
     registry.register(

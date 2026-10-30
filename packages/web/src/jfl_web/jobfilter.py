@@ -5,10 +5,10 @@ No SQL and no matching logic here -- matching is `jfl_intake.filtering` (pure),
 storage is the repositories. This module only turns their outputs into what a
 page says, the same split `jfl_web.boards` draws for check error codes.
 
-**The employer's words are never rewritten.** A job whose workplace came with
-the employer's own label (a Greenhouse custom field, e.g. "On-Site") is shown
-with that label, verbatim; our canonical word is used only where the platform
-gave an enum or a boolean, which are not anyone's prose.
+**The employer's words are never rewritten.** See `jfl_intake.display`, where
+`workplace_display` now lives (the digest email says the same words), and
+`jfl_intake.boardfilter`, where `filter_open_jobs` lives for the same reason;
+both are re-exported here under their old names.
 """
 
 from __future__ import annotations
@@ -26,15 +26,10 @@ from jfl_core.models import (
     Workplace,
     WorkplaceMode,
 )
-from jfl_intake.filtering import FilterResult, apply_filter
+from jfl_intake.boardfilter import filter_open_jobs, include_unstated_map
+from jfl_intake.display import WORKPLACE_NAMES, workplace_display
 from jfl_intake.workplace import effective_include_unstated, include_unstated_by_default
 
-WORKPLACE_NAMES: dict[Workplace, str] = {
-    "remote": "Remote",
-    "hybrid": "Hybrid",
-    "onsite": "On-site",
-    "unknown": "Workplace not stated",
-}
 WORKPLACE_VALUES: tuple[Workplace, ...] = get_args(Workplace)
 
 # The presets first: they are the main control, and Custom is the old checkboxes.
@@ -58,12 +53,6 @@ class FormTooLongError(ValueError):
     """A submitted text field exceeds its limit. Rejected, never truncated --
     a silently shortened filter or note is not what the owner wrote.
     """
-
-
-def workplace_display(job: BoardJob) -> str:
-    if job.workplace != "unknown" and job.workplace_label:
-        return job.workplace_label
-    return WORKPLACE_NAMES[job.workplace]
 
 
 def parse_workplaces(values: Iterable[str]) -> list[Workplace]:
@@ -90,12 +79,6 @@ def checked_text(value: str, limit: int) -> str:
     return value
 
 
-def include_unstated_map(boards: Iterable[WatchedBoard]) -> dict[uuid.UUID, bool]:
-    return {
-        b.id: effective_include_unstated(b.platform, b.include_unstated_workplace) for b in boards
-    }
-
-
 def unstated_setting_view(board: WatchedBoard) -> dict[str, object]:
     """What the board page says about its include-unstated setting."""
     return {
@@ -109,24 +92,6 @@ def unstated_setting_view(board: WatchedBoard) -> dict[str, object]:
 class BoardMatchCount:
     matching: int
     open_total: int
-
-
-def filter_open_jobs(
-    jobs: Sequence[BoardJob],
-    saved: JobFilter,
-    boards: Sequence[WatchedBoard],
-    exceptions: Sequence[BoardFilterException],
-    *,
-    show_hidden_unstated: bool = False,
-) -> FilterResult[BoardJob]:
-    return apply_filter(
-        jobs,
-        saved,
-        include_unstated=include_unstated_map(boards),
-        exceptions=exceptions,
-        show_hidden_unstated=show_hidden_unstated,
-        hybrid_too_heavy=frozenset(b.id for b in boards if b.hybrid_too_heavy),
-    )
 
 
 def match_counts_by_board(
@@ -147,3 +112,14 @@ def match_counts_by_board(
         board.id: BoardMatchCount(matching.get(board.id, 0), totals.get(board.id, 0))
         for board in boards
     }
+
+
+__all__ = [
+    "WORKPLACE_MODE_NAMES",
+    "WORKPLACE_MODE_VALUES",
+    "WORKPLACE_NAMES",
+    "WORKPLACE_VALUES",
+    "filter_open_jobs",
+    "include_unstated_map",
+    "workplace_display",
+]

@@ -1,0 +1,7 @@
+This is the test email you asked for from Settings, sent {{ sent_at }}. If you are reading it, email delivery works.
+
+It lists no jobs. The real digest arrives once a day at {{ schedule }} when something matching your filter has appeared, or a board could not be checked.
+
+--
+Settings: {{ links.settings }}
+Unsubscribe (one click): {{ links.unsubscribe }}

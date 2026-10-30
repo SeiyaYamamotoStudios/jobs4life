@@ -1110,6 +1110,7 @@ dependencies = [
     { name = "jfl-core" },
     { name = "jfl-generate" },
     { name = "jfl-intake" },
+    { name = "jinja2" },
 ]
 
 [package.metadata]
@@ -1117,6 +1118,7 @@ requires-dist = [
     { name = "jfl-core", editable = "packages/core" },
     { name = "jfl-generate", editable = "packages/generate" },
     { name = "jfl-intake", editable = "packages/intake" },
+    { name = "jinja2", specifier = ">=3.1" },
 ]
 
 [[package]]

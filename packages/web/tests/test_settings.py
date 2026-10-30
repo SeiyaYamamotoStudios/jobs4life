@@ -114,3 +114,40 @@ def test_the_environment_is_read_in_exactly_one_module() -> None:
     assert not offenders, f"environment read outside settings.py: {offenders}"
     assert "os.environ" in (root / "settings.py").read_text()
     assert os.environ is not None  # the import above is the thing under test
+
+
+def test_mail_is_unconfigured_by_default_and_needs_all_four_variables() -> None:
+    assert WebSettings.from_env(_COMPLETE).mail_configured is False
+    mail = {
+        "JFL_SMTP_HOST": "smtp.example.invalid",
+        "JFL_MAIL_FROM": "digest@example.invalid",
+        "JFL_PUBLIC_BASE_URL": "https://app.example.invalid",
+        "JFL_EMAIL_LINK_SECRET": "l" * 43,
+    }
+    assert WebSettings.from_env({**_COMPLETE, **mail}).mail_configured is True
+    for name in mail:
+        partial = {k: v for k, v in mail.items() if k != name}
+        assert WebSettings.from_env({**_COMPLETE, **partial}).mail_configured is False
+
+
+def test_the_link_secret_is_not_in_the_repr_and_the_smtp_password_is_never_read() -> None:
+    env = {
+        **_COMPLETE,
+        "JFL_EMAIL_LINK_SECRET": "l" * 43,
+        "JFL_SMTP_PASSWORD": "smtp-password-xyz",
+    }
+    settings = WebSettings.from_env(env)
+    assert "l" * 43 not in repr(settings) and "smtp-password-xyz" not in repr(settings)
+    assert settings.email_link_secret == "l" * 43
+    assert not any(v == "smtp-password-xyz" for v in vars_of(settings))
+
+
+def vars_of(settings: WebSettings) -> list[object]:
+    return [getattr(settings, f) for f in settings.__slots__]
+
+
+def test_the_digest_schedule_defaults_and_rejects_nonsense() -> None:
+    settings = WebSettings.from_env(_COMPLETE)
+    assert settings.digest_schedule.describe() == "08:00 Europe/London"
+    with pytest.raises(ConfigError, match="JFL_DIGEST_HOUR"):
+        WebSettings.from_env({**_COMPLETE, "JFL_DIGEST_HOUR": "99"})

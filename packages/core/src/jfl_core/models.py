@@ -448,6 +448,7 @@ BoardCheckErrorCode = Literal[
 # external id, and saying both would count it twice. `returned` is the same
 # external id reopening, and never shares a code path with `reposted`.
 BoardJobEventKind = Literal["new", "reposted", "returned", "gone"]
+EmailSendKind = Literal["digest", "heartbeat", "test"]
 # How a posting says the work is done. `unknown` is a real answer, not a gap in
 # the data model: many platforms (Greenhouse, Workday, Rippling, Personio) carry
 # no structured field at all, and a job whose workplace is not stated must never
@@ -1461,3 +1462,25 @@ class ApiKeyHealth(BaseModel):
 # `jfl_web.sorting` for the per-table column specs and
 # `jfl_core.storage.ui_table_sorts` for where a saved sort is read and written.
 TableKey = Literal["applications", "jobs", "boards", "changes", "cvs"]
+
+
+class DigestState(BaseModel):
+    """One user's digest opt-in and cursor. See `jfl_core.db.tables.digest_settings`
+    for what each timestamp means and why there are two.
+    """
+
+    enabled: bool = False
+    opted_in_at: dt.datetime | None = None
+    notified_up_to: dt.datetime | None = None
+    last_evaluated_at: dt.datetime | None = None
+
+
+class EmailSend(BaseModel):
+    """The record of one email sent: its kind, when, and counts. Never content."""
+
+    id: uuid.UUID
+    kind: EmailSendKind
+    sent_at: dt.datetime
+    jobs_listed: int = 0
+    events_found: int = 0
+    boards_failed: int = 0

@@ -72,4 +72,54 @@
   </p>
   {% endif %}
 </section>
+
+<section>
+  <h2>Email digest</h2>
+  <p class="lede">
+    Once a day, an email of the new and returned jobs on the boards you watch that
+    match your saved filter &mdash; the same filter and per-board exceptions as
+    <a href="/changes">Changes</a>. If a board could not be checked it says so,
+    so a quiet inbox never means &ldquo;we couldn&rsquo;t look&rdquo;. If nothing
+    else is sent for a week you get one short note that it is still running.
+    Nothing from your CV, applications or scores is ever in it, and it has no
+    tracking. Reading it does not mark anything on Changes as seen.
+  </p>
+
+  {% if email.message %}<p class="ok" role="status">{{ email.message }}</p>{% endif %}
+
+  {% if not email.configured %}
+  <p class="note" role="status">Email is not set up on this server, so the digest and the test email are unavailable.</p>
+  {% endif %}
+
+  <dl class="facts">
+    <dt>Goes to</dt><dd>{{ user.email }} <span class="note">(your account&rsquo;s address)</span></dd>
+    <dt>Status</dt><dd>{% if email.enabled %}<span class="ok">on</span> &mdash; sent daily at {{ email.schedule }}{% else %}off{% endif %}</dd>
+    <dt>Last sent</dt>
+    <dd>{% if email.last_send %}{{ email.last_send.sent_at | humanize_dt }} <span class="note">({{ email.last_send.kind }})</span>{% else %}never{% endif %}</dd>
+    {% if email.test_status in ("pending", "running") %}
+    <dt>Test email</dt><dd>queued</dd>
+    {% elif email.test_status == "failed" %}
+    <dt>Test email</dt><dd><span class="error">failed</span>{% if email.test_error %} <span class="note">{{ email.test_error }}</span>{% endif %}</dd>
+    {% endif %}
+  </dl>
+
+  <div class="inline-actions">
+    {% if email.enabled %}
+    <form method="post" action="/settings/email/disable">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit">Switch the digest off</button>
+    </form>
+    {% else %}
+    <form method="post" action="/settings/email/enable">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit"{% if not email.configured %} disabled{% endif %}>Switch the digest on</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/settings/email/test">
+      <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+      <button type="submit"{% if not email.configured %} disabled{% endif %}>Send a test email</button>
+      <span class="note">A preview of your digest for the last 7 days, marked as a test. It changes nothing.</span>
+    </form>
+  </div>
+</section>
 {% endblock %}

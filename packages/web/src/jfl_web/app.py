@@ -44,6 +44,7 @@ from jfl_web.routes import (
     corpus,
     cv_documents,
     drafts,
+    email_digest,
     jobs,
     pages,
     profile,
@@ -113,6 +114,7 @@ def create_app(
     app.include_router(boards.router)
     app.include_router(jobs.router)
     app.include_router(changes.router)
+    app.include_router(email_digest.router)
     app.include_router(title_suggestions.router)
     app.include_router(tracking.router)
     app.include_router(profile.router)
