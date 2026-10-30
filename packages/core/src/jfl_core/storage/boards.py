@@ -645,6 +645,20 @@ class PostgresBoardRepository(TenantScopedRepository):
         ).all()
         return [_check_from_row(r) for r in rows]
 
+    def checks_since(self, since: dt.datetime) -> list[BoardCheck]:
+        """Every check of this user's boards that finished after `since` (exclusive),
+        oldest first. The digest's honesty about failures reads this: a board whose
+        latest check in the window was not complete is named in the email, because
+        a quiet inbox must never imply "nothing changed" when the truth is "we
+        could not look".
+        """
+        rows = self._conn.execute(
+            select(*_CHECK_COLUMNS)
+            .where(checks_table.c.user_id == self._user_id, checks_table.c.finished_at > since)
+            .order_by(checks_table.c.finished_at.asc(), checks_table.c.started_at.asc())
+        ).all()
+        return [_check_from_row(r) for r in rows]
+
     def list_jobs(self, board_id: uuid.UUID, *, open_only: bool = False) -> list[BoardJob]:
         query = (
             select(*_JOB_COLUMNS)

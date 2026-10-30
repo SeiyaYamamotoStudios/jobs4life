@@ -21,7 +21,10 @@ from jfl_worker.handlers import (
     PURGE_EXPIRED_SESSIONS,
     PURGE_STALE_FEED_MARKS,
     SCHEDULE_BOARD_CHECKS,
+    SCHEDULE_DIGESTS,
     SCORE_APPLICATION,
+    SEND_DIGEST,
+    SEND_TEST_EMAIL,
     SUGGEST_PROFILE_SETTINGS,
     SUGGEST_TITLES,
     build_registry,
@@ -92,7 +95,10 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
+                SCHEDULE_DIGESTS,
                 SCORE_APPLICATION,
+                SEND_DIGEST,
+                SEND_TEST_EMAIL,
                 SUGGEST_PROFILE_SETTINGS,
                 SUGGEST_TITLES,
                 FETCH_JOB_DESCRIPTION,
@@ -105,6 +111,12 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
 
     feed_purge = registry.get(PURGE_STALE_FEED_MARKS)
     assert feed_purge is not None and feed_purge.calls_model is False
+
+    # The emailed digest sends SMTP to the owner's provider and calls no model:
+    # the kill switch is for spending a user's key and must not silence it.
+    for digest_kind in (SCHEDULE_DIGESTS, SEND_DIGEST, SEND_TEST_EMAIL):
+        spec = registry.get(digest_kind)
+        assert spec is not None and spec.calls_model is False
 
     extract = registry.get(EXTRACT_JOB_AD)
     assert extract is not None and extract.calls_model is True
@@ -181,6 +193,9 @@ def test_the_shipped_registry_declares_calls_model_correctly_for_each_kind() -> 
                 PURGE_EXPIRED_SESSIONS,
                 PURGE_STALE_FEED_MARKS,
                 SCHEDULE_BOARD_CHECKS,
+                SCHEDULE_DIGESTS,
+                SEND_DIGEST,
+                SEND_TEST_EMAIL,
             )
         )
     )

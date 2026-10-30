@@ -27,6 +27,7 @@ from jfl_core.storage.candidate_facts import PostgresCandidateFactRepository
 from jfl_core.storage.capability_clusters import PostgresCapabilityClusterRepository
 from jfl_core.storage.credentials import PostgresCredentialRepository
 from jfl_core.storage.cv_documents import PostgresCvDocumentRepository
+from jfl_core.storage.digest import PostgresDigestRepository
 from jfl_core.storage.job_feed import PostgresJobFeedRepository
 from jfl_core.storage.job_filters import PostgresJobFilterRepository
 from jfl_core.storage.postgres import (
@@ -212,6 +213,19 @@ def job_feed_repo(session: SessionDep, conn: ConnDep) -> PostgresJobFeedReposito
 
 
 JobFeedRepoDep = Annotated[PostgresJobFeedRepository, Depends(job_feed_repo)]
+
+
+def digest_repo(session: SessionDep, conn: ConnDep) -> PostgresDigestRepository:
+    """Bound to the signed-in user, and to no other. See the module docstring.
+
+    Separate from `job_feed_repo` on purpose: switching the email on or off, or
+    reading when it last went, must not be able to reach the feed's last-looked
+    time or its marks.
+    """
+    return PostgresDigestRepository(conn, session.user.id)
+
+
+DigestRepoDep = Annotated[PostgresDigestRepository, Depends(digest_repo)]
 
 
 def profile_repo(session: SessionDep, conn: ConnDep) -> PostgresProfileRepository:

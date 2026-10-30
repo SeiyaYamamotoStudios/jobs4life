@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>jobs4life digest</title></head>
+<body style="margin:0;padding:0;background:#f6f6f4;">
+<div style="max-width:640px;margin:0 auto;padding:16px;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.45;color:#1d1d1b;">
+<p style="margin:0 0 12px;font-size:13px;color:#6b6b66;">jobs4life</p>
+{% if preview_days %}
+<p style="margin:0 0 16px;padding:10px 12px;background:#fff4d6;border:1px solid #e8cf86;border-radius:4px;"><strong>Test email</strong>, sent {{ sent_at }} from Settings. It previews a digest covering the last {{ preview_days }} days of your watched boards, not since your last email, and changes nothing: your real digest still arrives at {{ schedule }}.</p>
+{% endif %}
+{% if heartbeat %}
+<h1 style="font-size:20px;margin:0 0 8px;">Still watching {{ boards_phrase }}</h1>
+<p style="margin:0 0 12px;">Every check {% if preview_days %}in the last {{ preview_days }} days{% else %}since your last email{% endif %} completed, and nothing new matches your filter.{% if found %} ({{ found }} new or returned {{ "job was" if found == 1 else "jobs were" }} found, but none matched your saved filter.){% endif %}</p>
+{% else %}
+<h1 style="font-size:20px;margin:0 0 8px;">{% if matching %}{{ matching }} matching your filter of {{ found }}{% elif failed %}Some boards could not be checked{% else %}Nothing matched your filter{% endif %}</h1>
+{% if matching %}
+<p style="margin:0 0 12px;">New or returned jobs on your watched boards{% if returned %}; {{ returned }} of the matching {{ "is" if returned == 1 else "are" }} returned (back on the board after being taken down){% endif %}.</p>
+{% elif found %}
+<p style="margin:0 0 12px;">{{ found }} new or returned {{ "job was" if found == 1 else "jobs were" }} found, but none matched your saved filter.</p>
+{% endif %}
+{% if hidden_unstated %}
+<p style="margin:0 0 12px;font-size:13px;color:#6b6b66;">{{ hidden_unstated }} more {{ "job" if hidden_unstated == 1 else "jobs" }} would match, but the workplace isn't stated. <a href="{{ links.changes_unstated }}" style="color:#1a5fb4;">Show them</a>.</p>
+{% endif %}
+{% endif %}
+{% if failed %}
+<div style="margin:0 0 16px;padding:10px 12px;border:1px solid #c9a227;background:#fff8e1;border-radius:6px;">
+<p style="margin:0 0 6px;"><strong>Could not be checked.</strong> Nothing can be said about these boards for the period below; changes on them may be missing from this email.</p>
+<ul style="margin:0;padding-left:20px;">
+{% for f in failed %}
+<li><strong>{{ f.board }}</strong> ({{ f.platform }}): {{ f.what }}{% if f.held %}; nothing on it was recorded until you accept the drop on its Boards page{% endif %}. Last check {{ f.when }}.</li>
+{% endfor %}
+</ul>
+</div>
+{% endif %}
+{% if jobs %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+{% for j in jobs %}
+<tr><td style="padding:10px 0;border-top:1px solid #dcdcd6;">
+<div style="font-size:16px;font-weight:600;">{% if j.url %}<a href="{{ j.url }}" style="color:#1a5fb4;text-decoration:none;">{{ j.title }}</a>{% else %}{{ j.title }}{% endif %}</div>
+<div style="font-size:13px;color:#6b6b66;"><strong style="color:#1d1d1b;">{{ j.kind }}</strong>{% if j.kind_note %} ({{ j.kind_note }}){% endif %} {{ j.when }} &middot; {{ j.board }}{% if j.platform %} ({{ j.platform }}){% endif %}</div>
+<div style="font-size:14px;">{{ j.workplace }}{% for n in j.workplace_notes %} &mdash; {{ n }}{% endfor %}{% if j.locations %} &middot; {{ j.locations }}{% endif %}</div>
+</td></tr>
+{% endfor %}
+</table>
+{% if overflow %}
+<p style="margin:12px 0;">&hellip;and {{ overflow }} more matching {{ "job" if overflow == 1 else "jobs" }}. <a href="{{ links.changes }}" style="color:#1a5fb4;">See them all</a>.</p>
+{% endif %}
+{% endif %}
+<p style="margin:16px 0;"><a href="{{ links.changes }}" style="color:#1a5fb4;">Open all changes</a></p>
+<hr style="border:0;border-top:1px solid #dcdcd6;margin:16px 0;">
+<p style="margin:0 0 8px;font-size:12px;color:#6b6b66;">You are getting this because you turned on the daily digest in Settings. It lists new and returned jobs on the boards you watch that match your saved filter, once a day at {{ schedule }}, plus a weekly note if nothing else was sent. Nothing from your CV, applications or scores is ever in it, and it has no tracking.</p>
+<p style="margin:0;font-size:12px;"><a href="{{ links.settings }}" style="color:#1a5fb4;">Settings</a> &middot; <a href="{{ links.unsubscribe }}" style="color:#1a5fb4;">Unsubscribe</a></p>
+</div>
+</body>
+</html>

@@ -553,6 +553,72 @@ nmap -p 22,80,443,8000 VPS_IP   # from your laptop
 
 ---
 
+## 11. Outbound email for the digest (Brevo)
+
+The worker sends the emailed digest of watched-board changes (PLAN.md C9) over plain SMTP
+submission. Nothing inbound is opened: this is the worker dialling out to
+`smtp-relay.brevo.com:587`, which the firewall allows (`ufw default allow outgoing`).
+OVH blocks outbound port **25**, not 587; if a send hangs, test with
+`nc -vz smtp-relay.brevo.com 587` from the box first.
+
+**1. Brevo account.** Create the account, add the sending domain `hiltonlabs.org` under
+*Senders, domains & dedicated IPs*, and create an **SMTP key** (*SMTP & API*). The SMTP
+login is shown there (usually a `...@smtp-brevo.com` address); the key is the password.
+Use a sender like `digest@hiltonlabs.org`.
+
+**2. DNS (Cloudflare, domain `hiltonlabs.org`).** Checked live on 2026-10-30:
+`hiltonlabs.org` has **no SPF and no DMARC record**; its only TXT is a
+`google-site-verification`, and MX is `1 smtp.google.com.` (Google Workspace). So:
+
+- **SPF — exactly ONE record covering both senders.** A domain may publish only one
+  `v=spf1` TXT; two is a permerror and breaks both. Create at the apex:
+  `v=spf1 include:_spf.google.com include:spf.brevo.com ~all`. Verify Brevo's current
+  include in its domain-authentication screen before saving. An SPF naming only Brevo would
+  break the Workspace mail.
+- **DKIM** — Brevo gives one or two records (a `brevo1._domainkey` / `brevo2._domainkey`
+  CNAME, or a TXT, plus a `brevo-code` TXT). Add them **DNS-only (grey cloud)**; a proxied
+  CNAME does not resolve as DKIM. Google Workspace's own DKIM (selector `google`) is
+  separate and is not touched.
+- **DMARC** — start in monitoring: TXT `_dmarc` = `v=DMARC1; p=none; rua=mailto:<owner address>`.
+  Read the aggregate reports for a couple of weeks; when both Workspace and Brevo show as
+  aligned, tighten to `p=quarantine`, then `p=reject`.
+
+Then press *Authenticate* in Brevo and wait for it to go green before sending.
+
+**3. Switch off Brevo's tracking.** The digest promises no tracking: in Brevo's
+*Transactional* > *Settings* turn off **click tracking** and **open tracking** (link
+rewriting and the open pixel). Check a received test email: its links must be the plain
+`https://app-jobs4life.hiltonlabs.org/...` URLs and the HTML must contain no `<img>`.
+
+**4. VPS `.env`** (never the repo, never `.env.example`'s commented values):
+
+```
+JFL_SMTP_HOST=smtp-relay.brevo.com
+JFL_SMTP_PORT=587
+JFL_SMTP_USERNAME=<Brevo SMTP login>
+JFL_SMTP_PASSWORD=<Brevo SMTP key>
+JFL_MAIL_FROM=jobs4life <digest@hiltonlabs.org>
+JFL_PUBLIC_BASE_URL=https://app-jobs4life.hiltonlabs.org
+JFL_EMAIL_LINK_SECRET=<openssl rand -base64 32>
+# optional: JFL_DIGEST_HOUR=8  JFL_DIGEST_TIMEZONE=Europe/London
+```
+
+The SMTP password is a server credential: `chmod 600 .env`, never pasted into a ticket or a
+log. If `JFL_SMTP_HOST` is set but `JFL_MAIL_FROM`, `JFL_PUBLIC_BASE_URL` or
+`JFL_EMAIL_LINK_SECRET` is missing, the **worker refuses to boot** and names the variable —
+a half-configured mailer is not left to fail quietly at 08:00. Rotating
+`JFL_EMAIL_LINK_SECRET` invalidates every unsubscribe link already sent. Then
+`docker compose up -d` (both `app` and `worker` read `.env`).
+
+**5. Check it.** Sign in, open **Settings**, and under *Email digest* press **Send a test
+email**: it enqueues a task and the worker sends it within the minute; *Last sent* then
+shows `test`. The email is a preview of your digest over the last 7 days, marked as a
+test, so it shows the real content; it does not move the digest cursor. If it fails the section says so and `docker compose logs worker` has a
+`task.failed` line with a literal reason (`mail server refused the login (SMTP 535)` means
+the username/key; `does not offer STARTTLS` means the wrong port). Use the *Unsubscribe*
+link in that email to confirm the one-click page works. Then switch the digest on; the
+first one arrives at the next 08:00 and covers the time since you switched it on.
+
 ## Learned by actually running this (2026-09-08)
 
 Five things this runbook could not have predicted, all hit on the real box. They are

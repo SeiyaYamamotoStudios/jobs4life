@@ -31,6 +31,7 @@ from jfl_worker.registry import (
 )
 from jfl_worker.runner import (
     BOARD_SCHEDULE_KIND,
+    DIGEST_SCHEDULE_KIND,
     PURGE_FEED_MARKS_KIND,
     PURGE_SESSIONS_KIND,
     Worker,
@@ -530,6 +531,26 @@ def test_the_board_scheduling_pass_is_enqueued_on_its_own_ticker(engine: Engine)
     # Only one is ever queued at a time: the second tick found the first pending.
     scheduled = [t for t in queue.tasks.values() if t.kind == BOARD_SCHEDULE_KIND]
     assert len(scheduled) == 1
+
+
+def test_the_digest_scheduling_pass_is_enqueued_on_its_own_ticker(engine: Engine) -> None:
+    """Every fifteen minutes by default, through `enqueue_unique` (PLAN.md C9)."""
+    queue = FakeQueue()
+    registry = HandlerRegistry()
+    registry.register(DIGEST_SCHEDULE_KIND, lambda ctx: None, calls_model=False)
+    settings = WorkerSettings(database_url="x", digest_schedule_interval=900.0)
+    worker, enqueuer = build_worker(engine, registry, queue, settings=settings)
+
+    def ticks() -> int:
+        return enqueuer.calls.count(DIGEST_SCHEDULE_KIND)
+
+    worker._run_maintenance(NOW)
+    assert ticks() == 1
+    worker._run_maintenance(NOW + dt.timedelta(minutes=10))
+    assert ticks() == 1
+    worker._run_maintenance(NOW + dt.timedelta(minutes=15))
+    assert ticks() == 2
+    assert len([t for t in queue.tasks.values() if t.kind == DIGEST_SCHEDULE_KIND]) == 1
 
 
 def test_reclaim_uses_the_visibility_timeout_as_its_cutoff(engine: Engine) -> None:

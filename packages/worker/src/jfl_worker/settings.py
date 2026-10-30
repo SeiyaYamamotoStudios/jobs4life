@@ -20,6 +20,8 @@ from jfl_core.context import GATE_MODEL, PRODUCT_MODEL
 from jfl_core.crypto.envelope import MasterKey
 from jfl_core.db.tables import LOCAL_USER_ID
 
+from jfl_worker.mailer import MailSettings
+
 DISABLE_MODEL_CALLS_ENV = "JFL_DISABLE_MODEL_CALLS"
 
 # Both read from jfl_core.context, the one place the defaults are defined.
@@ -67,6 +69,7 @@ DEFAULT_PARK_DELAY = 15 * 60.0
 DEFAULT_PURGE_INTERVAL = 60 * 60.0
 DEFAULT_FEED_MARK_PURGE_INTERVAL = 60 * 60.0
 DEFAULT_BOARD_SCHEDULE_INTERVAL = 15 * 60.0
+DEFAULT_DIGEST_SCHEDULE_INTERVAL = 15 * 60.0
 DEFAULT_ERROR_BACKOFF = 10.0
 
 
@@ -218,6 +221,17 @@ class WorkerSettings:
     # does not follow the product model.
     gate_model: str = DEFAULT_GATE_MODEL
 
+    # Outbound mail for the emailed digest (PLAN.md C9): `None` when
+    # `JFL_SMTP_HOST` is unset, in which case the digest handlers do nothing and
+    # the web app says email is not configured. The SMTP password lives inside it,
+    # out of its `repr`.
+    mail: MailSettings | None = None
+
+    # How often the digest scheduling pass is enqueued. Fifteen minutes, like
+    # the board pass: it is one indexed query, and it bounds how late after the
+    # configured hour a digest can start.
+    digest_schedule_interval: float = DEFAULT_DIGEST_SCHEDULE_INTERVAL
+
     def __post_init__(self) -> None:
         # Here as well as in `_count`, so a settings object built by hand -- a
         # test, a script -- cannot have zero slots either.
@@ -258,6 +272,10 @@ class WorkerSettings:
                 source, "JFL_WORKER_BOARD_SCHEDULE_INTERVAL", DEFAULT_BOARD_SCHEDULE_INTERVAL
             ),
             park_delay=_seconds(source, "JFL_WORKER_PARK_DELAY", DEFAULT_PARK_DELAY),
+            digest_schedule_interval=_seconds(
+                source, "JFL_WORKER_DIGEST_SCHEDULE_INTERVAL", DEFAULT_DIGEST_SCHEDULE_INTERVAL
+            ),
+            mail=MailSettings.from_env(source),
         )
 
     def retry_delay(self, attempts: int) -> dt.timedelta:

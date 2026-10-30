@@ -36,6 +36,7 @@ VALUE_SETS = [
     (models.Workplace, tables._WORKPLACES),
     (models.WorkplaceMode, tables._WORKPLACE_MODES),
     (models.BoardJobEventKind, tables._BOARD_JOB_EVENT_KINDS),
+    (models.EmailSendKind, tables._EMAIL_SEND_KINDS),
     (models.TitleSuggestionStatus, tables._TITLE_SUGGESTION_STATUSES),
     (models.CapabilityClusterStatus, tables._CAPABILITY_CLUSTER_STATUSES),
     (models.CapabilityClusterErrorCode, tables._CAPABILITY_CLUSTER_ERROR_CODES),

@@ -1,0 +1,54 @@
+{% if preview_days %}
+TEST EMAIL, sent {{ sent_at }} from Settings. It previews a digest covering the last {{ preview_days }} days of your watched boards, not since your last email, and changes nothing: your real digest still arrives at {{ schedule }}.
+
+{% endif %}{% if heartbeat %}
+Still watching {{ boards_phrase }}. Every check {% if preview_days %}in the last {{ preview_days }} days{% else %}since your last email{% endif %} completed, and nothing new matches your filter.
+{% if found %}
+
+({{ found }} new or returned {{ "job was" if found == 1 else "jobs were" }} found, but none matched your saved filter.)
+{% endif %}
+{% else %}
+{% if matching %}
+{{ matching }} matching your filter of {{ found }} new or returned {{ "job" if found == 1 else "jobs" }} on your watched boards{% if returned %} ({{ returned }} of the matching {{ "is" if returned == 1 else "are" }} returned: back on the board after being taken down){% endif %}.
+{% if hidden_unstated %}
+{{ hidden_unstated }} more {{ "job" if hidden_unstated == 1 else "jobs" }} would match, but the workplace isn't stated: {{ links.changes_unstated }}
+{% endif %}
+{% elif found %}
+{{ found }} new or returned {{ "job was" if found == 1 else "jobs were" }} found, but none matched your saved filter.
+{% endif %}
+{% endif %}
+{% if failed %}
+
+COULD NOT BE CHECKED
+Nothing can be said about these boards for the period below. Changes on them may be missing from this email.
+{% for f in failed %}
+- {{ f.board | oneline }} ({{ f.platform }}): {{ f.what }}{% if f.held %}; nothing on it was recorded until you accept the drop on its Boards page{% endif %}. Last check {{ f.when }}.
+{% endfor %}
+{% endif %}
+{% if jobs %}
+
+{% for j in jobs %}
+{{ loop.index }}. {{ j.title | oneline }}
+   {{ j.kind | upper }}{% if j.kind_note %} ({{ j.kind_note }}){% endif %} {{ j.when }} on {{ j.board | oneline }}{% if j.platform %} ({{ j.platform }}){% endif %}
+
+   Workplace: {{ j.workplace | oneline }}{% for n in j.workplace_notes %} - {{ n | oneline }}{% endfor %}
+
+{% if j.locations %}
+   Locations: {{ j.locations | oneline }}
+{% endif %}
+{% if j.url %}
+   {{ j.url }}
+{% endif %}
+
+{% endfor %}
+{% if overflow %}
+...and {{ overflow }} more matching {{ "job" if overflow == 1 else "jobs" }}. See them all: {{ links.changes }}
+{% endif %}
+{% endif %}
+
+All changes: {{ links.changes }}
+
+--
+You are getting this because you turned on the daily digest in Settings. It lists new and returned jobs on the boards you watch that match your saved filter, once a day at {{ schedule }}, plus a weekly note if nothing else was sent. Nothing from your CV, applications or scores is ever in it, and it has no tracking.
+Settings: {{ links.settings }}
+Unsubscribe (one click): {{ links.unsubscribe }}

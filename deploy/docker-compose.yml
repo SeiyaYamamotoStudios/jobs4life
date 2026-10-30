@@ -29,6 +29,11 @@ services:
     # Named so `worker` below can run the same image without building it twice.
     image: jobs4life:latest
     restart: unless-stopped
+    # The emailed digest's settings (JFL_SMTP_*, JFL_MAIL_FROM, JFL_PUBLIC_BASE_URL,
+    # JFL_EMAIL_LINK_SECRET, JFL_DIGEST_*) arrive through this file. `app` reads
+    # only the secret that verifies unsubscribe links and whether mail is set up;
+    # the SMTP password reaches the worker, which sends, and is simply never read
+    # by the web app.
     env_file: .env
     # Same reasoning as above. Cloudflare Tunnel dials out to this port from the
     # host; nothing dials in from outside.
@@ -51,6 +56,8 @@ services:
     image: jobs4life:latest
     command: ["jfl-worker"]
     restart: unless-stopped
+    # Also carries the SMTP settings for the digest email: the worker is what
+    # talks to the mail relay (outbound 587 only; still nothing inbound).
     env_file: .env
     # NO `ports`. The worker serves nothing and must not be reachable from
     # anywhere: it talks out to Postgres and to the model API, and nothing talks

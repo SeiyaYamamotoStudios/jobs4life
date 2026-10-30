@@ -17,6 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from jfl_core.storage.credentials import ANTHROPIC_API_KEY
+from jfl_intake.digest import SEND_TEST_EMAIL_KIND
 
 from jfl_web.credentials import (
     InvalidApiKeyError,
@@ -28,6 +29,7 @@ from jfl_web.deps import (
     ApiKeyHealthRepoDep,
     CredentialRepoDep,
     CsrfDep,
+    DigestRepoDep,
     OptionalSessionDep,
     SessionDep,
     SettingsDep,
@@ -36,6 +38,37 @@ from jfl_web.deps import (
 from jfl_web.templating import render
 
 router = APIRouter()
+
+# `?email=` is looked up in this closed set; the query string's text is never rendered.
+_EMAIL_MESSAGES = {
+    "on": "Daily digest switched on. The first one covers the time from now.",
+    "off": "Daily digest switched off.",
+    "test_queued": "Test email queued. It should arrive within a minute.",
+    "unavailable": "Email is not set up on this server.",
+}
+
+
+def email_section(
+    request: Request, settings: SettingsDep, digest: DigestRepoDep, tasks: TaskRepoDep
+) -> dict[str, object]:
+    """The settings page's email-digest section: whether the server can send, the
+    address it goes to (the account's own, Google-verified), when it goes, when
+    the last one did, and what the last test email did.
+    """
+    state = digest.get_state()
+    last = digest.last_send()
+    last_test_task = next(iter(tasks.list_tasks(kind=SEND_TEST_EMAIL_KIND, limit=1)), None)
+    return {
+        "email": {
+            "configured": settings.mail_configured,
+            "enabled": bool(state and state.enabled),
+            "schedule": settings.digest_schedule.describe(),
+            "last_send": last,
+            "test_status": None if last_test_task is None else last_test_task.status,
+            "test_error": None if last_test_task is None else last_test_task.last_error,
+            "message": _EMAIL_MESSAGES.get(request.query_params.get("email", "")),
+        }
+    }
 
 
 @router.get("/healthz")
@@ -58,6 +91,8 @@ def settings_page(
     credentials: CredentialRepoDep,
     settings: SettingsDep,
     health: ApiKeyHealthRepoDep,
+    digest: DigestRepoDep,
+    tasks: TaskRepoDep,
 ) -> Response:
     return render(
         request,
@@ -70,6 +105,7 @@ def settings_page(
             "saved": "saved" in request.query_params,
             "resumed": _resumed_count(request),
             "health": health.get(),
+            **email_section(request, settings, digest, tasks),
         },
     )
 
@@ -82,6 +118,7 @@ def save_api_key(
     settings: SettingsDep,
     health: ApiKeyHealthRepoDep,
     tasks: TaskRepoDep,
+    digest: DigestRepoDep,
     _csrf: CsrfDep,
     api_key: Annotated[str, Form()],
 ) -> Response:
@@ -104,6 +141,7 @@ def save_api_key(
                 "validates": settings.validate_api_keys,
                 "error": str(exc),
                 "health": health.get(),
+                **email_section(request, settings, digest, tasks),
             },
             status_code=400,
         )

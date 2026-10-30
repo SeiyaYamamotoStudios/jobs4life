@@ -16,7 +16,10 @@ requires-python = ">=3.12,<3.13"
 # `schedule_board_checks`): adapters, the check engine and the schedule. It
 # brings `httpx` and no model client -- both handlers register
 # `calls_model=False`, and that is true.
-dependencies = ["jfl-core", "jfl-generate", "jfl-intake"]
+#
+# `jinja2` renders the digest email (`jfl_worker.digest_email`); the worker
+# builds it, so the templates live here and not in `jfl-web`.
+dependencies = ["jfl-core", "jfl-generate", "jfl-intake", "jinja2>=3.1"]
 
 [project.scripts]
 jfl-worker = "jfl_worker.main:main"
